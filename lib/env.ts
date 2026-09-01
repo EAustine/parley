@@ -67,14 +67,36 @@ const publicSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url(),
 });
 
+/**
+ * Each variable is named as a literal member expression, and that is load
+ * bearing rather than stylistic.
+ *
+ * Next replaces `process.env.NEXT_PUBLIC_X` textually at build time. It cannot
+ * replace anything when the whole `process.env` object is handed to a function,
+ * so parsing `process.env` directly works on the server — where the real object
+ * exists — and fails in the browser, where `process.env` is an empty stub and
+ * every variable reads as missing. Writing them out is what makes `publicEnv`
+ * safe to import from a client component.
+ */
+const publicValues = {
+  NEXT_PUBLIC_LIVEKIT_URL: process.env.NEXT_PUBLIC_LIVEKIT_URL,
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+};
+
 const serverSchema = z.object({
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(20),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
 });
 
-function parse<T extends z.ZodTypeAny>(schema: T, label: string): z.infer<T> {
-  const result = schema.safeParse(process.env);
+function parse<T extends z.ZodTypeAny>(
+  schema: T,
+  label: string,
+  values: unknown = process.env,
+): z.infer<T> {
+  const result = schema.safeParse(values);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
@@ -86,7 +108,7 @@ function parse<T extends z.ZodTypeAny>(schema: T, label: string): z.infer<T> {
 
 assertNoSecretsInPublicVars();
 
-export const publicEnv = parse(publicSchema, "public");
+export const publicEnv = parse(publicSchema, "public", publicValues);
 
 /**
  * Server-only. Importing this from a client component is a build error,

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "check:contrast": "node scripts/contrast.mjs",
     "check:env": "node scripts/check-env.mjs",
-    "predev": "npm run check:env"
+    "predev": "npm run check:env",
+    "check:rls": "node scripts/check-rls.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

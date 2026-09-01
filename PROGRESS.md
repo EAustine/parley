@@ -249,47 +249,116 @@ OAuth. Requires the LiveKit, Supabase, and Google Cloud accounts from
 `BUILD-PLAN.md` § Before you start.
 
 ---
+---
 
-## Phase 1 — readiness
+## Phase 1 — Data and auth
 
-Not started. Accounts and configuration are complete and verified.
+**Status:** complete. Sign-in works both ways, the session survives a reload,
+and RLS is proven rather than assumed.
 
-| Check | Result |
-|---|---|
-| Supabase project | `oaefkakhexjgvekpignw` (Parley) — dedicated, no other application's tables |
-| anon key | authenticates; `PGRST205` on `meetings`, which is the pre-migration answer |
-| service-role key | accepted, correct `role=service_role` JWT |
-| Email provider / magic link | enabled |
-| Google provider | enabled; real client_id, callback registered against this project |
-| Sign-ups | allowed |
-| Redirect allow-list | confirmed by inspection |
-| Supabase CLI | logged in, linked to Parley, `ACTIVE_HEALTHY` |
-| LiveKit | server API accepts the credentials (Phase 3 dependency, verified early) |
+### Shipped
 
-### Decisions carried in from setup
+- `supabase/migrations/20260901231827_meetings.sql` — `meeting_status`, both
+  tables, both indexes, exactly as `PRD.md` §6.
+- RLS on both tables. Hosts select/insert/update/delete only where
+  `host_id = auth.uid()`. Participants readable only through a meeting you host.
+- `get_meeting_by_code` as `security definer`, `search_path` pinned, six columns.
+- `lib/supabase/{client,server,middleware}.ts` on `@supabase/ssr`, plus
+  hand-maintained `types.ts`.
+- `middleware.ts` — protects `/dashboard` and `/schedule`, preserves the
+  intended destination, bounces signed-in users off `/sign-in`.
+- `/sign-in` with magic link and Google; `/auth/callback`; `/auth/complete`.
+- Sign-out that reaches other tabs.
+- `npm run check:rls` — 15 assertions against the live project.
 
-**A dedicated Supabase project, not the shared one.** Setup initially pointed at
-a project holding `passable_*`, `scores`, and `leaderboard`. `ACCOUNTS.md`
-permits reuse, but it would have meant an RLS mistake with blast radius beyond
-Parley, and no possibility of `db reset` as an escape hatch. The project is now
-Parley's alone and empty.
+### Verified, not assumed
 
-**Forward migrations only.** Standing rule regardless, but no longer load-bearing
-for safety now that the project is dedicated.
+**RLS, 15/15.** Every read is made with a *user's own JWT*. The service-role key
+bypasses RLS entirely, so a test written with it would pass whether the policies
+existed or not; it is used only to create and delete the two fixture users.
 
-**`LIVEKIT_API_SECRET` arrived as 32 copies of `U+2022`** — the LiveKit dashboard
-masks the secret until Reveal is pressed, and the masked field was copied. It
-passed every check in `scripts/check-env.mjs` and failed only at the first API
-call with `invalid token`. Two guards were added (a value that is one character
-repeated; any non-ASCII in a required value), both naming the paste artefact
-rather than the symptom. Diagnosed only after ruling out clock skew, a wrong
-host, and a key/project mismatch — worth remembering that a credential can be
-the right length and entirely wrong.
+Pass means an empty result set, not a 403. PostgREST filters a forbidden read
+rather than refusing it — a test asserting on 403 would pass for the wrong
+reason today and break the day the behaviour is correct.
 
-**Keys are moved by tooling, not by hand.** Supabase keys came from the
-authenticated CLI straight into the gitignored file. The hand-copy step is what
-produced the masked secret.
+The suite opens with a control, because without one it has a silent failure
+mode: if the inserts had gone nowhere, every "sees nothing" assertion would pass
+while proving nothing. Same query, three identities —
+**service-role 2, alice 1, bob 1**. The difference is the evidence.
 
-**`supabase/.temp/` is not tracked.** It was, briefly. Nothing sensitive had been
-committed — the pooler URL carries a password placeholder — but it is
-machine-local scratch regenerated on every link.
+Covered: cross-user read, read by id, update, delete, insert forged under
+another host (403), anonymous read of the table, the function's six columns, the
+absence of `host_id`/`id`/`settings` from the anonymous payload, an ended
+meeting falling out of the function, and participants in both directions.
+
+**Magic link end to end.** Callback → session cookie → `/dashboard` rendering
+the signed-in email → reload keeping the session → signed-in user bounced off
+`/sign-in`. Fixture users deleted afterwards; the project is left empty.
+
+**Open-redirect guard, 11/11**, including `//evil.example.com`,
+`/\evil.example.com`, and `javascript:`.
+
+### Decisions that departed from, or hardened, the specification
+
+1. **`(select auth.uid())`, not bare `auth.uid()`.** Called bare it is
+   re-evaluated per row; as a scalar subquery the planner hoists it to an
+   InitPlan and evaluates it once. On a large table that is the difference
+   between an index scan and a sequential one.
+
+2. **`revoke all … from public` before the grant.** `PRD.md` §6 grants EXECUTE
+   to `anon` and `authenticated`, but Postgres already grants EXECUTE on new
+   functions to `PUBLIC`, so the grant alone changes nothing and the default
+   stays. Revoking first is what makes the grant the actual access list.
+
+3. **The callback handles three shapes, not one.** `?code=` is PKCE, which our
+   own form produces. `?token_hash=` arrives when there is no verifier — a link
+   requested on a laptop and opened on a phone, which is ordinary behaviour.
+   Supabase's default email template points at its own `/verify`, which in that
+   case returns the session in the URL **fragment**, and a fragment never
+   reaches a server. Handling only `code` turns a valid link into "this link is
+   broken" for every cross-device open. `/auth/complete` reads the fragment in
+   the browser, calls `setSession`, and strips it from history immediately —
+   a refresh token left in the address bar survives in back-button history.
+
+4. **`lib/env.ts` now names each public variable as a literal.** As delivered it
+   parsed `process.env` wholesale, which works on the server and throws in the
+   browser: Next replaces `process.env.NEXT_PUBLIC_X` textually and cannot
+   replace anything when the whole object is passed to a function, so in the
+   client bundle every variable read as missing. This surfaced the moment a
+   client component imported the Supabase browser client. The parse now receives
+   an object built from literal member expressions.
+
+5. **`AuthListener` sits in the `(app)` route group, not the root layout.** In
+   the root layout it pulled supabase-js into every route and took shared JS
+   from 174 kB to 256 kB — a cost paid by the marketing page and, later, by
+   `/j/[code]`, the guest join screen, which is the highest-traffic route and
+   the one that never needs a session. Moved, shared is back to 175 kB.
+
+6. **Provider error strings are rewritten in Parley's voice.** Supabase says
+   `Email address "…" is invalid`; the copy rule says an error states what
+   happened and what to do next. `lib/auth/errors.ts` maps the ones people
+   actually hit and passes anything unrecognised through unchanged — a
+   wrong-but-specific provider message beats a vague one of our own.
+
+7. **`lib/supabase/types.ts` is hand-maintained**, not generated at build time,
+   so a mismatch shows up in review rather than in CI and the build needs no
+   network access. Regenerate with `supabase gen types typescript --linked`.
+
+8. **Forward migrations only.** `db push`, never `db reset`.
+
+### Known issues, deferred
+
+- **The dashboard is 242 kB of First Load JS against `PRD.md` §10's 180 KB
+  gzipped target.** Next's figures *are* gzipped — confirmed by gzipping a
+  chunk: 188.7 kB raw compressed to 59.2 kB, exactly the reported number. The
+  67 kB over the 175 kB baseline is supabase-js, pulled in by `AuthListener` and
+  `SignOutButton`. The fix is to move sign-out to a route handler and see
+  whether the listener can work from `BroadcastChannel` alone, which would take
+  supabase-js out of the signed-in client bundle entirely. That is a design
+  change, so it is flagged rather than taken; Phase 10 owns the bundle check.
+- **Google OAuth is not verified end to end.** The provider is enabled, the
+  client ID is real, and `/authorize` redirects to Google with this project's
+  callback registered — but completing it needs interactive consent. First
+  human sign-in will confirm it.
+- **Email delivery is Supabase's built-in sender**, rate-limited to a handful
+  per hour. Production needs real SMTP — Phase 10.
