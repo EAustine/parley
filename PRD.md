@@ -160,9 +160,9 @@ Tile aspect ratio is 16:9. Video is `object-fit: cover`. Never letterbox individ
 
 #### Active speaker
 
-LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--tile-border` (2.09:1 against the ground), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
+LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--tile-border` (3.33:1 against the ground, clearing the 3:1 non-text threshold), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
 
-`--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all and the grid structure disappeared. `--tile-border` exists for the room surface specifically, where tiles sit directly on the ground with no fill contrast to fall back on.
+`--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all, which makes this border the only thing identifying the tile as a component. That brings it under WCAG 1.4.11 at 3:1, which the first replacement value (2.09:1) also missed. `--tile-border` is single-purpose: the room ground, nowhere else.
 
 Rationale for the encoding: hue on the tile edge competes with skin tones and video content, and it fails for colourblind users. Weight and value read at any size against any background.
 
@@ -364,7 +364,7 @@ Note the phrasing: **no hue**, not "weight, not colour." The speaking ring chang
 --border                #242830
 --input                 #2B303A
 --ring                  #F2F4F7
---tile-border           #414954   /* room surface only — see §3.4 */
+--tile-border           #5D6777   /* room ground only — see §3.4 */
 ```
 
 State-only, not part of the general palette:

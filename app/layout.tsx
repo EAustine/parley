@@ -59,20 +59,25 @@ export default function RootLayout({
     // The font variables must sit on <html>: globals.css applies font-sans at
     // the html level, so a variable declared on <body> resolves to nothing.
     //
-    // `dark` is rendered on the server to match defaultTheme. next-themes'
-    // pre-paint script replaces it for anyone who has chosen light, but until
-    // that script runs the ground is already the right colour — otherwise the
-    // first paint is white and dark-theme users see a flash.
-    // suppressHydrationWarning covers the class the script rewrites.
+    // No theme class is rendered on the server. With defaultTheme="system" the
+    // server cannot know the answer, and guessing would flash the other way for
+    // half the audience. next-themes' inline script writes the class before
+    // paint, and globals.css carries a prefers-color-scheme ground for the
+    // window before it runs. suppressHydrationWarning covers the class it adds.
     <html
       lang="en"
-      className={`dark ${instrumentSans.variable} ${jetbrainsMono.variable}`}
+      className={`${instrumentSans.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body className="antialiased">
+        {/* Rule 8b: system, not dark. Light mode exists for the document-like
+            surfaces — dashboard and scheduling — and a light mode nobody
+            defaults into is unverified code that still has to be maintained.
+            `.dark` is forced on /j/[code] and /room/[code] in their route-group
+            layouts, so the video preview is never shown on a light ground. */}
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >

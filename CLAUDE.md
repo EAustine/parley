@@ -39,7 +39,7 @@ Every label, badge, and control sits on `--scrim`. Contrast against arbitrary vi
 **5. No hue except where it is the meaning.**
 Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.
 
-The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--tile-border` at 2.09:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
+The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--tile-border` at 3.33:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
 
 **6. Chat is rendered as text.**
 Never `dangerouslySetInnerHTML`. Autolinked URLs get `rel="noopener noreferrer nofollow"`.
@@ -56,6 +56,10 @@ Files delivered into `brand/` may arrive with a C2PA `<metadata>` block that dwa
 **8. `livekit-client` is dynamically imported on the room route only.**
 It must not appear in the dashboard or landing bundles.
 
+**8a. shadcn base is Radix, not Base UI.** Settled in Phase 0 — Radix is what the registry is built on and what "shadcn primitives" means throughout these docs. Do not revisit.
+
+**8b. `defaultTheme="system"`, not `"dark"`.** My earlier instruction said `"dark"` and contradicted `PRD.md` §4.2. §4.2 wins: the dashboard and scheduling screens follow the OS, because light mode exists precisely for those document-like surfaces and a light mode nobody defaults into is unverified code that still has to be maintained. Force `.dark` on `/j/[code]` and `/room/[code]` via a wrapper element in the route-group layout — the flip happens at the pre-join boundary, which is the right moment to signal "you've entered the call," and it means the video preview is never shown on a light ground.
+
 **9. Ask before adding a dependency.**
 The stack above is the stack. If something seems to need a new package, say why first.
 
@@ -68,7 +72,7 @@ If a spec is ambiguous, ask. Do not pick silently and move on.
 
 Dark is the default, and the only mode for the in-call surface. Video is the light source; chrome recedes. Dashboard and scheduling screens follow system theme.
 
-**Follow shadcn's class convention: `:root` holds light, `.dark` holds dark.** Set `next-themes` to `defaultTheme="dark"` and force `.dark` on the room route regardless of user preference. Inverting the convention would fight every shadcn component and third-party library that expects `.dark`.
+**Follow shadcn's class convention: `:root` holds light, `.dark` holds dark.** Set `next-themes` to `defaultTheme="system"` with `enableSystem`, and force `.dark` on `/j/[code]` and `/room/[code]` regardless of user preference — see rule 8b. Inverting the convention would fight every shadcn component and third-party library that expects `.dark`.
 
 **Keep these hex values verbatim.** Do not convert to OKLCH — the conversion shifts computed values and invalidates the verified contrast table below. Map them through `@theme inline` and override whatever `shadcn init` writes.
 
@@ -104,7 +108,7 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
     /* room surface only — tiles sit directly on the ground with no fill
        contrast (--card vs --background is 1.09:1), so they need a
        boundary --border cannot provide at 1.29:1 */
-    --tile-border:            #414954;
+    --tile-border:            #5D6777;
   }
 
   .light {
@@ -130,7 +134,7 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
 
     --state-critical:         #C62B31;
     --state-warning:          #8A5300;
-    --tile-border:            #414954;   /* room is dark in both themes */
+    --tile-border:            #5D6777;   /* room is dark in both themes */
   }
 
   /* theme-invariant: the scrim always sits over video, and video
@@ -144,17 +148,33 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
 
 Contrast is verified, not assumed. Do not change these values without recomputing.
 
-**Verify every foreground token against all four dark surfaces** — `--background`, `--card`, `--muted`, `--popover` — not just the ground. Checking a single pair is how `--state-critical` shipped at 4.03:1 on `--muted` while passing on `--background`. `/dev/tokens` renders the full matrix, not one column.
+**Every foreground token declares its permitted surfaces, and is verified against those.** "Verify against all four dark surfaces" was itself too narrow — there are seven, and `--input` and `--secondary` were missing from it. Chasing every surface would also push `--state-critical` so light it stops reading as red.
+
+| Token | Permitted surfaces | Threshold | Worst |
+|---|---|---|---|
+| `--foreground` | all | 4.5 | 12.01 |
+| `--muted-foreground` | all | 4.5 | 5.08 |
+| `--state-warning` | all | 4.5 | 6.49 |
+| `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
+| `--tile-border` | `--background` only — the room ground | 3.0 | 3.33 |
+
+Validation error text sits below a field on the ground, never inside the filled input. `--tile-border` is single-purpose and belongs to no other surface.
+
+`npm run check:contrast` computes the full matrix and fails on any violation. It is the source of truth; the numbers above are a snapshot. Do not hand-edit them — regenerate.
+
+| Pair | Ratio |
+|---|---|
+Snapshot of the load-bearing pairs. Regenerate with `npm run check:contrast`; do not hand-edit.
 
 | Pair | Ratio |
 |---|---|
 | `--foreground` / `--background` | 17.29:1 |
-| `--muted-foreground` / `--background` | 7.32:1 |
-| `--muted-foreground` / `--muted` | 6.06:1 |
-| `--tile-border` / `--background` | 2.09:1 |
+| `--muted-foreground` / worst permitted (`--input`) | 5.08:1 |
+| `--state-critical` / worst permitted (`--secondary`) | 4.84:1 |
+| `--state-warning` / worst permitted (`--input`) | 6.49:1 |
+| `--tile-border` / `--background` | 3.33:1 |
 | `--foreground` (speaking, 2px) / `--background` | 17.29:1 |
 | white / `--destructive` (dark) | 4.98:1 |
-| `--state-critical` / worst dark surface (`--muted`) | 5.16:1 |
 | Light `--muted-foreground` / white | 6.06:1 |
 | Light `--destructive` / white | 5.54:1 |
 

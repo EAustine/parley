@@ -76,7 +76,7 @@
 
     --state-critical: #c62b31;
     --state-warning: #8a5300;
-    --tile-border: #414954; /* room is dark in both themes */
+    --tile-border: #5d6777; /* room is dark in both themes */
   }
 
   /* next-themes writes .light explicitly; it mirrors :root exactly. */
@@ -103,7 +103,7 @@
 
     --state-critical: #c62b31;
     --state-warning: #8a5300;
-    --tile-border: #414954;
+    --tile-border: #5d6777;
   }
 
   .dark {
@@ -134,7 +134,7 @@
     /* room surface only — tiles sit directly on the ground with no fill
        contrast (--card vs --background is 1.09:1), so they need a
        boundary --border cannot provide at 1.29:1 */
-    --tile-border: #414954;
+    --tile-border: #5d6777;
   }
 
   /* theme-invariant: the scrim always sits over video, and video
@@ -154,6 +154,21 @@
   }
   .dark {
     color-scheme: dark;
+  }
+
+  /* Pre-paint ground for `defaultTheme="system"`.
+     The server cannot know the viewer's OS preference, so before next-themes'
+     inline script runs, :root resolves to the light palette. On a system set to
+     dark that is a white flash. This paints the correct ground from CSS alone,
+     with no JavaScript involved — two properties, not a duplicate palette, so
+     there is nothing here to drift out of step with the tokens above.
+     Both classes are excluded: once the script has written one, it wins. */
+  @media (prefers-color-scheme: dark) {
+    html:not(.light):not(.dark) {
+      background-color: #0e1013; /* --background, dark. Literal because
+                                    var(--background) is still light here. */
+      color-scheme: dark;
+    }
   }
 }
 

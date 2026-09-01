@@ -80,6 +80,7 @@ Brand (spec in `BRAND.md`):
 - Base layout and header using the horizontal lockup
 
 Verification page:
+- `scripts/contrast.mjs` + `npm run check:contrast` — computes the full foreground × surface matrix against each token's declared permitted surfaces and exits non-zero on any violation. This is the source of truth; the tables in `CLAUDE.md` are a regenerable snapshot.
 - `/dev/tokens` — every colour swatch with its **computed** contrast ratio against its intended background, every type step named, every icon in the inventory with its resolved export name, and the mark rendered at 16 / 24 / 32 / 64 / 128px
 
 **Done when:** `/dev/tokens` renders correctly in both themes with no flash on reload; every contrast ratio matches the table in `CLAUDE.md`; the mark's ghost cell is present at 32px+ and absent at 16px; and the OG card previews correctly in a link debugger.
@@ -143,7 +144,7 @@ Tasks:
 - Connect using the token; `<RoomAudioRenderer />` for remote audio
 - Grid implementing every breakpoint in the `PRD.md` §3.4 table
 - Participant tile: video with `object-fit: cover`; avatar fallback is the participant's initial on `--secondary`, **uniform, no per-identity hue**; name on scrim; mic-off indicator
-- Tile boundary: idle 1px `--tile-border` (2.09:1 — a hairline that defines the grid), speaking 2px `--foreground` (17.29:1). `--card` against `--background` is 1.09:1, so without this the grid structure is invisible.
+- Tile boundary: idle 1px `--tile-border` (3.33:1, clears WCAG 1.4.11), speaking 2px `--foreground` (17.29:1). `--card` against `--background` is 1.09:1, so without this the grid structure is invisible.
 - Control bar: mic, camera, leave. Circles at 48px; leave is a wide pill.
 - Auto-hide controls after 4s of pointer inactivity on desktop; always visible on touch
 - Mic and camera state derived from track state, never a parallel boolean

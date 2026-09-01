@@ -85,17 +85,15 @@ departed from the specification — with the reason.
    for chevrons and check marks. It is not used for any Parley icon — those are
    HugeIcons, centralised in `lib/icons.ts`.
 
-5. **`defaultTheme="dark"` with `enableSystem`.** `CLAUDE.md` says set
-   `defaultTheme="dark"`; `PRD.md` §4.2 says the dashboard follows system theme.
-   Both are satisfied: dark is the default when nothing is stored, and System
-   remains selectable. Flagging the tension rather than silently picking.
+5. **`defaultTheme="system"`.** *Superseded — see the Phase 0 revision below.*
+   Originally `"dark"`, per `CLAUDE.md`'s then-current wording, with the tension
+   against `PRD.md` §4.2 flagged rather than silently resolved. Rule 8b settled
+   it the other way.
 
-6. **The server renders `class="dark"` on `<html>`.** next-themes' pre-paint
-   script sits at the top of `<body>`, so with streaming there is a window in
-   which the browser could paint the `:root` (light) ground before it runs —
-   a white flash for the dark default. Rendering `dark` on the server closes
-   that window; the script still corrects it for anyone who chose light.
-   `suppressHydrationWarning` covers the class the script rewrites.
+6. **The pre-paint ground is CSS, not a server-rendered class.** *Revised — see
+   below.* next-themes' script sits at the top of `<body>`, so with streaming
+   there is a window in which the browser could paint the `:root` (light) ground
+   before it runs.
 
 7. **The focus ring is declared unlayered.** `CLAUDE.md`'s accessibility floor
    is a 2px ring at `--ring` with 2px offset. shadcn's buttons carry an
@@ -141,16 +139,90 @@ departed from the specification — with the reason.
   carry the right absolute origin. `lib/site.ts` falls back to `VERCEL_URL`,
   then `localhost:3000`.
 
-### Two numbers still stale in the documents
+---
 
-Neither changes any code; noting them so they are not rediscovered later.
+## Phase 0 — revision
 
-- `PRD.md` §4.2 and `CLAUDE.md` state `--state-critical` clears "≥5.16:1 on any
-  dark surface". On `--secondary` (`#242830`) it is 4.84:1. Still AA, and
-  `--secondary` is a control fill rather than a text surface — but "any dark
-  surface" overstates it slightly.
-- `CLAUDE.md`'s contrast table omits `--tile-border` against surfaces other than
-  `--background`. `/dev/tokens` now shows all of them.
+`CLAUDE.md`, `PRD.md`, and `BUILD-PLAN.md` were updated after the first Phase 0
+pass. Three changes needed code, and two of them reverse decisions above.
+
+### `--tile-border` is now `#5D6777` — 3.33:1
+
+Was `#414954` at 2.09:1, which I had classified as an ungraded "hairline" on the
+reasoning that nothing depends on it alone. That reasoning was wrong, and
+`PRD.md` §3.4 now says why: a camera-off tile has no fill contrast to fall back
+on (`--card` on `--background` is 1.09:1), so this border is the only thing
+identifying the tile as a component — which puts it under **WCAG 1.4.11 at
+3:1**, not outside grading. `#5D6777` clears it at 3.33:1.
+
+The tokens page no longer has a "hairline, not graded" category. It grades every
+token against its permitted surfaces.
+
+### `defaultTheme="system"`, not `"dark"` — rule 8b
+
+Reverses decisions 5 and 6 above. `PRD.md` §4.2 wins: a light mode nobody
+defaults into is unverified code that still has to be maintained.
+
+Consequently the server no longer renders `class="dark"` on `<html>`. With
+`system` the server cannot know the answer, and guessing would flash the other
+way for half the audience. The flash is closed in CSS instead:
+
+```css
+@media (prefers-color-scheme: dark) {
+  html:not(.light):not(.dark) { background-color: #0e1013; color-scheme: dark; }
+}
+```
+
+Two properties, not a duplicated palette — nothing here can drift out of step
+with the tokens. It paints the correct ground with no JavaScript involved, and
+once next-themes' script writes a class, the class wins. Verified in both
+directions by emulating the OS preference: system-dark with no stored theme
+resolves to `.dark` on a `#0E1013` ground, system-light to `.light` on white.
+
+**Not yet built:** forcing `.dark` on `/j/[code]` and `/room/[code]` via their
+route-group layouts. Those routes arrive in Phases 3 and 4; the wrapper goes in
+with them.
+
+### `npm run check:contrast` is now the source of truth
+
+`scripts/contrast.mjs` parses the hex values out of `app/globals.css` — not a
+table someone remembered to update — and checks every foreground token against
+the surfaces it is *permitted* to sit on, exiting non-zero on any violation.
+24 checks across both themes, all passing.
+
+`lib/contrast-rules.ts` holds the rules, imported by both the script and
+`/dev/tokens`, so the gate and the visual check cannot disagree.
+
+The permitted-surface model replaces "check every surface", which was both too
+narrow (it missed `--input` and `--accent` — seven surfaces, not four) and too
+blunt (chasing every surface would push `--state-critical` light enough to stop
+reading as red). Two exclusions are declared rather than papered over:
+
+- **`--state-critical` is not permitted on `--input`** (4.34:1). Validation
+  error text sits below a field on the ground, never inside the filled input.
+- **`--tile-border` is permitted only on `--background`.** Single-purpose: the
+  room ground, nowhere else.
+
+`/dev/tokens` shows excluded pairs greyed **with their ratio still printed**, so
+the exclusion is legible rather than hidden — you can see that
+`--state-critical` on `--input` really is 4.34:1, and that it was excluded
+deliberately rather than missed.
+
+### Verified after the revision
+
+Every value in `CLAUDE.md`'s new permitted-surfaces table reproduces exactly:
+`--foreground` 12.01, `--muted-foreground` 5.08, `--state-warning` 6.49 (all
+worst on `--input`), `--state-critical` 4.84 on `--secondary`, `--tile-border`
+3.33 on `--background`. The excluded pair is 4.34 as stated.
+
+### One stale table remaining
+
+`PRD.md` §4.2's "Verified contrast" block and §3.11 both still say
+`--state-critical` clears 4.5:1 on *every* dark surface. It does not clear
+`--input` (4.34:1) — which is the point of the exclusion, and §3.11's modal sits
+on `--popover` (5.42:1) so its actual claim holds. `CLAUDE.md`'s table is
+authoritative and says to regenerate rather than hand-edit; running
+`npm run check:contrast -- --snapshot` emits the markdown.
 
 ---
 

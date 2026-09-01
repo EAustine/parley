@@ -64,7 +64,7 @@ export default function TokensPage() {
 
       <Section
         title="Contrast matrix"
-        note="Every foreground token against every surface. Text needs 4.5:1, the focus ring needs 3:1. Hairlines are deliberately below 3:1 and are reported, not graded."
+        note="Every foreground token against every surface, graded against the surfaces it is permitted to sit on. The same rules run in npm run check:contrast, which is the gate; this is the visual check that the gate describes what you can see."
       >
         <ContrastMatrix />
       </Section>
