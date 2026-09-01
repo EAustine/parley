@@ -297,7 +297,7 @@ LiveKit reports `excellent | good | poor | lost`.
 | Poor | Amber pill on the affected tile: "Unstable connection." Local user also sees a bar: "Your connection is unstable." |
 | Lost (remote) | Tile dims to 40%, last frame frozen, label "Reconnecting…" |
 | Lost (local) | Full-width bar, `--state-critical`. Video paused. Automatic retry with visible attempt count. |
-| Failed after retries | Modal on `--popover`: what happened, "Rejoin" and "Leave". `--state-critical` clears 4.5:1 on every dark surface, so the modal can carry it. |
+| Failed after retries | Modal on `--popover`: what happened, "Rejoin" and "Leave". `--state-critical` is permitted on `--popover` (5.42:1), so the modal can carry it. |
 
 Never fail silently. A frozen video with no explanation is the worst outcome in this product.
 
@@ -390,19 +390,9 @@ State-only, not part of the general palette:
 --ring                  #16181D
 ```
 
-**Verified contrast** (computed, not estimated):
+**Contrast is verified by script, not by hand.** `CLAUDE.md` carries the permitted-surface table and the generated snapshot; `npm run check:contrast` is the source of truth and `-- --snapshot` emits the markdown. This document deliberately does not duplicate it — four separate rounds of hand-copied ratios going stale is enough evidence that a second copy is a liability rather than a convenience.
 
-| Pair | Ratio |
-|---|---|
-| `--foreground` on `--background` | 17.29:1 |
-| `--muted-foreground` on `--background` | 7.32:1 |
-| `--muted-foreground` on `--card` | 6.70:1 |
-| `--muted-foreground` on `--muted` | 6.06:1 |
-| white on `--destructive` | 4.98:1 |
-| `--state-critical` on any dark surface | ≥5.16:1 |
-| `--state-warning` on `--background` | 9.34:1 |
-| Light: `--muted-foreground` on white | 6.06:1 |
-| Light: `--destructive` on white | 5.54:1 |
+The shape of the system, which does belong here: every foreground token declares the surfaces it is permitted on and is verified against those. `--state-critical` is permitted on every dark surface except `--input` (4.34:1); validation errors sit below a field on the ground, never inside the filled input. `--tile-border` is permitted on `--background` alone.
 
 Note: `#E5484D` on white is 3.91:1 and fails. That is why light mode has a separate, darker destructive.
 

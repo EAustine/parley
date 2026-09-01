@@ -41,20 +41,38 @@ const ALL_SURFACES = [
  * filled input — so --state-critical does not need to clear --input (4.34:1).
  */
 const RULES = [
-  { token: "--foreground", surfaces: ALL_SURFACES, threshold: TEXT },
-  { token: "--muted-foreground", surfaces: ALL_SURFACES, threshold: TEXT },
-  { token: "--state-warning", surfaces: ALL_SURFACES, threshold: TEXT },
+  {
+    token: "--foreground",
+    surfaces: ALL_SURFACES,
+    threshold: TEXT,
+    label: "all",
+  },
+  {
+    token: "--muted-foreground",
+    surfaces: ALL_SURFACES,
+    threshold: TEXT,
+    label: "all",
+  },
+  {
+    token: "--state-warning",
+    surfaces: ALL_SURFACES,
+    threshold: TEXT,
+    label: "all",
+  },
   {
     token: "--state-critical",
     surfaces: ALL_SURFACES.filter((s) => s !== "--input"),
     threshold: TEXT,
     note: "not --input — validation text sits below the field, on the ground",
+    label:
+      "background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1)",
   },
   {
     token: "--tile-border",
     surfaces: ["--background"],
     threshold: NON_TEXT,
     note: "the room ground only; single-purpose",
+    label: "`--background` only — the room ground",
   },
   // Foreground-on-fill pairs, checked directly rather than against surfaces.
   {
@@ -188,15 +206,64 @@ for (const [themeName, tokens] of Object.entries(themes)) {
   }
 }
 
+/**
+ * The load-bearing pairs CLAUDE.md carries as a snapshot. Declared here so the
+ * doc's table can be regenerated verbatim rather than hand-copied — which is
+ * how four earlier rounds of ratios went stale.
+ *
+ * `worstOf` resolves to the worst permitted surface for that token, so the
+ * label and the number can never disagree about which surface is worst.
+ */
+const SNAPSHOT_PAIRS = [
+  { label: "`--foreground` / `--background`", theme: "dark", fg: "--foreground", bg: "--background" },
+  { label: "`--muted-foreground` / worst permitted", theme: "dark", fg: "--muted-foreground", worstOf: "--muted-foreground" },
+  { label: "`--state-critical` / worst permitted", theme: "dark", fg: "--state-critical", worstOf: "--state-critical" },
+  { label: "`--state-warning` / worst permitted", theme: "dark", fg: "--state-warning", worstOf: "--state-warning" },
+  { label: "`--tile-border` / `--background`", theme: "dark", fg: "--tile-border", bg: "--background" },
+  { label: "`--foreground` (speaking, 2px) / `--background`", theme: "dark", fg: "--foreground", bg: "--background" },
+  { label: "white / `--destructive` (dark)", theme: "dark", fg: "#FFFFFF", bg: "--destructive" },
+  { label: "Light `--muted-foreground` / white", theme: "light", fg: "--muted-foreground", bg: "--background" },
+  { label: "Light `--destructive` / white", theme: "light", fg: "--destructive", bg: "--background" },
+];
+
 if (snapshot) {
-  console.log("| Token | Theme | Permitted surfaces | Threshold | Worst |");
-  console.log("|---|---|---|---|---|");
-  for (const r of rows) {
+  const dark = rows.filter((r) => r.theme === "dark" && r.surfaces !== null);
+
+  console.log("| Token | Permitted surfaces | Threshold | Worst |");
+  console.log("|---|---|---|---|");
+  for (const rule of RULES) {
+    if (!rule.label) continue;
+    const row = dark.find((r) => r.token === rule.token);
+    if (!row) continue;
     console.log(
-      `| \`${r.token}\` | ${r.theme} | ${r.surfaces} | ${r.threshold} | ${r.worst.toFixed(2)} (\`${r.worstSurface}\`) |`,
+      `| \`${rule.token}\` | ${rule.label} | ${rule.threshold.toFixed(1)} | ${row.worst.toFixed(2)} |`,
     );
   }
+
   console.log();
+  console.log("| Pair | Ratio |");
+  console.log("|---|---|");
+  for (const pair of SNAPSHOT_PAIRS) {
+    const tokens = themes[pair.theme];
+    const fg = pair.fg.startsWith("#") ? pair.fg : tokens[pair.fg];
+    let bg;
+    let label = pair.label;
+    if (pair.worstOf) {
+      const rule = RULES.find((r) => r.token === pair.worstOf);
+      let worst = null;
+      for (const s of rule.surfaces) {
+        const v = ratio(fg, tokens[s]);
+        if (worst === null || v < worst.value) worst = { surface: s, value: v };
+      }
+      bg = tokens[worst.surface];
+      label = `${pair.label} (\`${worst.surface}\`)`;
+    } else {
+      bg = tokens[pair.bg];
+    }
+    console.log(`| ${label} | ${ratio(fg, bg).toFixed(2)}:1 |`);
+  }
+  console.log();
+  process.exit(failures.length > 0 ? 1 : 0);
 }
 
 const width = Math.max(...rows.map((r) => r.token.length));

@@ -162,8 +162,6 @@ Validation error text sits below a field on the ground, never inside the filled 
 
 `npm run check:contrast` computes the full matrix and fails on any violation. It is the source of truth; the numbers above are a snapshot. Do not hand-edit them — regenerate.
 
-| Pair | Ratio |
-|---|---|
 Snapshot of the load-bearing pairs. Regenerate with `npm run check:contrast`; do not hand-edit.
 
 | Pair | Ratio |

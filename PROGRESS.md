@@ -215,14 +215,30 @@ Every value in `CLAUDE.md`'s new permitted-surfaces table reproduces exactly:
 worst on `--input`), `--state-critical` 4.84 on `--secondary`, `--tile-border`
 3.33 on `--background`. The excluded pair is 4.34 as stated.
 
-### One stale table remaining
+### The stale table — resolved by deletion
 
-`PRD.md` §4.2's "Verified contrast" block and §3.11 both still say
-`--state-critical` clears 4.5:1 on *every* dark surface. It does not clear
-`--input` (4.34:1) — which is the point of the exclusion, and §3.11's modal sits
-on `--popover` (5.42:1) so its actual claim holds. `CLAUDE.md`'s table is
-authoritative and says to regenerate rather than hand-edit; running
-`npm run check:contrast -- --snapshot` emits the markdown.
+`PRD.md` §4.2's duplicated "Verified contrast" block is gone. It was not
+corrected, it was removed: the document now points at `CLAUDE.md` and the script,
+on the grounds that a second copy of the numbers is a liability rather than a
+convenience. §3.11 now states the claim it can actually support —
+`--state-critical` is permitted on `--popover` (5.42:1), so the modal can carry
+it — rather than the broader "every dark surface", which `--input` breaks.
+
+`--snapshot` now emits `CLAUDE.md`'s two tables in their exact format, so
+"regenerate, do not hand-edit" is an instruction that can be followed rather
+than an aspiration. The rule labels (`all`, the `--state-critical` exclusion
+prose, `--background` only) live in `scripts/contrast.mjs` beside the surfaces
+they describe, so a label and its number cannot drift apart. The worst-surface
+name in each pair row is resolved from the rules rather than typed, for the same
+reason.
+
+**Proven, not assumed:** both tables in `CLAUDE.md` were diffed against the
+generated output and are **byte-identical** — 5 rows and 9 rows, reproduced from
+the hex in `app/globals.css`. Every inline ratio in the prose of both documents
+was recomputed as well: 9 of 9 verify, including the ones recording rejected
+values (`--border` 1.29:1, the first `--tile-border` replacement at 2.09:1).
+
+There is now no hand-maintained contrast number anywhere in the project.
 
 ---
 
