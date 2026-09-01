@@ -247,3 +247,49 @@ There is now no hand-maintained contrast number anywhere in the project.
 Schema, RLS, `get_meeting_by_code`, Supabase clients, magic link and Google
 OAuth. Requires the LiveKit, Supabase, and Google Cloud accounts from
 `BUILD-PLAN.md` § Before you start.
+
+---
+
+## Phase 1 — readiness
+
+Not started. Accounts and configuration are complete and verified.
+
+| Check | Result |
+|---|---|
+| Supabase project | `oaefkakhexjgvekpignw` (Parley) — dedicated, no other application's tables |
+| anon key | authenticates; `PGRST205` on `meetings`, which is the pre-migration answer |
+| service-role key | accepted, correct `role=service_role` JWT |
+| Email provider / magic link | enabled |
+| Google provider | enabled; real client_id, callback registered against this project |
+| Sign-ups | allowed |
+| Redirect allow-list | confirmed by inspection |
+| Supabase CLI | logged in, linked to Parley, `ACTIVE_HEALTHY` |
+| LiveKit | server API accepts the credentials (Phase 3 dependency, verified early) |
+
+### Decisions carried in from setup
+
+**A dedicated Supabase project, not the shared one.** Setup initially pointed at
+a project holding `passable_*`, `scores`, and `leaderboard`. `ACCOUNTS.md`
+permits reuse, but it would have meant an RLS mistake with blast radius beyond
+Parley, and no possibility of `db reset` as an escape hatch. The project is now
+Parley's alone and empty.
+
+**Forward migrations only.** Standing rule regardless, but no longer load-bearing
+for safety now that the project is dedicated.
+
+**`LIVEKIT_API_SECRET` arrived as 32 copies of `U+2022`** — the LiveKit dashboard
+masks the secret until Reveal is pressed, and the masked field was copied. It
+passed every check in `scripts/check-env.mjs` and failed only at the first API
+call with `invalid token`. Two guards were added (a value that is one character
+repeated; any non-ASCII in a required value), both naming the paste artefact
+rather than the symptom. Diagnosed only after ruling out clock skew, a wrong
+host, and a key/project mismatch — worth remembering that a credential can be
+the right length and entirely wrong.
+
+**Keys are moved by tooling, not by hand.** Supabase keys came from the
+authenticated CLI straight into the gitignored file. The hand-copy step is what
+produced the masked secret.
+
+**`supabase/.temp/` is not tracked.** It was, briefly. Nothing sensitive had been
+committed — the pooler URL carries a password placeholder — but it is
+machine-local scratch regenerated on every link.
