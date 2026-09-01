@@ -1,0 +1,341 @@
+# CLAUDE.md
+
+Project rules for **Parley**. Read `PRD.md` for the full specification, `BRAND.md` for identity and assets, and `BUILD-PLAN.md` for the phased task list.
+
+---
+
+## What this is
+
+**Parley** — a video conferencing web app: video, audio, screen share, emoji reactions, in-meeting chat, scheduling, and shareable invite links.
+
+*A parley is a conversation between parties who cannot otherwise meet — held at a distance, on neutral ground, under terms both sides agree to.*
+
+Tagline: **A link is all anyone needs.**
+
+## Stack
+
+Next.js 15 (App Router) · TypeScript strict · Tailwind v4 · shadcn/ui · HugeIcons · LiveKit Cloud · Supabase · Vercel
+
+---
+
+## Hard rules
+
+**1. Never use LiveKit's prebuilt UI components.**
+Use the hooks: `useRoomContext`, `useTracks`, `useParticipants`, `useLocalParticipant`, `useConnectionState`, `useDataChannel`, `useRoomInfo`. Also use `<RoomAudioRenderer />` — it renders nothing visible and correctly manages remote audio elements.
+
+Do not use `VideoConference`, `ControlBar`, `GridLayout`, `ParticipantTile`, `PreJoin`, or `@livekit/components-styles`. They carry a competing design system. Every visible surface is built from shadcn primitives and the tokens below.
+
+**2. Secrets never reach the client.**
+`LIVEKIT_API_SECRET`, `LIVEKIT_API_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are server-only. No `NEXT_PUBLIC_` prefix on any of them. Token minting happens in a route handler, never in a component.
+
+Add a boot assertion that throws if a value starting with `eyJ` and containing `service_role` appears in any public env var.
+
+**3. Mute state comes from the track, not from React.**
+Derive mic and camera UI state from the LiveKit track's actual published state. Never keep a parallel boolean as the source of truth. If unmuting fails, the UI must show muted. This is a privacy requirement.
+
+**4. No text or icons directly on video.**
+Every label, badge, and control sits on `--scrim`. Contrast against arbitrary video content is otherwise undefined.
+
+**5. No hue except where it is the meaning.**
+Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.
+
+The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--tile-border` at 2.09:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
+
+**6. Chat is rendered as text.**
+Never `dangerouslySetInnerHTML`. Autolinked URLs get `rel="noopener noreferrer nofollow"`.
+
+**7. Every icon-only button needs `aria-label` and a tooltip.**
+No exceptions.
+
+**7a. `app/icon.svg` is the one documented exception to `currentColor`.**
+A standalone favicon has no inherited colour context, so `currentColor` resolves to black and disappears on a dark tab. `app/icon.svg` is a self-contained badge with literal fills — mark in `#F2F4F7` on a `#0E1013` rounded square — matching the PNG icon set, which already carries the dark ground. It uses the small variant (no ghost cell), because an SVG cannot switch variants by rendered size and a favicon is almost always drawn at 16–32px. `currentColor` remains the rule everywhere it actually pays off: `components/brand/*`.
+
+**7b. Shipped image assets carry no provenance metadata.**
+Files delivered into `brand/` may arrive with a C2PA `<metadata>` block that dwarfs the artwork — 7.7KB of provenance around 410 bytes of geometry, on an asset served with every page load. Strip it when copying into `app/` and `public/`. Leave the originals in `brand/` untouched as the record. If a stripped file looks wrong, retype it from the source in `BRAND.md`, which is authoritative.
+
+**8. `livekit-client` is dynamically imported on the room route only.**
+It must not appear in the dashboard or landing bundles.
+
+**9. Ask before adding a dependency.**
+The stack above is the stack. If something seems to need a new package, say why first.
+
+**10. Design decisions are discussed before they are coded.**
+If a spec is ambiguous, ask. Do not pick silently and move on.
+
+---
+
+## Design tokens
+
+Dark is the default, and the only mode for the in-call surface. Video is the light source; chrome recedes. Dashboard and scheduling screens follow system theme.
+
+**Follow shadcn's class convention: `:root` holds light, `.dark` holds dark.** Set `next-themes` to `defaultTheme="dark"` and force `.dark` on the room route regardless of user preference. Inverting the convention would fight every shadcn component and third-party library that expects `.dark`.
+
+**Keep these hex values verbatim.** Do not convert to OKLCH — the conversion shifts computed values and invalidates the verified contrast table below. Map them through `@theme inline` and override whatever `shadcn init` writes.
+
+```css
+/* app/globals.css — .dark block shown; :root mirrors the light values */
+
+@layer base {
+  .dark {
+    --background:             #0E1013;
+    --foreground:             #F2F4F7;
+    --card:                   #171A1F;
+    --card-foreground:        #F2F4F7;
+    --popover:                #1B1F25;
+    --popover-foreground:     #F2F4F7;
+    --primary:                #F2F4F7;
+    --primary-foreground:     #0E1013;
+    --secondary:              #242830;
+    --secondary-foreground:   #F2F4F7;
+    --muted:                  #1F232A;
+    --muted-foreground:       #9AA1AC;
+    --accent:                 #242830;
+    --accent-foreground:      #F2F4F7;
+    --destructive:            #D32F2F;
+    --destructive-foreground: #FFFFFF;
+    --border:                 #242830;
+    --input:                  #2B303A;
+    --ring:                   #F2F4F7;
+
+    /* state only — never used as decoration */
+    --state-critical:         #F26669;
+    --state-warning:          #F5A524;
+
+    /* room surface only — tiles sit directly on the ground with no fill
+       contrast (--card vs --background is 1.09:1), so they need a
+       boundary --border cannot provide at 1.29:1 */
+    --tile-border:            #414954;
+  }
+
+  .light {
+    --background:             #FFFFFF;
+    --foreground:             #16181D;
+    --card:                   #F7F8F9;
+    --card-foreground:        #16181D;
+    --popover:                #FFFFFF;
+    --popover-foreground:     #16181D;
+    --primary:                #16181D;
+    --primary-foreground:     #FFFFFF;
+    --secondary:              #F0F2F4;
+    --secondary-foreground:   #16181D;
+    --muted:                  #F0F2F4;
+    --muted-foreground:       #5C636E;
+    --accent:                 #F0F2F4;
+    --accent-foreground:      #16181D;
+    --destructive:            #C62B31;
+    --destructive-foreground: #FFFFFF;
+    --border:                 #E3E6EA;
+    --input:                  #E3E6EA;
+    --ring:                   #16181D;
+
+    --state-critical:         #C62B31;
+    --state-warning:          #8A5300;
+    --tile-border:            #414954;   /* room is dark in both themes */
+  }
+
+  /* theme-invariant: the scrim always sits over video, and video
+     surfaces are always dark */
+  :root, .dark, .light {
+    --scrim:  rgba(14, 16, 19, 0.72);
+    --radius: 0.5rem;
+  }
+}
+```
+
+Contrast is verified, not assumed. Do not change these values without recomputing.
+
+**Verify every foreground token against all four dark surfaces** — `--background`, `--card`, `--muted`, `--popover` — not just the ground. Checking a single pair is how `--state-critical` shipped at 4.03:1 on `--muted` while passing on `--background`. `/dev/tokens` renders the full matrix, not one column.
+
+| Pair | Ratio |
+|---|---|
+| `--foreground` / `--background` | 17.29:1 |
+| `--muted-foreground` / `--background` | 7.32:1 |
+| `--muted-foreground` / `--muted` | 6.06:1 |
+| `--tile-border` / `--background` | 2.09:1 |
+| `--foreground` (speaking, 2px) / `--background` | 17.29:1 |
+| white / `--destructive` (dark) | 4.98:1 |
+| `--state-critical` / worst dark surface (`--muted`) | 5.16:1 |
+| Light `--muted-foreground` / white | 6.06:1 |
+| Light `--destructive` / white | 5.54:1 |
+
+`#E5484D` on white is 3.91:1 and fails — that is why light mode has a separate destructive value.
+
+---
+
+## Typography
+
+**Instrument Sans** for interface, **JetBrains Mono** for meeting codes, timers, and connection data. Google Fonts, variable, `font-display: swap`.
+
+```
+font-sans:  "Instrument Sans", ui-sans-serif, system-ui, "Noto Sans", sans-serif
+font-mono:  "JetBrains Mono", ui-monospace, "SF Mono", monospace
+```
+
+| Role | Size / line | Weight |
+|---|---|---|
+| Display | 32 / 36 | 600 |
+| H1 | 24 / 30 | 600, −0.01em |
+| H2 | 20 / 26 | 600 |
+| Body | 15 / 22 | 400 |
+| Small | 13 / 18 | 400 |
+| Caption | 12 / 16 | 500 |
+| Code | 20 / 24 | 500 mono, +0.08em |
+| Data | 12 / 16 | 400 mono, tabular |
+
+Mono is for codes and numbers. Not for labels — that is decoration.
+
+Apply `font-variant-numeric: tabular-nums` to all timers and counters so digits don't jitter.
+
+---
+
+## Icons
+
+HugeIcons, stroke rounded, `strokeWidth={1.5}`, `color="currentColor"`.
+
+```tsx
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Mic01Icon } from "@hugeicons/core-free-icons";
+
+<HugeiconsIcon icon={Mic01Icon} size={24} strokeWidth={1.5} color="currentColor" />
+```
+
+Resolve exact export names from the installed package before using them — do not guess names from memory. Sizes: 20px inline, 24px in call controls, 16px in dense lists.
+
+---
+
+## Brand
+
+Full spec in `BRAND.md`. Rules that bind the code:
+
+**Logomark** — 2×2 grid of rounded tiles, three filled, one empty. 24-unit grid: 9-unit cells, 4-unit gutters, 2.4 radius, 1 margin, empty cell bottom-right.
+
+**Responsive rule.** At ≥32px the empty cell has a 1.5 stroke at 40% opacity. Below 32px the stroke is dropped and the cell is fully empty. This is tested behaviour, not preference — at 16px the stroke antialiases into a smudge. The `Mark` component switches on its `size` prop.
+
+**Never fill the fourth cell.** That cell is the entire idea.
+
+**Everything is `currentColor`, everywhere except `app/icon.svg`** — see rule 7a. In the React components one file serves both themes, with no light and dark variants to maintain. No hue in the mark, ever; even the favicon's literal fills are the two neutral tokens.
+
+**Wordmark** — Instrument Sans 600, −0.02em, sentence case. No letter substitution, no chip in a counter, no accent colour on a glyph. The mark carries the idea; the wordmark stays quiet.
+
+**Lockups are React components**, not SVG files — `components/brand/Mark.tsx`, `Wordmark.tsx`, `Lockup.tsx`. Clear space on all sides equals half the mark's height. Minimums: mark 16px, horizontal lockup 96px, stacked lockup 72px, wordmark 64px.
+
+Pre-generated rasters are in `brand/`: `favicon.ico` (16/32/48, correct variant per slice), `apple-icon.png`, `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`.
+
+---
+
+## Product vocabulary
+
+Fixed. Use these everywhere — UI, copy, comments, variable names.
+
+| Term | Never |
+|---|---|
+| **Meeting** | "call", "conference", "session" |
+| **Room** — internal / LiveKit only | never in user-facing copy |
+| **Meeting link** | "invite URL" |
+| **Meeting code** | "meeting ID", "PIN" |
+| **Host** | "owner", "organiser", "admin" |
+| **Participant** | "attendee", "user", "member" |
+| **Guest** | "anonymous", "visitor" |
+
+An action keeps its name through the flow: "Copy link" → "Link copied". "Leave" and "End meeting" are different actions and are never conflated.
+
+Meeting links are `https://<host>/j/kqr-8mzt-vnp`. `/j/` rather than a bare root code — a root catch-all would collide with `/dashboard` and `/schedule`.
+
+---
+
+## Shape and motion
+
+Radius `0.5rem`. Tiles `0.75rem`. Call controls are circles: 48px for mic, camera, and leave; 44px for secondary. **The leave button is a wide pill — the only non-circular control.** Shape distinguishes it, not just colour.
+
+| Change | Duration | Easing |
+|---|---|---|
+| State toggle | 120ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Speaking ring | 120ms | linear |
+| Panel open/close | 180ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Grid reflow | 200ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Reaction lifespan | 2400ms | ease-out |
+
+All motion answers a user action. No ambient animation. `prefers-reduced-motion: reduce` removes travel, keeps opacity.
+
+---
+
+## Accessibility floor
+
+Non-negotiable, checked every phase:
+
+- Every control keyboard reachable, `--ring` focus at 2px offset
+- Panels focus-trapped; Escape closes and returns focus to the trigger
+- Mic/camera use `aria-pressed`; accessible name states the **action** ("Turn off microphone"), not the state
+- Join/leave announcements batched — more than 3 events in 5s collapses to "3 people joined"; suppressed entirely above 8 participants
+- Chat announces "{name} sent a message" when the panel is closed, never the body
+- Reactions throttled to one announcement per participant per 2s
+- Connection changes announced once, not per retry
+- Touch targets 44px minimum
+- Nothing depends on colour alone
+- `axe` clean on every route
+
+---
+
+## Copy voice
+
+Sentence case. Active voice. A button says what happens: "Copy link", not "Submit". The same action keeps its name through the flow — a "Copy link" button produces a "Link copied" toast.
+
+Errors explain what happened and what to do next. They do not apologise and they are never vague. Empty states are invitations: "No meetings yet. Start one now, or schedule for later."
+
+---
+
+## Conventions
+
+- Server Components by default; `"use client"` only where interactivity or browser APIs require it
+- Zod schemas shared between client validation and route handler validation
+- `date-fns` + `date-fns-tz`. Store UTC, render local, always print the zone label.
+- Route handlers return typed JSON with a stable `error` string, never a raw exception
+- Meeting code alphabet: `abcdefghjkmnpqrstuvwxyz23456789` — no `i`, `l`, `o`, `0`, `1`. Format `xxx-xxxx-xxx`.
+- Generate-and-insert with retry on unique violation. Never check-then-insert.
+- One component per file. Colocate under `components/room/`, `components/schedule/`, `components/ui/`.
+
+---
+
+## File layout
+
+```
+app/
+  icon.svg  apple-icon.png  opengraph-image.tsx  twitter-image.tsx
+  (marketing)/page.tsx
+  (dev)/dev/tokens/page.tsx      — gated on NODE_ENV !== 'production'
+  (app)/dashboard/page.tsx
+  (app)/schedule/page.tsx
+  j/[code]/page.tsx              — pre-join (public meeting link)
+  room/[code]/page.tsx          — in-call (client, dynamic import)
+  api/livekit/token/route.ts
+  api/livekit/webhook/route.ts
+  api/meetings/route.ts
+  api/meetings/[code]/route.ts
+  api/meetings/[code]/ics/route.ts
+components/
+  brand/                         — Mark, Wordmark, Lockup
+  ui/                            — shadcn (sonner for toasts, not the
+                                   deprecated toast component)
+  room/                          — grid, tile, controls, chat, reactions
+  schedule/
+  shared/
+lib/
+  livekit/                       — token, room helpers
+  supabase/                      — client, server, middleware
+  meetings/                      — code generation, ics
+  hooks/
+supabase/migrations/
+```
+
+---
+
+## Never do
+
+- Reach for `@livekit/components-styles` or any prebuilt LiveKit UI
+- Put a secret behind `NEXT_PUBLIC_`
+- Add a colour that isn't in the token set
+- Give avatars a per-identity hue — the fallback is the initial on `--secondary`, uniform
+- Fill the mark's fourth cell, or give the mark a colour
+- Ship a state with no design — silent failure is the worst outcome in this product
+- Persist chat (out of scope — it's ephemeral by design)
+- Add recording, captions, or transcription (out of scope; they change the cost model)

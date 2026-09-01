@@ -1,0 +1,280 @@
+# Build plan
+
+Eleven phases. Each is one Claude Code session with a finish line. Do not start the next phase until the current one meets its acceptance criteria.
+
+Read `PRD.md` for the specification, `CLAUDE.md` for the rules and tokens, and `BRAND.md` for identity. All three take precedence over anything below.
+
+---
+
+## Before you start
+
+### Accounts to create
+
+1. **LiveKit Cloud** — livekit.io. Free tier is generous. Create a project, note the WS URL, API key, and API secret. Set a spend alert immediately.
+2. **Supabase** — new project, or a new schema in the existing one. Note URL, anon key, service role key.
+3. **Vercel** — connect the repo.
+4. **Google Cloud Console** — OAuth 2.0 client for Supabase's Google provider. Redirect URI comes from Supabase's auth settings.
+
+### Environment
+
+```bash
+# .env.local
+
+# LiveKit — secret is SERVER ONLY
+NEXT_PUBLIC_LIVEKIT_URL=wss://xxxx.livekit.cloud
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+`.env.local` in `.gitignore` before the first commit. Commit a `.env.example` with empty values.
+
+### Scaffold
+
+```bash
+npx create-next-app@latest parley --typescript --tailwind --app --eslint --src-dir=false
+cd parley
+
+npx shadcn@latest init
+
+npx shadcn@latest add button input label textarea select dialog sheet \
+  dropdown-menu popover tooltip sonner avatar badge separator card \
+  switch tabs skeleton scroll-area alert form calendar
+
+# sonner replaces the deprecated shadcn `toast` component.
+# `calendar` pulls react-day-picker transitively. Both approved.
+
+npm i livekit-client @livekit/components-react livekit-server-sdk
+npm i @supabase/supabase-js @supabase/ssr
+npm i @hugeicons/react @hugeicons/core-free-icons
+npm i react-hook-form @hookform/resolvers zod
+npm i date-fns date-fns-tz nanoid
+npm i next-themes
+```
+
+---
+
+## Phase 0 — Foundation
+
+**Goal:** the design system and the identity both exist and are verifiable before any feature is built.
+
+Tokens and type:
+- Apply the token block from `CLAUDE.md` to `app/globals.css` and wire it into the Tailwind v4 `@theme` layer
+- Load Instrument Sans and JetBrains Mono via `next/font/google` as variable fonts
+- Set up `next-themes` with a pre-paint script so there is no flash on load
+
+Brand (spec in `BRAND.md`):
+- Copy `brand/` into the project — `favicon.ico` (multi-res 16/32/48, correct variant per slice), `apple-icon.png`, `icon-192.png`, `icon-512.png`, `icon-512-maskable.png` to `public/`; `icon.svg` to `app/icon.svg`. Note `app/icon.svg` is the badge variant with literal fills, not `mark.svg` — see rule 7a.
+- `components/brand/Mark.tsx` — geometry from the 24-unit grid, `currentColor`, ghost cell switching off below 32px via the `size` prop
+- `components/brand/Wordmark.tsx` and `Lockup.tsx` (horizontal and stacked)
+- `public/manifest.webmanifest`, linked from the root layout
+- Vendor `InstrumentSans-Regular.ttf` and `InstrumentSans-SemiBold.ttf` into `app/fonts/` with the OFL licence file alongside. `next/font/google` does not expose the binary to `ImageResponse`, and static weights work where the variable font does not.
+- `app/opengraph-image.tsx` and `twitter-image.tsx` using `next/og` `ImageResponse`, reading those files with `fs.readFile` under `export const runtime = 'nodejs'`. **Absolute URLs, full tags** — crawlers don't run JavaScript. This is the bug that shipped with Hueristic.
+- Base layout and header using the horizontal lockup
+
+Verification page:
+- `/dev/tokens` — every colour swatch with its **computed** contrast ratio against its intended background, every type step named, every icon in the inventory with its resolved export name, and the mark rendered at 16 / 24 / 32 / 64 / 128px
+
+**Done when:** `/dev/tokens` renders correctly in both themes with no flash on reload; every contrast ratio matches the table in `CLAUDE.md`; the mark's ghost cell is present at 32px+ and absent at 16px; and the OG card previews correctly in a link debugger.
+
+---
+
+## Phase 1 — Data and auth
+
+**Goal:** users can sign in; the schema is correct and locked down.
+
+Tasks:
+- Migration for `meetings`, `meeting_participants`, the `meeting_status` enum, and indexes (schema is in `PRD.md` §6)
+- RLS policies: hosts read and write only their own meetings
+- `get_meeting_by_code` as a `security definer` function, granted to `anon` and `authenticated`
+- Supabase clients: browser, server, and middleware, using `@supabase/ssr`
+- Magic link sign-in and Google OAuth
+- Protected route middleware
+- Sign-out that propagates across open tabs
+
+**Done when:** you can sign in both ways, the session survives a reload, and a scripted attempt to read another user's meeting row is refused by RLS. Prove the RLS test, don't assume it.
+
+---
+
+## Phase 2 — Meetings and dashboard
+
+**Goal:** meetings can be created and listed.
+
+Tasks:
+- Code generator: alphabet `abcdefghjkmnpqrstuvwxyz23456789`, format `xxx-xxxx-xxx`
+- Generate-and-insert with retry on unique violation
+- `POST /api/meetings` with zod validation, for both instant and scheduled
+- Dashboard: upcoming and past sections, empty state as an invitation
+- "Start meeting" creates an instant meeting and routes to `/j/[code]`
+- Copy-link button with a "Link copied" toast
+
+**Done when:** both meeting kinds create successfully, codes are unique across 1,000 generated in a loop, and the dashboard lists them correctly.
+
+---
+
+## Phase 3 — Token endpoint and pre-join
+
+**Goal:** the screen that decides whether this feels competent.
+
+Tasks:
+- `POST /api/livekit/token` per the contract in `PRD.md` §7. Server-side meeting validation, server-derived identity, name sanitisation, narrow grants, 6h TTL, IP rate limit.
+- `/j/[code]` page: self-preview, camera and mic toggles, live mic level meter, device selectors, display-name field for guests
+- All six permission states (`PRD.md` §3.3), each with real copy. Do not fire the browser prompt on page load.
+- Unknown code and ended meeting pages
+- Selected devices persist into the room
+
+**Done when:** every permission state renders correctly — test each by manipulating browser settings, not by faking state. The mic meter responds within 200ms. Changing camera updates the preview without reload.
+
+---
+
+## Phase 4 — The room
+
+**Goal:** two people can hold a conversation.
+
+Tasks:
+- `/room/[code]` as a client route with `livekit-client` dynamically imported
+- Connect using the token; `<RoomAudioRenderer />` for remote audio
+- Grid implementing every breakpoint in the `PRD.md` §3.4 table
+- Participant tile: video with `object-fit: cover`; avatar fallback is the participant's initial on `--secondary`, **uniform, no per-identity hue**; name on scrim; mic-off indicator
+- Tile boundary: idle 1px `--tile-border` (2.09:1 — a hairline that defines the grid), speaking 2px `--foreground` (17.29:1). `--card` against `--background` is 1.09:1, so without this the grid structure is invisible.
+- Control bar: mic, camera, leave. Circles at 48px; leave is a wide pill.
+- Auto-hide controls after 4s of pointer inactivity on desktop; always visible on touch
+- Mic and camera state derived from track state, never a parallel boolean
+- Keyboard shortcuts with input-focus suppression
+
+**Done when:** two browsers on different networks see and hear each other. Every grid breakpoint is correct — test by opening real tabs, not by faking participant counts. Toggling mic in one tab reflects in the other within a frame.
+
+---
+
+## Phase 5 — Chat and reactions
+
+**Goal:** the two data-channel features.
+
+Tasks:
+- `useDataChannel` with a typed message envelope discriminating chat from reaction
+- Chat panel: 360px drawer on desktop, bottom sheet on mobile
+- Message grouping under one header within 60s, relative timestamps, autolinking with `rel="noopener noreferrer nofollow"`, 1,000 char limit with counter at 900
+- Enter sends, Shift+Enter newlines
+- Scroll pins to bottom unless the reader has scrolled up, in which case show a "New messages" affordance
+- Unread dot on the chat control, clears on open
+- Six fixed reactions, floating up from the sender's tile over 2400ms, staggered when simultaneous
+- **Rate limit: one reaction per participant per 1000ms.** Extra presses dropped, not queued.
+- Reactions from off-screen participants anchor to the overflow indicator
+- Reduced-motion: reactions fade in place
+
+**Done when:** messages and reactions cross between clients under 500ms, rapid clicking produces at most one reaction per second, and reactions never occlude name labels.
+
+---
+
+## Phase 6 — Scheduling and calendar
+
+**Goal:** a meeting created in one timezone lands correctly in another.
+
+Tasks:
+- Schedule form: title, description, date, time, duration, timezone. Default from `Intl.DateTimeFormat().resolvedOptions().timeZone`.
+- Store UTC plus the creator's IANA zone. Render local. **Always print the zone label.**
+- `GET /api/meetings/[code]/ics` — RFC 5545, `text/calendar`, UTC with `Z`, `UID` from the meeting id, `URL` and `DESCRIPTION` carrying the join link, `SEQUENCE` incrementing on edit
+- Google Calendar prefill URL
+- Outlook Web prefill URL
+- Edit and cancel for scheduled meetings
+
+**Done when:** the `.ics` imports cleanly into Google Calendar, Apple Calendar, and Outlook, and a meeting created in Accra shows the correct local time with the right zone label to a viewer in Berlin. Test with a real timezone change, not a mocked one.
+
+---
+
+## Phase 7 — Screen share and participants
+
+Tasks:
+- `getDisplayMedia` share, desktop only
+- Layout shift: shared content main, participants to a filmstrip
+- Sharer's own view of their content suppressed
+- Persistent "You're sharing your screen" bar with a stop button
+- Browser-native stop detected via the track `ended` event
+- Second sharer replaces the first, with a confirm dialog for the person being replaced
+- Participants panel: name, mic state, camera state, connection quality, host badge
+- Host actions: request mute, remove. **A host can silence but never activate** — no remote unmute.
+
+**Done when:** stopping via Chrome's own control updates app state, and share survives panel toggles.
+
+---
+
+## Phase 8 — Connection states
+
+**Goal:** nothing fails silently. This is the phase most clones skip.
+
+Tasks:
+- Map LiveKit `ConnectionQuality` to the treatments in `PRD.md` §3.11
+- Poor: amber pill on the affected tile; local user gets a bar
+- Remote lost: tile dims to 40%, frozen frame, "Reconnecting…"
+- Local lost: full-width critical bar, video paused, visible retry count
+- Failed after retries: modal with "Rejoin" and "Leave"
+- iOS Safari `visibilitychange` handling with an explicit resume state
+- Autoplay fallback: an "Enable audio" prompt if playback is blocked
+
+**Done when:** killing the network for 10 seconds and restoring it recovers the call without a page reload, and every degraded state is visually distinct.
+
+---
+
+## Phase 9 — Accessibility
+
+Work the full list in `CLAUDE.md`. Specifically:
+
+- Full keyboard traverse of every route with visible focus
+- Focus trapping and restoration on both panels
+- `aria-pressed` on toggles; accessible names phrased as the action
+- Batched join/leave announcements — 3+ events in 5s collapse; suppressed above 8 participants
+- Chat announces sender only when the panel is closed
+- Reaction announcements throttled per participant
+- Connection state announced once per change
+- `?` opens a keyboard shortcuts dialog
+- `axe` clean on every route
+
+**Done when:** the entire product is usable with the keyboard alone, and a screen reader in a 10-person room is not flooded.
+
+---
+
+## Phase 10 — Mobile and polish
+
+Tasks:
+- Mobile layouts for grid, controls, chat sheet, participants sheet
+- Touch targets at 44px minimum
+- iOS Safari viewport handling (`dvh`, not `vh`)
+- Landing page
+- Error routes: unknown code, ended meeting, meeting full, browser unsupported
+- Per-meeting OG variant for `/j/[code]` showing meeting title and host, so a pasted invite renders meaningfully in Slack and iMessage
+- Optional: live favicon — swap `app/icon.svg` for an all-four-cells-filled variant while in an active call
+- Bundle check: dashboard route under 180KB gzipped, `livekit-client` absent from it
+
+**Done when:** the whole flow works on iPhone Safari and Android Chrome, including backgrounding the tab mid-call and returning.
+
+---
+
+## Kickoff prompt
+
+Paste this into Claude Code in the project directory, with `PRD.md`, `CLAUDE.md`, and `BUILD-PLAN.md` present.
+
+> I'm building Parley, a video conferencing web app. `PRD.md` has the full specification, `CLAUDE.md` has the project rules and design tokens, `BRAND.md` has the identity and asset spec, and `BUILD-PLAN.md` has the phased tasks. Read all four before doing anything. Pre-generated brand assets are in `brand/`.
+>
+> We're starting Phase 0. Before writing code, tell me:
+> 1. Your understanding of what we're building and what's deliberately out of scope
+> 2. Anything ambiguous or contradictory across the three documents
+> 3. Your plan for Phase 0, as a task list
+>
+> Don't write code until I've confirmed the plan. Once we're building: no new dependencies without asking, no LiveKit prebuilt UI components, no colours outside the token set, and never fill the mark's fourth cell.
+>
+> One thing to verify early, in Phase 0: resolve the real export names for every icon in the inventory against the installed `@hugeicons/core-free-icons` package. Don't guess them from memory.
+
+---
+
+## Working rhythm
+
+One phase per session. At the end of each, ask Claude Code to update a `PROGRESS.md` with what shipped, what was deferred, and any decision that departed from the PRD — with the reason. That file is what makes the next session pick up cleanly instead of relitigating settled choices.
+
+When something looks wrong in the UI, describe what's wrong and ask for a rethink rather than a patch. Patches accumulate; rethinks don't.
