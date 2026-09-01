@@ -28,7 +28,7 @@ Do not use `VideoConference`, `ControlBar`, `GridLayout`, `ParticipantTile`, `Pr
 **2. Secrets never reach the client.**
 `LIVEKIT_API_SECRET`, `LIVEKIT_API_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are server-only. No `NEXT_PUBLIC_` prefix on any of them. Token minting happens in a route handler, never in a component.
 
-Add a boot assertion that throws if a value starting with `eyJ` and containing `service_role` appears in any public env var.
+`lib/env.ts` implements this and is imported for side effects at the top of the root layout; `scripts/check-env.mjs` does the same standalone for pre-dev and CI. Both are in `scaffold/` and are already verified against the five failure modes. Do not weaken either into a warning — a leaked key produces no runtime symptom, which is exactly why it needs a hard stop. Account setup is in `ACCOUNTS.md`.
 
 **3. Mute state comes from the track, not from React.**
 Derive mic and camera UI state from the LiveKit track's actual published state. Never keep a parallel boolean as the source of truth. If unmuting fails, the UI must show muted. This is a privacy requirement.

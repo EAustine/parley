@@ -10,31 +10,36 @@ Read `PRD.md` for the specification, `CLAUDE.md` for the rules and tokens, and `
 
 ### Accounts to create
 
-1. **LiveKit Cloud** — livekit.io. Free tier is generous. Create a project, note the WS URL, API key, and API secret. Set a spend alert immediately.
-2. **Supabase** — new project, or a new schema in the existing one. Note URL, anon key, service role key.
-3. **Vercel** — connect the repo.
-4. **Google Cloud Console** — OAuth 2.0 client for Supabase's Google provider. Redirect URI comes from Supabase's auth settings.
+Full walkthrough in **`ACCOUNTS.md`** — ordered, because Supabase generates the callback URL Google needs and Google generates the credentials Supabase needs. Roughly 25 minutes.
+
+Summary: **LiveKit Cloud** (project, keys, usage alert) → **Supabase** (project, API keys, auth URLs, access token, copy the Google callback URL) → **Google Cloud** (OAuth consent screen, web client, paste Supabase's callback URI) → back to Supabase to enable the Google provider.
 
 ### Environment
 
+Copy `.env.example` to `.env.local` and fill in seven values. Never commit it; never paste secrets into a chat, an issue, or a screenshot.
+
 ```bash
-# .env.local
-
-# LiveKit — secret is SERVER ONLY
-NEXT_PUBLIC_LIVEKIT_URL=wss://xxxx.livekit.cloud
-LIVEKIT_API_KEY=
-LIVEKIT_API_SECRET=
-
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+cp .env.example .env.local
+git check-ignore -v .env.local     # must print a .gitignore match
+npm run check:env
 ```
 
-`.env.local` in `.gitignore` before the first commit. Commit a `.env.example` with empty values.
+Scaffold files are provided in `scaffold/`:
+
+- `.env.example` — the shape, with exposure annotated per variable
+- `lib/env.ts` — zod-validated parsing, imported for side effects at the top of the root layout so a bad deploy fails at boot rather than at first request
+- `scripts/check-env.mjs` — standalone check for pre-dev and CI, no Next boot required
+
+Both implement rule 2's leak guard. Verified against five cases: valid config, a service_role JWT in a `NEXT_PUBLIC_` var, anon and service_role swapped, the LiveKit secret pasted into a public var, and a missing file. Anything prefixed `NEXT_PUBLIC_` is inlined into the client bundle, so these are hard stops rather than warnings.
+
+Add to `package.json`:
+
+```json
+"scripts": {
+  "check:env": "node scripts/check-env.mjs",
+  "predev": "npm run check:env"
+}
+```
 
 ### Scaffold
 
