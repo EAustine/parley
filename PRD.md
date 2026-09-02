@@ -499,7 +499,7 @@ Browser (Next.js App Router, React 19)
 | Server SDK | `livekit-server-sdk` | Token minting |
 | Backend | Supabase | Already in use |
 | Hosting | Vercel | Route handlers, edge, zero config |
-| Forms | react-hook-form + zod | Validation shared client and server |
+| Forms | Native state + `zod` | One parse on submit. `react-hook-form` was specified here and never used — every form in the product converged on the lighter pattern §10 asked for, so the stack table was describing a plan rather than the build. `zod` stays: env validation, route handlers, shared client/server schemas. |
 | Dates | date-fns + date-fns-tz | Timezone-correct formatting |
 
 **Critical rule: use LiveKit's hooks, never its prebuilt UI.**
@@ -722,7 +722,15 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 | `/schedule` | ≤ 290 kB | ~115 kB |
 | `/schedule/[code]` | ≤ 290 kB | ~115 kB |
 
-The two scheduling routes sit slightly above the dashboard despite mattering less, because they carry `react-day-picker` and the dashboard does not. Same category otherwise: authenticated, low-traffic, returning users. Moving the edit form behind `next/dynamic` was the right instinct — most visits to `/schedule/[code]` copy a link and never open it.
+The two scheduling routes are measured at 273 kB and 263 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
+
+`/schedule` sits ~10 kB above `/dashboard` because it is the only signed-in route mounting a Radix overlay primitive from the scroll-locking family — FocusScope, FocusGuards, `react-remove-scroll`, `aria-hidden` — which this build carries per route rather than hoisting. About 7 kB of the excess is that fixed family cost, which any Dialog, Popover, DropdownMenu or Sheet would carry identically; about 3 kB is Select's own implementation. The split comes from an intervention rather than an inspection: adding a throwaway Popover to `/dashboard`, changing `/schedule` not at all, closed the gap from 10 kB to 3 kB.
+
+Not involved, despite two rounds of plausible guessing: `react-day-picker` (removed, and its removal moved no route total), a full IANA zone list (`COMMON_TIMEZONES` is seventeen hand-picked entries), or `date-fns-tz` (its chunk is shared across all three routes). The first draft of this paragraph credited the zone list on the strength of one incidental `Africa/Accra` string inside what turned out to be `react-remove-scroll`. Chunk labels are not evidence.
+
+**No change recommended.** `/j/[code]` renders three of the same primitive, so swapping Select out of `/schedule` alone deletes zero library code while introducing a second select idiom — to relieve a budget sitting at 273 against 290.
+
+Moving the edit form behind `next/dynamic` was the right instinct — most visits to `/schedule/[code]` copy a link and never open it.
 
 `/j/[code]` is the one that matters. It is a cold load for a stranger on a phone with an empty cache, and §3.3 names it the highest-traffic flow in the product. The dashboard is deliberately loose: it sits behind auth, the same people revisit it, and its bundle amortises across sessions.
 
@@ -730,7 +738,7 @@ The two scheduling routes sit slightly above the dashboard despite mattering les
 
 **These four route numbers are provisional.** They are inferred from a baseline measured against a nearly empty app, not from any route that does its real work yet. Recalibrate at the end of Phase 3, when pre-join actually exists and there is evidence rather than estimate. A budget invented ahead of the code is a guess wearing a number, and the first version of this table put its tightest constraint on the wrong route for exactly that reason.
 
-Two specifics that follow from the `/j/[code]` budget: pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code, and it should not pull in `react-hook-form` and `zod` for a single display-name field. Native state and one parse on submit is a fraction of the weight.
+Two specifics that follow from the `/j/[code]` budget: pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code, and it should not pull a form library in for a single display-name field. Native state and one parse on submit is a fraction of the weight — a rule that ended up governing every form in the product, not just this one.
 
 `livekit-client` is dynamically imported on the room route only and must not appear in any other bundle. Pre-join uses `navigator.mediaDevices` directly for preview and device enumeration — it needs no LiveKit code at all.
 

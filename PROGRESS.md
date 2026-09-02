@@ -2220,3 +2220,125 @@ so flagging once more rather than letting it settle into the record as true.
 `check:room` 90 → **96**. All pass, with `check:chat` 73, `check:ics` 69,
 `check:meetings` 68, `check:permissions` 39, `check:contrast` 24, `check:rls`
 18, `check:bundle` 10/10, `check:media` 29/29.
+
+---
+
+## Rule 9 becomes a check, and §10 gets its itemisation
+
+Three documents were updated together. Rule 9 grew a second clause — "and remove
+it when it stops being used" — and made `check:deps` fail rather than warn, with
+no exception list. §10 replaced its blank with the attribution. BUILD-PLAN
+dropped the form libraries from the scaffold.
+
+### The decision I had been holding
+
+I had found `react-hook-form` and `@hookform/resolvers` unreachable and *not*
+removed them, on the grounds that two documents still specified them. Rule 9 is
+the answer, and it is also a verdict on how I held the question open: the check
+printed them loudly on every run, and rule 9 says a warning printed on every run
+becomes furniture within a week.
+
+Removed: both packages, and `components/ui/form.tsx`, which existed solely to
+keep `react-hook-form` in the graph. With `react-day-picker` and
+`components/ui/calendar.tsx` from the previous round, that is all three
+dependencies rule 9 names.
+
+No route total moved. That is not luck and did not need measuring to predict —
+`form.tsx` was unreachable from `app/`, so it was never in a bundle. What these
+cost was audit surface and supply-chain surface, which is exactly how rule 9
+describes them. A dependency can be free in the bundle and still worth deleting.
+
+### Rewriting the check, and two things that fell out
+
+The exception list is gone. Two findings came out of removing it:
+
+**Three of four exemptions were exempting nothing.** `IMPLICIT` held `react`,
+`react-dom`, `next`, and `shadcn`. The walk finds three of them on its own —
+`react` via the JSX runtime, `next` directly, and `shadcn` via
+`@import "shadcn/tailwind.css"` in `globals.css`. Only `react-dom` is genuinely
+never imported. An exception list quietly holding unnecessary entries, inside
+the check that exists to enforce rule 9 against exactly that.
+
+**The entry set was wrong.** It walked `app/` only. The root `middleware.ts` is
+an entry point too, and `lib/supabase/middleware.ts` hangs off it.
+`@supabase/ssr` was reported reachable only because `app/` happens to reach it
+as well — one refactor from this check calling a live dependency dead. Fixed by
+adding `middleware.ts` and `next.config.ts`.
+
+That second one is recorded honestly rather than as a save: deleting
+`ENTRY_FILES` still does not fail the package gate today, because no package is
+currently reachable through middleware alone. It is a backstop, not a live
+defence, and the file says so. Naming which gate a case actually exercises is
+the rule here.
+
+Both real gates are proved by mutation: an invented dependency fails the
+reachability gate, and deleting `react-dom` from `package.json` fails the
+staleness gate on its own exemption.
+
+**Dead local modules are reported behind `--dead`, not checked.** The sweep
+finds ten shadcn components nothing renders. Failing on them would be wrong:
+BUILD-PLAN's scaffold installs them deliberately and Phases 8–10 have not
+reached them yet. That is a phase not having happened, not a plan reality
+overtook. It is also not a warning, because it is not printed on every run.
+Whether that distinction is faithful to rule 9 or an evasion of it is a
+judgement I have flagged rather than settled.
+
+### Verifying §10 rather than trusting my own paragraph
+
+§10 now carries numbers that went in on my measurement, and I had removed three
+packages since. Re-measured against a clean build:
+
+| Claim | Measured |
+|---|---|
+| `/schedule` 273 kB | **273** ✓ |
+| `/dashboard`, ~10 kB below | **263**, gap exactly 10 ✓ |
+| Popover intervention closes the gap to 3 kB | 263 → 271, `/schedule` untouched, **gap 3** ✓ |
+| `COMMON_TIMEZONES` is seventeen entries | **17** ✓ |
+| `/j/[code]` renders three of the same primitive | **3** — `DeviceSelect` at PreJoin 271/279/287, one `<Select>` inside ✓ |
+| `date-fns-tz` reached by all three routes | ✓ |
+| `/schedule/[code]` 263 kB | **264** |
+| Shared baseline 175 kB | **160** |
+
+The last two are the spec's, not the build's, and are in the message with this
+commit as proposed edits.
+
+One claim nearly failed and did not. Source reachability says `date-fns` is
+reached by both schedule routes and **not** by `/dashboard` — an unattributed
+differentiator §10 does not mention, which would have made "about 3 kB is
+Select's own implementation" a residual dressed as an attribution. Adding
+`date-fns` to `/dashboard` moves it 0 kB: it is already there through
+`date-fns-tz`. The test that could have refuted the paragraph cleared it.
+
+**A new testing rule, earned the same way as the others: markers do not survive
+minification.** Grepping production chunks for `tzTokenizeDate`,
+`formatInTimeZone` or `RemoveScroll` returns nothing at all — the identifiers
+are minified away. String literals survive, which is why an incidental
+`"Africa/Accra"` was the one thing my original chunk-labelling found, and why it
+labelled the wrong library. Chunk archaeology cannot attribute. Source
+reachability and intervention can, and both were used here.
+
+### What the numbers actually do between builds
+
+I had been treating single-kilobyte movement as instrument noise. It is not,
+and the calibration says so: two builds of byte-identical source produced
+identical route tables — 263 / 273 / 264 / 160 both times. There is no
+build-to-build variance to speak of.
+
+The ±1 kB I kept seeing appeared only in builds where I had modified
+`/dashboard`. `/schedule`, untouched, read 274 in those and 273 in both clean
+builds. That is not noise but coupling: adding code to one route repacks the
+shared chunks and shifts unrelated routes by about a kilobyte. Worth knowing
+before attributing a small difference to anything, and it means a single-digit
+gap is real signal rather than something to shrug at.
+
+It also settles `/schedule/[code]` at 264 as reproducible rather than a sample.
+
+And the 175 kB in §10 was never measured: this file recorded the shared baseline
+at 160 kB during the Phase 2 → 3 housekeeping, which is what it still reads
+today. The figure has been stale for the whole build, not just since Phase 7.
+
+### Checks
+
+`check:deps` **4/4** (new). All others green: `check:room` 96, `check:chat` 73,
+`check:ics` 69, `check:meetings` 68, `check:permissions` 39, `check:contrast`
+24, `check:rls` 18, `check:bundle` 10/10, `check:media` 29/29.

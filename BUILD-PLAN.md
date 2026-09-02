@@ -51,15 +51,25 @@ npx shadcn@latest init
 
 npx shadcn@latest add button input label textarea select dialog sheet \
   dropdown-menu popover tooltip sonner avatar badge separator card \
-  switch tabs skeleton scroll-area alert form calendar
+  switch tabs skeleton scroll-area alert form
 
 # sonner replaces the deprecated shadcn `toast` component.
-# `calendar` pulls react-day-picker transitively. Both approved.
+#
+# `calendar` was approved earlier and is not installed: the schedule form
+# uses a native <input type="date">, which is smaller, keyboard-accessible
+# without work, and gives mobile the OS picker. If shadcn's Calendar or
+# react-day-picker are already present, remove them — an unused dependency
+# is a maintenance and audit surface with nothing on the other side.
 
 npm i livekit-client @livekit/components-react livekit-server-sdk
 npm i @supabase/supabase-js @supabase/ssr
 npm i @hugeicons/react @hugeicons/core-free-icons
-npm i react-hook-form @hookform/resolvers zod
+npm i zod
+
+# react-hook-form and @hookform/resolvers were in this list and are not
+# installed. Every form converged on native state plus one zod parse on
+# submit — the pattern PRD §10 asked for. zod is used throughout:
+# lib/env.ts, route handlers, shared client/server schemas.
 npm i date-fns date-fns-tz nanoid
 npm i next-themes
 ```

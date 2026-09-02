@@ -72,8 +72,12 @@ Next replaces `process.env.NEXT_PUBLIC_FOO` textually at build time and cannot r
 **8d. Any module holding a server-only secret imports `server-only` at the top.**
 `lib/supabase/admin.ts`, the LiveKit token signing module, `lib/env.ts`'s server section — all of them. The package exists solely to turn "this leaked into the client bundle" from a runtime failure into a build failure, which is the same reasoning as the env guard: the thing being prevented has no visible symptom when it goes wrong.
 
-**9. Ask before adding a dependency.**
+**9. Ask before adding a dependency — and remove it when it stops being used.**
 The stack above is the stack. If something seems to need a new package, say why first.
+
+`check:deps` walks the import graph from `app/` and **fails** on anything unreachable; it does not warn. An exception list is how dead code accumulates, and a warning printed on every run becomes furniture within a week. Three dependencies have already been specified in these documents and never used — `react-day-picker`, `react-hook-form`, `@hookform/resolvers`. Each was audit surface, supply-chain surface, and a lie to the next reader about how the product is built. Delete the code that makes an unused package reachable too: `components/ui/form.tsx` existed solely to keep `react-hook-form` in the graph.
+
+When a document and the build disagree about a dependency, the build is usually right and the document is describing a plan reality overtook. Fix the document.
 
 **10. Design decisions are discussed before they are coded.**
 If a spec is ambiguous, ask. Do not pick silently and move on.
