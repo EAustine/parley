@@ -43,9 +43,24 @@ export function ConnectionBar({
   displayName: string;
 }) {
   const critical = barTone(phase) === "critical";
-  // Unstable and signal are degradations you sit through; the meeting still
-  // works. Offering an exit from those would be noise.
-  const escapable = phase === "lost" || phase === "reconnecting";
+  /**
+   * Whenever a retry is actually running.
+   *
+   * §3.11: the way out is live "throughout" the retry. Both `signal` and
+   * `reconnecting` are the SDK retrying — one the signalling socket, one the
+   * whole connection — and in signal reconnect the person's messages are not
+   * arriving and they cannot see who comes and goes, which is a good reason to
+   * want a clean rejoin.
+   *
+   * `lost` is excluded because nothing is retrying there: §3.11 calls it "the
+   * gap between ConnectionQuality.Lost and reconnection actually starting".
+   * There is no countdown to interrupt yet.
+   *
+   * Narrowing this to `reconnecting` alone was wrong and the suite caught it:
+   * the bar frequently appears in `signal` first and can stay there, so the
+   * escape hatch was absent for exactly the state that most needs it.
+   */
+  const escapable = phase === "signal" || phase === "reconnecting";
 
   return (
     <div

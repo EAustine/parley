@@ -185,6 +185,11 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 | `--state-warning` | all | 4.5 | 6.49 |
 | `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
 | `--tile-border` | `--background` only — the room ground | 3.0 | 3.33 |
+| — | `scrim-over-white` permits `--foreground` only | 4.5 | 7.01 |
+
+**`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` currently computes foreground against opaque tokens only, so the one rule the room chrome depends on is enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
+
+Model it as `0.72 × #0E1013 + 0.28 × #FFFFFF` — white is the worst case for light text, and video can be anything. That resolves to roughly `#515355`, where `--foreground` clears at 7.01:1 while `--state-warning` falls to 3.79:1 and `--state-critical` to 2.53:1. Add it as a surface, permit only `--foreground` on it, and the existing permitted-surfaces machinery does the rest: any future hued-on-scrim element fails the check instead of shipping.
 
 Validation error text sits below a field on the ground, never inside the filled input. `--tile-border` is single-purpose and belongs to no other surface.
 

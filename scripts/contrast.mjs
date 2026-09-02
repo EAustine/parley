@@ -15,7 +15,11 @@
  * is single-purpose — it belongs to the room ground and nowhere else.
  */
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -35,6 +39,21 @@ const ALL_SURFACES = [
   "--accent",
   "--input",
 ];
+
+/**
+ * The one surface that is not a token: the scrim, composited.
+ *
+ * Rule 4 puts every label on `--scrim`, which makes contrast deterministic
+ * regardless of what is on camera — but only if something checks it, and until
+ * now nothing did. `ALL_SURFACES` is seven opaque tokens and the scrim is
+ * `rgba()`, so the matrix passed 24/24 while a 2.53:1 label could ship.
+ *
+ * White is the worst case for light text and video can be anything, so the
+ * scrim is composited over white and the result treated as an ordinary
+ * surface. Derived from the declared alpha rather than hard-coded: raising the
+ * scrim's opacity should move this number, not leave it stale.
+ */
+const SCRIM_OVER_WHITE = "scrim-over-white";
 
 /**
  * Validation error text sits below a field on the ground, never inside the
@@ -95,6 +114,30 @@ const RULES = [
   { token: "--popover-foreground", surfaces: ["--popover"], threshold: TEXT },
   // The focus ring is a non-text indicator under WCAG 1.4.11.
   { token: "--ring", surfaces: ALL_SURFACES, threshold: NON_TEXT },
+  /**
+   * Only `--foreground` is permitted on the scrim. `--state-warning` falls to
+   * 3.79:1 there and `--state-critical` to 2.53:1, which is why rule 4 sends
+   * hued state indicators to an opaque `--popover` chip instead.
+   *
+   * This computes the permitted pairing. It does not detect a *use* of a
+   * forbidden one — the permitted-surfaces machinery verifies combinations, it
+   * does not scan components. `npm run check:connection` carries that scan,
+   * and is weaker for being a scan.
+   */
+  {
+    token: "--foreground",
+    surfaces: [SCRIM_OVER_WHITE],
+    threshold: TEXT,
+    label: "scrim over white",
+    // Dark only, and not as a convenience. The scrim exists over video and
+    // nowhere else, and rule 8b forces `.dark` on /j/[code] and /room/[code]
+    // regardless of preference — so a light `--foreground` never meets a
+    // scrim. Checking it anyway reports 2.30:1 for a pairing the product
+    // cannot produce, which is a false failure, and the way those get resolved
+    // is by lowering a threshold. Scoping the rule to where the surface
+    // actually exists is the honest fix.
+    themes: ["dark"],
+  },
 ];
 
 // --- colour maths ---------------------------------------------------------
@@ -154,10 +197,76 @@ function parseBlock(css, selector) {
 // --- run ------------------------------------------------------------------
 
 const css = await readFile(CSS, "utf8");
+/** `rgba(r, g, b, a)` over an opaque backdrop, as hex. */
+function composite(rgba, over) {
+  const m = rgba.match(
+    /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/,
+  );
+  if (!m) throw new Error(`Could not parse --scrim: ${rgba}`);
+  const alpha = m[4] === undefined ? 1 : Number(m[4]);
+  const front = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const back = parseHex(over).map((c) => c * 255);
+  const mixed = front.map((c, i) => Math.round(alpha * c + (1 - alpha) * back[i]));
+  return "#" + mixed.map((c) => c.toString(16).padStart(2, "0")).join("");
+}
+
+/** The scrim is theme-invariant and lives outside the .dark / .light blocks. */
+const scrimDeclaration = css.match(/--scrim:\s*(rgba?\([^)]*\))/);
+if (!scrimDeclaration) {
+  throw new Error("No --scrim declaration in globals.css — rule 4 is unchecked");
+}
+const scrimOverWhite = composite(scrimDeclaration[1], "#ffffff");
+
 const themes = {
   dark: parseBlock(css, ".dark {"),
   light: parseBlock(css, ".light {"),
 };
+for (const tokens of Object.values(themes)) {
+  tokens[SCRIM_OVER_WHITE] = scrimOverWhite;
+}
+
+/**
+ * The rules in `lib/contrast-rules.ts` are the same rules.
+ *
+ * That file's own docstring says the two are "shared … so the two cannot
+ * disagree", and they were not shared at all — this script kept its own copy
+ * and nothing compared them. A gate and a display that quietly drift apart is
+ * how /dev/tokens ends up showing a matrix the build does not enforce.
+ *
+ * They cannot be imported into each other (`.mjs` and `.ts`), so they are
+ * compared instead, which is the same guarantee by a slower route.
+ */
+{
+  const out = mkdtempSync(join(tmpdir(), "parley-contrast-"));
+  try {
+    execFileSync(
+      "npx",
+      ["tsc", "lib/contrast-rules.ts", "--outDir", out, "--module", "commonjs",
+       "--target", "es2022", "--moduleResolution", "node", "--skipLibCheck"],
+      { stdio: "pipe" },
+    );
+    writeFileSync(join(out, "package.json"), '{"type":"commonjs"}');
+    const req = createRequire(join(out, "index.cjs"));
+    const lib = req(join(out, "contrast-rules.js"));
+    const shape = (rules) =>
+      rules
+        .map((r) => `${r.token}|${[...r.surfaces].sort().join(",")}|${r.threshold}`)
+        .sort()
+        .join("\n");
+    const mine = shape(RULES);
+    const theirs = shape([...lib.RULES, ...lib.PAIR_RULES]);
+    if (mine !== theirs) {
+      console.error(
+        "scripts/contrast.mjs and lib/contrast-rules.ts describe different rules.\n" +
+          "The gate and /dev/tokens would show different matrices.\n\n" +
+          `gate:\n${mine}\n\nlib:\n${theirs}`,
+      );
+      process.exit(1);
+    }
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+}
 
 const snapshot = process.argv.includes("--snapshot");
 const failures = [];
@@ -165,6 +274,7 @@ const rows = [];
 
 for (const [themeName, tokens] of Object.entries(themes)) {
   for (const rule of RULES) {
+    if (rule.themes && !rule.themes.includes(themeName)) continue;
     const fg = tokens[rule.token];
     if (!fg) {
       failures.push(
@@ -194,9 +304,10 @@ for (const [themeName, tokens] of Object.entries(themes)) {
         theme: themeName,
         token: rule.token,
         surfaces:
-          rule.surfaces.length === ALL_SURFACES.length
+          rule.label ??
+          (rule.surfaces.length === ALL_SURFACES.length
             ? "all"
-            : rule.surfaces.map((s) => s.replace("--", "")).join(", "),
+            : rule.surfaces.map((s) => s.replace("--", "")).join(", ")),
         threshold: rule.threshold,
         worst: worst.value,
         worstSurface: worst.surface,
@@ -233,7 +344,12 @@ if (snapshot) {
   console.log("|---|---|---|---|");
   for (const rule of RULES) {
     if (!rule.label) continue;
-    const row = dark.find((r) => r.token === rule.token);
+    // Matched on the surface list as well as the token: `--foreground` carries
+    // two rules — the opaque surfaces and the scrim — and matching on the token
+    // alone found the first and printed its 12.01 against the scrim's label.
+    const row = dark.find(
+      (r) => r.token === rule.token && r.surfaces === rule.label,
+    );
     if (!row) continue;
     console.log(
       `| \`${rule.token}\` | ${rule.label} | ${rule.threshold.toFixed(1)} | ${row.worst.toFixed(2)} |`,

@@ -1,6 +1,22 @@
 import { expect, test } from "@playwright/test";
 
+import { announcementFor, type RoomPhase } from "../lib/room/connection";
 import { joinAs, leave, type Participant } from "./room.helpers";
+
+/**
+ * Derived from the module under test, never retyped.
+ *
+ * The first version of this spec hard-coded the strings, and when §3.11 asked
+ * for the signal-reconnect copy to be rewritten from observation the test
+ * failed on its own stale regex while the product was doing exactly the right
+ * thing — announcing the outage and the recovery. A test that has to be
+ * hand-edited whenever copy changes will eventually be edited to match a bug.
+ */
+const DEGRADED: RoomPhase[] = ["unstable", "lost", "signal", "reconnecting", "failed"];
+const OUTAGE_ANNOUNCEMENTS = DEGRADED.map((p) => announcementFor(p, "healthy")).filter(
+  (a): a is string => Boolean(a),
+);
+const RECOVERY = announcementFor("healthy", "reconnecting");
 
 /**
  * §3.11's acceptance criterion: "Killing the network for 10s and restoring it
@@ -177,13 +193,13 @@ test.describe("connection", () => {
     expect(said.length, `nothing was announced: ${JSON.stringify(said)}`)
       .toBeGreaterThan(0);
     expect(
-      said.join(" | "),
-      "the outage was never announced",
-    ).toMatch(/Connection lost|Your connection has dropped|Chat and reactions/);
+      said.some((text) => OUTAGE_ANNOUNCEMENTS.includes(text)),
+      `the outage was never announced: ${JSON.stringify(said)}`,
+    ).toBe(true);
     expect(
-      said.join(" | "),
+      said,
       "recovery was never announced, so a screen reader is left assuming the meeting is still broken",
-    ).toMatch(/Connection restored/);
+    ).toContain(RECOVERY);
 
     // Backstop, not coverage — see the note above. This cannot currently fail,
     // because the effect keyed on `[phase]` never re-runs while a phase stands.

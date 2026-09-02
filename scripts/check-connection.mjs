@@ -177,9 +177,30 @@ console.log("\nTone\n");
 t(barTone("healthy") === null, "a healthy room has no bar and no hue");
 t(barTone("unstable") === "warning" && barTone("signal") === "warning",
   "warnings are amber");
-t(barTone("lost") === "critical" && barTone("reconnecting") === "critical" &&
-  barTone("failed") === "critical",
-  "losing the meeting is critical");
+
+// §3.11 puts `lost` with the warnings, not the critical states: it is the gap
+// before a retry has started, and "do not jump to critical for a state that may
+// resolve without a retry". Pinned because the obvious reading of the name puts
+// it the other way.
+t(barTone("lost") === "warning",
+  "quality-lost-before-retry is amber, not critical",
+  String(barTone("lost")));
+
+t(barTone("reconnecting") === "critical" && barTone("failed") === "critical",
+  "a meeting that has actually stopped is critical");
+
+// And the copy matches, because §3.11 says "same language as Poor".
+t(BAR_COPY.lost === BAR_COPY.unstable,
+  "and it speaks the same language as Poor",
+  `${BAR_COPY.lost} / ${BAR_COPY.unstable}`);
+
+// The signal bar names what was measured to break, not what sounds plausible.
+t(/won't arrive/.test(BAR_COPY.signal) && /join or leave/.test(BAR_COPY.signal),
+  "the signal bar names both halves of what was observed to stop",
+  BAR_COPY.signal);
+t(!/[Cc]hat and reactions are (un)?available/.test(BAR_COPY.signal),
+  "and does not repeat the claim the probe disproved",
+  BAR_COPY.signal);
 
 // ---------------------------------------------------------------------------
 // The vendored retry schedule, against the SDK's own.
@@ -363,6 +384,28 @@ console.log("\nRule 4: hue is never carried on the scrim\n");
 // without its `neq` would undo that silently, for the exact meeting someone
 // cancelled and a straggler had already opened.
 // ---------------------------------------------------------------------------
+// §3.11: "Rejoin now and Leave are live throughout, not revealed after the
+// tenth attempt." Which states count as "throughout" is the load-bearing part,
+// and getting it wrong is invisible until someone is stuck in one of them.
+console.log("\nThe way out\n");
+
+{
+  const raw = readFileSync("components/room/ConnectionBar.tsx", "utf8");
+  const source = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const line = source.match(/const escapable = ([^;]+);/);
+  t(Boolean(line), "ConnectionBar declares which phases offer a way out",
+    "the escapable expression was not found");
+  if (line) {
+    const expr = line[1];
+    t(/"signal"/.test(expr) && /"reconnecting"/.test(expr),
+      "both retrying states offer Rejoin and Leave",
+      expr);
+    t(!/"lost"/.test(expr),
+      "and the pre-retry gap does not — there is no countdown to interrupt yet",
+      expr);
+  }
+}
+
 console.log("\nThe webhook, by inspection\n");
 
 {

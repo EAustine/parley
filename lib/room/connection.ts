@@ -126,8 +126,9 @@ export function announcementFor(
 
 const ANNOUNCEMENTS: Record<Exclude<RoomPhase, "healthy">, string> = {
   unstable: "Your connection is unstable.",
-  lost: "Your connection has dropped.",
-  signal: "Chat and reactions are unavailable while the connection recovers.",
+  lost: "Your connection is unstable.",
+  signal:
+    "Messages you send won't arrive, and you won't see people join or leave.",
   reconnecting: "Connection lost. Reconnecting.",
   failed: "Couldn't reconnect to the meeting.",
 };
@@ -142,18 +143,46 @@ const ANNOUNCEMENTS: Record<Exclude<RoomPhase, "healthy">, string> = {
  */
 export const BAR_COPY: Record<Exclude<RoomPhase, "healthy">, string> = {
   unstable: "Your connection is unstable.",
-  lost: "Your connection has dropped. Waiting for it to come back.",
-  signal: "Chat and reactions are paused while the connection recovers.",
+  // §3.11: "same language as Poor — do not jump to critical for a state that
+  // may resolve without a retry." Identical to `unstable` on purpose; the
+  // phases stay separate because their causes differ and the check pins both.
+  lost: "Your connection is unstable.",
+  /**
+   * **Measured, not inferred.** §3.11 requires this line to name what is
+   * actually broken, and warns that "chat and reactions are unavailable" and
+   * "you may not see people join or leave" are different claims.
+   *
+   * Confirmed by probe: two participants, one taken offline at the network
+   * service so only signalling died, on 2026-09-02 against livekit-client
+   * 2.x. Observed, in that state:
+   *
+   *   - a chat message *sent by* the signal-less participant never arrived
+   *   - a chat message *sent to* them did arrive — receiving still works
+   *   - a third participant joining was not seen by them at all
+   *
+   * So the first draft of this line was wrong in both directions: it claimed
+   * chat was unavailable when only the outbound half is, and it missed
+   * participant updates entirely. Reading the SDK had suggested outbound data
+   * would survive, because `ensureDataTransportConnected` returns early when
+   * the channel is already open. It does not survive. Observation beat
+   * inference, which is the reason §3.11 asks for observation.
+   */
+  signal: "Messages you send won't arrive, and you won't see people join or leave.",
   reconnecting: "Connection lost. Reconnecting…",
   failed: "Couldn't reconnect to the meeting.",
 };
 
 /** Which bars carry hue, and which. Rule 5: hue only where it is the meaning. */
 export function barTone(phase: RoomPhase): "warning" | "critical" | null {
-  if (phase === "unstable" || phase === "signal") return "warning";
-  if (phase === "lost" || phase === "reconnecting" || phase === "failed") {
-    return "critical";
+  // §3.11 puts `lost` here rather than with the critical states: it is "the
+  // gap between ConnectionQuality.Lost and reconnection actually starting",
+  // and jumping to critical for something that may resolve without a retry
+  // spends the alarm before anything has gone wrong. Critical is reserved for
+  // states where the meeting has actually stopped.
+  if (phase === "unstable" || phase === "signal" || phase === "lost") {
+    return "warning";
   }
+  if (phase === "reconnecting" || phase === "failed") return "critical";
   return null;
 }
 

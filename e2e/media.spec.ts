@@ -167,9 +167,9 @@ test.describe("two participants", () => {
     );
     for (const colour of colours) {
       expect(
-        ["rgb(93, 103, 119)", "rgb(242, 244, 247)"],
-        `unexpected border colour ${colour} — §3.4 permits only --tile-border and --foreground`,
-      ).toContain(colour);
+        onTheRingAxis(colour),
+        `border colour ${colour} is not --tile-border, --foreground, or between them — §3.4 permits no other value`,
+      ).toBe(true);
     }
 
     // Transitions, as evidence about flicker rather than a pass/fail: a
@@ -289,3 +289,33 @@ test.describe("the grid", () => {
     await ama.context.close();
   });
 });
+
+/**
+ * Is this colour `--tile-border`, `--foreground`, or a point on the line
+ * between them?
+ *
+ * §3.4 specifies a 120ms transition on border-color, so the ring spends real
+ * time at interpolated values — and this assertion used to read the computed
+ * colour at a single instant and require one of the two endpoints exactly. It
+ * caught `rgb(182, 187, 195)` in a full run, which is 60% of the way along:
+ * the test racing the transition the spec asks for.
+ *
+ * Accepting the whole axis is not a weakening. What §3.4 actually forbids is a
+ * *hue* — a third colour, off this line, is what a regression would look like.
+ * Amber at `rgb(245, 165, 36)` is nowhere near it and still fails, which is
+ * the property worth having.
+ */
+function onTheRingAxis(colour: string): boolean {
+  const IDLE = [93, 103, 119];
+  const SPEAKING = [242, 244, 247];
+
+  const m = colour.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return false;
+  const rgb = [Number(m[1]), Number(m[2]), Number(m[3])];
+
+  // Where each channel sits between the two endpoints. On the axis, all three
+  // agree; a hue makes them disagree.
+  const positions = rgb.map((c, i) => (c - IDLE[i]) / (SPEAKING[i] - IDLE[i]));
+  if (positions.some((t) => t < -0.02 || t > 1.02)) return false;
+  return Math.max(...positions) - Math.min(...positions) < 0.05;
+}

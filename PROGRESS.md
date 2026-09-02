@@ -2597,10 +2597,118 @@ Its replacement also caught me scoping by visible text, which matched both the
 bar and the live region because they say nearly the same thing on purpose. The
 bar carries `data-connection-bar` now.
 
+### The signal-reconnecting copy, measured rather than guessed
+
+§3.11 was updated to require this line be "verified rather than inferred", and
+warns that "chat and reactions are unavailable" and "you may not see people
+join or leave" are different claims.
+
+Reading the SDK suggested outbound data would survive: `sendDataPacket` goes
+through `ensureDataTransportConnected`, which returns early when the channel is
+already open, with no signalling involved. So I probed it — two participants,
+one taken offline at the network service so only signalling died. Observed:
+
+| | result |
+|---|---|
+| chat **sent by** the signal-less participant | never arrived |
+| chat **sent to** them | arrived |
+| a third participant joining | not seen |
+
+Which makes the SDK reading wrong, and my first draft wrong in both
+directions: it claimed chat was unavailable when only the outbound half is, and
+it missed participant updates entirely. The bar now reads "Messages you send
+won't arrive, and you won't see people join or leave", and how that was
+confirmed sits in a comment beside it so the next reader is not re-deriving it.
+
+Observation beat inference, which is why §3.11 asked for observation.
+
+### `--scrim` is in the contrast matrix now
+
+The gap was real: `ALL_SURFACES` is seven opaque tokens and the scrim is
+`rgba()`, so the matrix passed 24/24 while a 2.53:1 label could ship — under
+rule 4, which puts every label on the scrim precisely so contrast is
+deterministic.
+
+It is composited from the declared alpha rather than hard-coded, so raising the
+scrim's opacity moves the number instead of leaving it stale. Two mutations
+prove it: thinning the scrim to 0.30 fails at 1.82:1, and deleting the
+declaration halts the run rather than silently skipping the rule.
+
+Scoped to dark, and that scoping is the honest part. Light `--foreground` on
+the composited scrim is 2.30:1 and failed on the first run — but that pairing
+cannot occur, because rule 8b forces `.dark` on `/j/[code]` and `/room/[code]`
+and the scrim exists over video and nowhere else. A false failure is how a
+threshold ends up being lowered; scoping the rule to where the surface actually
+exists is the fix.
+
+**And the two copies of the rules now have to agree.** `lib/contrast-rules.ts`
+says it is "shared between `scripts/contrast.mjs` and `/dev/tokens`, so the two
+cannot disagree" — they were not shared at all. The script kept its own copy
+and nothing compared them. It compiles the shared module and compares rule sets
+now, so the claim is enforced rather than asserted.
+
+Two bugs I introduced doing it, both caught by looking rather than assuming:
+`/dev/tokens` resolved surfaces from live CSS and the scrim is not a token, so
+it rendered nothing; and two rules on `--foreground` collided on a React key
+and again in the snapshot generator, which printed 12.01 against the scrim's
+label. The tokens page now carries a `scrim/video` column — greying
+`--state-critical` at 2.53 there is the clearest statement of why rule 4 exists.
+
+### Two bugs the full suite found that isolated runs did not
+
+Both were mine, and both came from the revisions above.
+
+**The escape hatch went missing from the state that most needs it.** Making
+`lost` amber, I also narrowed the Rejoin/Leave affordance to `reconnecting`
+alone — reasoning that `lost` has no countdown to interrupt. True, but it also
+removed it from `signal`, and the bar frequently appears in `signal` first and
+can stay there. That is the state where messages silently fail to send: exactly
+where someone would want a clean rejoin. Both retrying states offer it now;
+`lost` still does not, because nothing is retrying there. `check:connection`
+pins which phases qualify, because getting this wrong is invisible until
+someone is stuck in one of them.
+
+**A test went stale against copy it had hard-coded.** When §3.11's
+signal-reconnect line was rewritten from observation, the announcement test
+failed on its own regex while the product did exactly the right thing —
+announcing the outage and then the recovery. It now derives the expected
+strings from `lib/room/connection.ts`, which is the convention this project
+already has for meeting codes: fixtures come from the same constants as the
+code under test, never retyped. A test that must be hand-edited whenever copy
+changes will eventually be hand-edited to match a bug.
+
+Neither showed up in an isolated run of the spec. Both showed up in a full one,
+which is the third time this project has been reminded that passing alone is
+not evidence.
+
+### A Phase 4 test that raced the spec it was checking
+
+The speaking-ring colour assertion read the computed outline at one instant and
+required exactly `--tile-border` or `--foreground`. §3.4 specifies a **120ms
+transition** on border-color, so the ring spends real time at interpolated
+values — and a full run caught `rgb(182, 187, 195)`, which is 60% of the way
+between the two. The test was racing the transition the spec asks for.
+
+It now accepts any point on the line between the two endpoints, which is not a
+weakening: what §3.4 forbids is a *hue*, and a third colour is off that line.
+Amber, `--state-critical` and `--border` are all still rejected — checked
+directly rather than assumed.
+
+Recorded because the alternative reading was tempting and wrong: the failure
+looked like Phase 8 had introduced a colour, and the temptation was to widen
+the permitted list. What was actually wrong was the sampling.
+
+### `lost` is amber, not critical
+
+§3.11 now places it with the warnings: it is the gap before a retry has
+started, and "do not jump to critical for a state that may resolve without a
+retry". Its copy is Poor's, verbatim, and the escape hatch is gone from it —
+there is no countdown to interrupt yet.
+
 ### Checks
 
-`check:connection` **65/65** (new). All others green: `check:room` 96,
+`check:connection` **72/72** (new). All others green: `check:room` 96,
 `check:chat` 73, `check:ics` 69, `check:meetings` 68, `check:permissions` 39,
 `check:contrast` 24, `check:rls` 18, `check:deps` 5/5, `check:bundle` 10/10.
-`check:media` **32/32**, up from 29. Every route inside budget; rule 8 holds
+`check:media` **32/32**, up from 29 — green on a full run, which is the only run that counts. Every route inside budget; rule 8 holds
 — `livekit-client` is in no route's first load.

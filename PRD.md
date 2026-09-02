@@ -317,8 +317,14 @@ LiveKit reports `excellent | good | poor | lost`.
 | Excellent, good | No indicator. Silence means fine. |
 | Poor | Amber pill on the affected tile: "Unstable connection." Local user also sees a bar: "Your connection is unstable." |
 | Lost (remote) | Tile dims to 40%, last frame frozen, label "Reconnecting…" |
+| Quality lost locally, before retry begins | The gap between `ConnectionQuality.Lost` and reconnection actually starting. Amber bar, same language as Poor — do not jump to critical for a state that may resolve without a retry. |
+| Signal reconnecting | **Media keeps flowing while the signalling connection is down.** Video and audio look perfect; some subset of the room stops working silently. Amber bar naming exactly what is unavailable. |
 | Lost (local) | Full-width bar, `--state-critical`. Video paused. Automatic retry with visible attempt count. |
 | Failed after retries | **Overlay over the dimmed, frozen room — not a full-page unmount.** "Rejoin" and "Leave". `--state-critical` is permitted on `--popover` (5.42:1), so the overlay can carry it. |
+
+`SignalReconnecting` is the state this section exists for. Every other row here has a visible symptom — a frozen tile, paused video, a stalled grid. This one looks flawless while part of the room has stopped, which makes it the only failure a user cannot detect unaided.
+
+**Its copy must name what is actually broken, verified rather than inferred.** During signal reconnect, track publish and unpublish are unavailable and participant updates stop propagating; whether data-channel messages continue depends on the transport and the SDK version. "Chat and reactions are unavailable" and "you may not see people join or leave" are different claims, and shipping the wrong one is the same class of error as telling someone a cancelled meeting has ended. Confirm by observation which channels actually stop, then write the bar to match — and note in the same place how it was confirmed, so the next reader is not re-deriving it.
 
 Never fail silently. A frozen video with no explanation is the worst outcome in this product.
 
