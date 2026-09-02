@@ -20,14 +20,26 @@ import { isTyping, type FocusTarget } from "@/lib/room/typing";
 export function useRoomShortcuts({
   onToggleMic,
   onToggleCamera,
+  onToggleChat,
 }: {
   onToggleMic: () => void;
   onToggleCamera: () => void;
+  onToggleChat: () => void;
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (!(event.metaKey || event.ctrlKey)) return;
       if (isTyping(event.target as FocusTarget)) return;
+
+      // §9: `Cmd/Ctrl+Alt+C` opens chat. Alt is what separates it from the two
+      // below, so it is checked first and they require its absence.
+      if (event.altKey) {
+        if (event.key.toLowerCase() === "c" || event.code === "KeyC") {
+          event.preventDefault();
+          onToggleChat();
+        }
+        return;
+      }
 
       // `event.key` rather than `event.code`: on a Dvorak or AZERTY layout the
       // physical D key is not where D is, and the shortcut is named after the
@@ -44,5 +56,5 @@ export function useRoomShortcuts({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onToggleMic, onToggleCamera]);
+  }, [onToggleMic, onToggleCamera, onToggleChat]);
 }

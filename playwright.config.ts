@@ -72,7 +72,12 @@ export default defineConfig({
     // about, and a dev server chunks differently.
     command: `npm run build && npx next start -p ${PORT}`,
     port: PORT,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse. The command above *builds*, so reusing a server skips the
+    // build and runs the suite against whatever was on disk last time — which
+    // is how a fix that worked produced a confusing failure, and would just as
+    // easily let a broken one pass. A rebuild costs about forty seconds; a
+    // result that describes code you did not write costs more than that.
+    reuseExistingServer: false,
     timeout: 300_000,
     stdout: "ignore",
     stderr: "pipe",

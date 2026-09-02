@@ -85,6 +85,23 @@ export async function leave(participant: Participant) {
   ).toBeVisible();
 }
 
+/**
+ * Wait until the room agrees on how many people are in it.
+ *
+ * Several assertions depend on the participant count — the letterbox at one,
+ * the side-by-side at two — and the SFU takes a moment to tell everyone about
+ * a join, while a context closed by a previous test takes a moment to be
+ * reaped. Tests that assumed the count instead of waiting for it passed alone
+ * and failed in a full run, which is the worst way for this to be wrong.
+ */
+export async function expectParticipants(page: Page, count: number) {
+  await expect(
+    page.getByRole("heading", {
+      name: `Meeting, ${count} participant${count === 1 ? "" : "s"}`,
+    }),
+  ).toBeAttached({ timeout: 30_000 });
+}
+
 /** The grid's actual computed shape — read from CSS, not from our own layout code. */
 export async function gridShape(page: Page) {
   return page.evaluate(() => {

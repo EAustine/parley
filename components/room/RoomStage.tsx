@@ -11,7 +11,10 @@ import { Room, RoomEvent } from "livekit-client";
 
 import { readDevices } from "@/lib/media/devices";
 import { useControlVisibility } from "@/lib/hooks/useControlVisibility";
+import { useRoomMessages } from "@/lib/hooks/useRoomMessages";
 import { useRoomShortcuts } from "@/lib/hooks/useRoomShortcuts";
+import { ChatPanel } from "@/components/room/ChatPanel";
+import { ReactionOverlay } from "@/components/room/ReactionOverlay";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
 import { Button } from "@/components/ui/button";
@@ -168,27 +171,124 @@ export function RoomStage({
 /** Inside the provider, so the shortcuts can reach the local participant. */
 function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
   const visible = useControlVisibility();
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatTrigger = useRef<HTMLElement | null>(null);
+  const surface = useRef<HTMLDivElement>(null);
+
+  const messages = useRoomMessages({ panelOpen: chatOpen });
+  const { markRead } = messages;
+
+  useEffect(() => {
+    if (chatOpen) markRead();
+  }, [chatOpen, markRead]);
+
+  const closeChat = useCallback(() => {
+    setChatOpen(false);
+    chatTrigger.current?.focus?.();
+  }, []);
+
+  const toggleChat = useCallback(() => {
+    setChatOpen((open) => {
+      if (open) {
+        chatTrigger.current?.focus?.();
+        return false;
+      }
+      // Remember what opened it so Escape can hand focus back — a panel you
+      // can open from the keyboard and not close from it is a trap.
+      chatTrigger.current = document.activeElement as HTMLElement | null;
+      return true;
+    });
+  }, []);
+
+  /**
+   * Where a reaction rises from, as percentages of the room.
+   *
+   * Read from the DOM rather than threaded down from the grid: the grid
+   * already knows its own layout, and passing sixteen measured rectangles up
+   * through props so an overlay can put them back where they were is a lot of
+   * plumbing to arrive where `getBoundingClientRect` already is.
+   *
+   * §3.6: someone who did not fit in the grid anchors to the overflow
+   * indicator instead, and someone who is on another page of a mobile grid has
+   * no element at all — the centre is the honest fallback there.
+   */
+  const anchorFor = useCallback((identity: string) => {
+    const root = surface.current;
+    const fallback = { left: 50, bottom: 30 };
+    if (!root) return fallback;
+
+    const tile =
+      root.querySelector<HTMLElement>(`[data-participant="${CSS.escape(identity)}"]`) ??
+      root.querySelector<HTMLElement>("[data-overflow]");
+    if (!tile) return fallback;
+
+    const room = root.getBoundingClientRect();
+    const box = tile.getBoundingClientRect();
+    return {
+      left: ((box.left + box.width / 2 - room.left) / room.width) * 100,
+      // Above the name label rather than on top of it — §3.6 is explicit that
+      // reactions never occlude the label or the mic indicator.
+      bottom: ((room.bottom - box.bottom + LABEL_CLEARANCE_PX) / room.height) * 100,
+    };
+  }, []);
+
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-background p-3 pb-24">
-      <Shortcuts />
-      <RoomGrid />
-      <RoomControls visible={visible} onLeave={onLeave} />
+    <div
+      ref={surface}
+      className="relative h-dvh w-full overflow-hidden bg-background p-3 pb-24"
+    >
+      <Shortcuts onToggleChat={toggleChat} />
+
+      <div className={chatOpen ? "h-full md:pr-[360px]" : "h-full"}>
+        <RoomGrid />
+      </div>
+
+      <ReactionOverlay reactions={messages.reactions} anchorFor={anchorFor} />
+
+      <div id="chat-panel">
+        <ChatPanel
+          open={chatOpen}
+          log={messages.log}
+          onClose={closeChat}
+          onSend={messages.sendChat}
+        />
+      </div>
+
+      <RoomControls
+        visible={visible}
+        unread={messages.unread}
+        chatOpen={chatOpen}
+        onToggleChat={toggleChat}
+        onReact={messages.sendReaction}
+        onLeave={onLeave}
+      />
+
+      {/* One polite live region for the whole room. §9 and BUILD-PLAN's Phase 9
+          note: Next already mounts an assertive one, and a second would
+          interrupt rather than wait its turn. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {messages.announcement}
+      </p>
       <span className="sr-only">Meeting code {code}</span>
     </div>
   );
 }
+
+/** The gap that keeps a rising reaction clear of the name label beneath it. */
+const LABEL_CLEARANCE_PX = 40;
 
 /**
  * Renders nothing; exists so that subscribing to mute state re-renders a leaf
  * rather than the whole room. The handler has to see current state — a stale
  * closure here would toggle the mic to where it already was.
  */
-function Shortcuts() {
+function Shortcuts({ onToggleChat }: { onToggleChat: () => void }) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } =
     useLocalParticipant();
   useRoomShortcuts({
     onToggleMic: () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled),
     onToggleCamera: () => localParticipant.setCameraEnabled(!isCameraEnabled),
+    onToggleChat,
   });
   return null;
 }

@@ -262,6 +262,42 @@ summary:focus-visible,
   }
 }
 
+@layer utilities {
+  /* §3.6: reactions float up from the sender's tile and fade over 2400ms.
+     The lifetime here and REACTION_LIFETIME_MS in useRoomMessages are the same
+     number for a reason — the element is removed on a timer rather than on
+     `animationend`, because an animation that never runs (a backgrounded tab)
+     would otherwise leave it on screen for the rest of the meeting. */
+  .parley-reaction {
+    animation: parley-reaction-rise 2400ms ease-out forwards;
+    will-change: transform, opacity;
+  }
+}
+
+@keyframes parley-reaction-rise {
+  0%   { transform: translateY(0) scale(0.8);      opacity: 0; }
+  12%  { transform: translateY(-8px) scale(1);     opacity: 1; }
+  70%  { transform: translateY(-120px) scale(1);   opacity: 1; }
+  100% { transform: translateY(-180px) scale(0.9); opacity: 0; }
+}
+
+/* §3.6: "reactions appear and fade in place with no travel". Written as its
+   own rule rather than folded into the blanket reduced-motion block below,
+   which only shortens durations — a 0.01ms rise still travels 180px, it just
+   does it instantly, which is the jump the preference exists to avoid. */
+@media (prefers-reduced-motion: reduce) {
+  .parley-reaction {
+    animation: parley-reaction-hold 2400ms linear forwards;
+  }
+
+  @keyframes parley-reaction-hold {
+    0%   { opacity: 0; }
+    10%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Motion answers a user action; travel is removed, opacity is kept. */
   *,

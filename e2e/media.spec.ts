@@ -98,7 +98,14 @@ test.describe("two participants", () => {
 
     // Ama's tile falls back to the initial; Kwabena's own video stays.
     await expect(kwabena.page.locator("video")).toHaveCount(1);
-    await expect(kwabena.page.getByText("Ama Serwaa")).toBeVisible();
+    // Scoped to the tile. Phase 5 added join and leave messages to the chat
+    // log, so a name now appears in more than one place and an unscoped query
+    // resolves to several elements — a test that was precise became ambiguous
+    // because the product grew, which is worth fixing here rather than in the
+    // product.
+    await expect(
+      kwabena.page.locator('[data-participant]').getByText("Ama Serwaa", { exact: true }),
+    ).toBeVisible();
 
     await wakeControls(ama.page);
     await ama.page.getByRole("button", { name: "Turn on camera" }).click();

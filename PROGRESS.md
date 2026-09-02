@@ -1495,3 +1495,143 @@ the documentation of its own rule.
 `check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
 `check:room` **68**, `check:rls` 18, `typecheck`, `lint`, `check:meetings`
 **43/43**, `check:bundle` 8/8, `check:media` 8/8 — all pass.
+
+---
+
+## Phase 5 — Chat and reactions
+
+Both data-channel features, and the wire format they share.
+
+### One envelope, and nothing in it that could lie
+
+§3.5 and §3.6 are separate features on one transport, so there is one decoder
+to get right rather than two. What is *not* in the envelope is the design:
+
+- **No sender.** LiveKit hands the receiver the `Participant` a packet came
+  from, and that is the only sender there is. A name in the body would let
+  anyone in the room type as anyone else, and no validation downstream undoes
+  that. Same rule the token endpoint follows for identity.
+- **No timestamp.** A sender's clock can be wrong or hostile, and the time is
+  one of the two things §3.5 renders. The receiver stamps arrival.
+- **No id.** `publishData` does not echo to the sender, so the sender adds its
+  own copy and mints its own key. An id on the wire would be an
+  attacker-chosen React key for no benefit.
+
+There is **no server on this path at all** — packets go participant to
+participant through the SFU — so `decode` is the only thing between a crafted
+packet and the render tree. It is tested the way an endpoint would be: fourteen
+malformed payloads, a byte cap checked before `JSON.parse` is asked to chew
+through anything, and reactions validated by membership in the fixed six rather
+than by looking like an emoji.
+
+### Where the security actually is
+
+Rule 6 settles how a message is drawn: as text, never through
+`dangerouslySetInnerHTML`. `autolink` is the one place a substring of someone
+else's message becomes an element, and it returns **segments** rather than
+markup so there is no string anywhere on the path that could be mistaken for
+HTML.
+
+Chasing that properly turned up something worth recording. There are three
+gates — the candidate pattern, `URL` parsing, and a scheme allow-list plus a
+required hostname — and **only the first is load-bearing today**. Deleting the
+allow-list broke no test, because every dangerous scheme parses to an empty
+hostname and the hostname check rejects it first; and `ftp://example.com`, which
+*does* have a hostname, is never offered as a candidate at all.
+
+So the checks were relabelled to say which gate they exercise, cases were added
+that pin the pattern directly (`ftp://`, `ws://`, `chrome://` — all with real
+hostnames), and the redundant gates are documented as backstops for the day
+someone widens the pattern for a good reason. A check that credits the wrong
+guard gives false comfort, which is worse than no check.
+
+One real defect found the same way: `\b` matches between `:` and `h`, so
+`blob:https://example.com/abc` offered the inner `https://…` as a candidate —
+linking a substring nobody shared. Candidates now have to start a token,
+checked by looking at the preceding character rather than with a lookbehind,
+because Safari only gained those in 16.4 and §1 lists Safari as a target.
+
+### The rate limit, on both sides
+
+§3.6's "enforced client-side on send and server-agnostic on receive" is the
+whole design: the sender declines to send and the receiver declines to render,
+and neither depends on the other. A patched client is exactly what the
+receiving half is for.
+
+Keyed per participant, which the checks pin explicitly — a single global gate
+would let one person flooding silence everyone else's reactions, and that would
+look exactly like the product being broken.
+
+### Two bugs the browser found that the tests did not
+
+**The letterbox overflowed.** One participant with the chat open rendered a
+grid **1956px wide inside a 1337px area**, running underneath the panel. The
+declared `aspect-ratio: 16/9` was correct and the computed style said so — which
+is why the existing assertion passed. Fitting a ratio inside a box needs
+*whichever* dimension is tighter to win, and no single `max-` can do that:
+`aspect-ratio` with `max-height` overflows a narrow container horizontally, and
+with `max-width` it overflows a wide one vertically. Now
+`min(100cqw, calc(100cqh * 16 / 9))` against a size container, and the new
+assertion measures the rendered box rather than the declared property.
+
+**The panel's `hidden` attribute was outranked.** `hidden` sets `display: none`
+from a UA rule that any author `display` declaration beats, and the panel's
+class list had a constant `flex`. It worked only because Tailwind's preflight
+marks its `[hidden]` rule important. `flex` is now conditional — a correctness
+property should not rest on a detail of someone else's reset.
+
+### And one in the tooling
+
+`reuseExistingServer` was skipping the rebuild, so a run could test whatever was
+on disk from last time. It produced a failure for a bug I had already fixed, and
+would just as easily have let a broken one pass. Now `false`: a rebuild costs
+about forty seconds, and a result that describes code you did not write costs
+more.
+
+Two tests also assumed room composition rather than asserting it — they passed
+alone and failed in a full run, which is the worst way for a test to be wrong.
+`expectParticipants` waits for the count that is the premise of the measurement.
+
+A third was a Phase 4 test that Phase 5 made ambiguous: `getByText("Ama
+Serwaa")` began matching join and leave messages as well as the tile label. The
+product grew and a precise test became imprecise; scoped to the tile.
+
+### Verified between two real browsers
+
+`check:media` is now **17 tests**. The new nine:
+
+```
+chat end to end: 198ms  (§3.5 target < 500ms, harness overhead included)
+```
+
+- a message crosses, and the sender sees their own copy as "You"
+- a message containing `<img src=x onerror=…>` arrives as visible text; no
+  element is created and no handler runs
+- `https://` is linked with `rel="noopener noreferrer nofollow"` and
+  `target="_blank"`; `javascript:alert(1)` in the same message stays text
+- the unread dot appears only while the panel is shut, and the announcement
+  names the sender without the body — §9
+- three messages from one sender group under one header; a new sender breaks it
+- opening the panel reflows the grid rather than covering it, at 360px
+- Escape closes and returns focus to the control
+- a reaction crosses and is announced as "reacted with applause", and twelve
+  presses inside a second produce at most two — with nothing released afterwards
+- reactions do not intersect the name label, measured, and clear themselves
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
+`check:room` 68, `check:chat` **57** (new), `check:rls` 18, `typecheck`, `lint`,
+`check:meetings` 43/43, `check:bundle` 8/8, `check:media` **17/17** — all pass.
+`/room/[code]` is unchanged at 153 kB against 250.
+
+### Deferred, deliberately
+
+- **Focus trapping and the full tab order** are Phase 9's. Escape-to-close with
+  focus restoration is here, because a panel you cannot close from the keyboard
+  is a trap rather than a partial implementation.
+- **Batched join/leave announcements** (§9: 3+ in 5s collapse, suppressed above
+  eight participants) are Phase 9's. The system messages themselves are here,
+  since §3.5 asks for them in the panel.
+- **Screen share and participants** remain the two controls §3.4 lists that are
+  not in the bar. Phase 7.

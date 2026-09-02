@@ -69,32 +69,51 @@ export function RoomGrid() {
         {participants.length === 1 ? "participant" : "participants"}
       </h1>
 
+      {/* The stage. A size container so the grid below can be sized against
+          both of its dimensions at once — see the letterbox note there. */}
       <div
-        className="grid min-h-0 flex-1 gap-3"
-        style={{
-          gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))`,
-          // §3.4: a lone tile keeps 16:9 and centres rather than cropping to
-          // fill a wide desktop area. Every other count fills the grid, where
-          // letterboxing individual tiles is explicitly forbidden.
-          ...(layout.letterbox
-            ? { aspectRatio: "16 / 9", maxHeight: "100%", margin: "0 auto" }
-            : null),
-          // 200ms cubic-bezier(0.2, 0, 0, 1) is the grid-reflow step in
-          // CLAUDE.md. Only the template transitions — tiles themselves must
-          // not animate size, which is what produces reflow thrash.
-          transition: "grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1)",
-        }}
+        className="flex min-h-0 flex-1 items-center justify-center"
+        style={{ containerType: "size" }}
       >
-        {shown.map(({ participant }) => (
-          <Tile
-            key={participant.identity}
-            participant={participant}
-            track={cameraFor(participant.identity)}
-            cameraOn={participant.isCameraEnabled}
-          />
-        ))}
-        {layout.overflow > 0 && <OverflowTile count={layout.overflow} />}
+        <div
+          className="grid h-full w-full gap-3"
+          style={{
+            gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))`,
+            // §3.4: a lone tile keeps 16:9 and centres rather than cropping to
+            // fill the area. Every other count fills the grid, where
+            // letterboxing individual tiles is explicitly forbidden.
+            //
+            // `min(100cqw, 100cqh * 16 / 9)` rather than `aspect-ratio` with a
+            // max on one side. Fitting a ratio inside a box needs *whichever*
+            // dimension is tighter to win, and a single max cannot do that:
+            // `aspect-ratio` plus `max-height` overflows a narrow container
+            // horizontally, and plus `max-width` it overflows a wide one
+            // vertically. The first version of this was 1956px wide inside a
+            // 1337px area, with the tile running under the chat panel.
+            ...(layout.letterbox
+              ? {
+                  width: "min(100cqw, calc(100cqh * 16 / 9))",
+                  height: "auto",
+                  aspectRatio: "16 / 9",
+                }
+              : null),
+            // 200ms cubic-bezier(0.2, 0, 0, 1) is the grid-reflow step in
+            // CLAUDE.md. Only the template transitions — tiles themselves must
+            // not animate size, which is what produces reflow thrash.
+            transition: "grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1)",
+          }}
+        >
+          {shown.map(({ participant }) => (
+            <Tile
+              key={participant.identity}
+              participant={participant}
+              track={cameraFor(participant.identity)}
+              cameraOn={participant.isCameraEnabled}
+            />
+          ))}
+          {layout.overflow > 0 && <OverflowTile count={layout.overflow} />}
+        </div>
       </div>
 
       {layout.pages > 1 && (

@@ -4,6 +4,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useLocalParticipant } from "@livekit/components-react";
 
 import { ICONS } from "@/lib/icons";
+import type { Reaction } from "@/lib/room/messages";
+import { ReactionPicker } from "@/components/room/ReactionPicker";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -12,8 +14,8 @@ import {
 } from "@/components/ui/tooltip";
 
 /**
- * Mic, camera, leave. §3.4's table lists four more — screen share, reactions,
- * chat, participants — and they arrive in Phases 5 and 7. A button that does
+ * Mic, camera, reactions, chat, leave. §3.4's table lists two more — screen
+ * share and participants — and they arrive in Phase 7. A button that does
  * nothing is worse than a button that isn't there yet, so they are not here
  * yet.
  *
@@ -25,9 +27,17 @@ import {
  */
 export function RoomControls({
   visible,
+  unread,
+  chatOpen,
+  onToggleChat,
+  onReact,
   onLeave,
 }: {
   visible: boolean;
+  unread: number;
+  chatOpen: boolean;
+  onToggleChat: () => void;
+  onReact: (emoji: Reaction) => void;
   onLeave: () => void;
 }) {
   const {
@@ -97,6 +107,53 @@ export function RoomControls({
           shortcut="⌘E"
           onToggle={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
         />
+
+        <ReactionPicker onReact={onReact} />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleChat}
+              aria-label={chatOpen ? "Close chat" : "Open chat"}
+              aria-expanded={chatOpen}
+              aria-controls="chat-panel"
+              className="relative flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+              style={{
+                backgroundColor: chatOpen ? "var(--secondary)" : "transparent",
+                borderColor: chatOpen ? "var(--secondary)" : "var(--tile-border)",
+                color: "var(--foreground)",
+              }}
+            >
+              <HugeiconsIcon
+                icon={ICONS.chat.icon}
+                size={20}
+                strokeWidth={1.5}
+                color="currentColor"
+                aria-hidden
+              />
+              {/* §3.5: a dot, not a count. The number of unread messages is not
+                  a decision anyone makes — whether to open the panel is. And a
+                  dot needs no hue to read as "something is there". */}
+              {unread > 0 && !chatOpen && (
+                <span
+                  aria-hidden
+                  className="absolute right-1 top-1 size-2 rounded-full"
+                  style={{ background: "var(--foreground)" }}
+                />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {chatOpen ? "Close chat" : "Open chat"}{" "}
+            <span className="text-muted-foreground">⌘⌥C</span>
+            {unread > 0 && !chatOpen && (
+              <span className="sr-only">
+                , {unread} unread {unread === 1 ? "message" : "messages"}
+              </span>
+            )}
+          </TooltipContent>
+        </Tooltip>
 
         {/* The one non-circular control. §3.4: shape distinguishes it as well
             as colour, so it is unmistakable without relying on hue. */}

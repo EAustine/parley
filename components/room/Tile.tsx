@@ -47,6 +47,9 @@ export function Tile({
 
   return (
     <div
+      // Reactions rise from a participant's tile and are drawn in an overlay
+      // above the grid, so the overlay has to be able to find this element.
+      data-participant={participant.identity}
       className="relative overflow-hidden rounded-xl bg-card"
       style={{
         // Rule 5, and §3.4: no hue. Idle is 1px --tile-border at 3.33:1 against
@@ -120,6 +123,8 @@ export function Tile({
 export function OverflowTile({ count }: { count: number }) {
   return (
     <div
+      // §3.6: a reaction from someone who did not fit in the grid anchors here.
+      data-overflow="true"
       className="flex items-center justify-center rounded-xl bg-card"
       style={{ outline: "1px solid var(--tile-border)", outlineOffset: "-1px" }}
     >
