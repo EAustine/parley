@@ -35,16 +35,19 @@ export function MeetingRow({
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2">
           <span className="type-body truncate">{meeting.title}</span>
-          {meeting.status === "live" && (
+          {/* One badge at most. "Live" and "Instant" were both rendering on a
+              live instant meeting, which says the same thing twice and buries
+              the half that matters. Live is what is happening now; instant is
+              only how it was created. */}
+          {meeting.status === "live" ? (
             <Badge variant="secondary" className="type-caption">
               Live
             </Badge>
-          )}
-          {meeting.scheduled_start === null && !past && (
+          ) : meeting.scheduled_start === null && !past ? (
             <Badge variant="outline" className="type-caption">
               Instant
             </Badge>
-          )}
+          ) : null}
         </div>
 
         <div className="type-small flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">

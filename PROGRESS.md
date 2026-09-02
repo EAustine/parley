@@ -655,10 +655,47 @@ not the host, and past 30 days falls through to unknown-code.
 Bundles unchanged within noise: shared 160 kB (≤ 180), `/j/[code]` 151 kB
 (≤ 230), `/dashboard` 259 kB (≤ 280).
 
+### Phase 2 → 3 housekeeping: `npm run seed:dev`
+
+`BUILD-PLAN.md` opens Phase 3 with the carry-over this file had been listing as
+open — ad-hoc test rows on the live account. `scripts/seed-dev.mjs` replaces
+them with three deliberate fixtures, one per dashboard state:
+
+| Code | Status | Title |
+|---|---|---|
+| `wcz-4npm-hjd` | live | Design review |
+| `tgr-6xkv-bqs` | scheduled, 3 days out | Roadmap planning |
+| `mzn-3fhw-dpy` | ended, 3 participants | Sprint retro |
+
+Fixed codes, so a second run produces the same three rather than six. Verified
+by running it twice: the first removed six ad-hoc rows, the second removed and
+replaced its own three.
+
+The titles are chosen. This dashboard ends up in screenshots, and the rule that
+governs empty-state copy governs its contents — "asdf" in a portfolio shot is
+the same failure as an undesigned error state, just quieter.
+
+**The script refuses to run unless `NEXT_PUBLIC_APP_URL` is localhost.** It
+deletes every meeting belonging to its host before inserting; pointed at a real
+deployment that is silent, irreversible loss with no runtime symptom, which is
+the same class of failure the env guard exists for. Verified against a
+production-looking URL and a malformed one: both refuse, **both exit 1**, and
+neither touches the database. The exit code is worth stating because the first
+check appeared to pass while actually reading `head`'s status.
+
+It also names the host rather than guessing: `SEED_EMAIL` if given, the sole
+non-`@example.com` account otherwise, and a clear list to choose from if there
+are several. Fixture accounts from the check scripts are never a seed target.
+
+### One defect the fixtures exposed
+
+A live instant meeting rendered **both** a "Live" and an "Instant" badge — the
+same thing said twice, with the half that matters buried. Live is what is
+happening now; instant is only how it was created. One badge at most now, live
+winning. Nothing but real fixtures would have surfaced it, since no meeting had
+previously been both.
+
 ### Known, deferred
 
 - **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6. The API
   accepts scheduled meetings today and `check:meetings` proves it.
-- **Sample meetings are sitting on the live account** from verifying the
-  dashboard and the ended state render with real rows — "Design review" is now
-  ended. Say the word and they go.

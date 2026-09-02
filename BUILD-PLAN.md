@@ -132,7 +132,14 @@ Tasks:
 
 **Goal:** the screen that decides whether this feels competent.
 
-Tasks:
+First, a small piece of housekeeping carried over from Phase 2:
+
+- `scripts/seed-dev.mjs` + `npm run seed:dev` — replaces ad-hoc test rows with a deliberate fixture set: one live meeting, one scheduled a few days out, one ended. Idempotent, so it can run after any `db reset`.
+- Titles are chosen, not leftover. This dashboard ends up in portfolio screenshots, and the same rule that governs empty-state copy governs its content: nothing visible should be accidental. Plausible working titles, not "test" or "asdf".
+- **The script refuses to run unless `NEXT_PUBLIC_APP_URL` points at localhost.** Same reasoning as the env guard — a seed script pointed at production has no runtime symptom until someone sees rows they didn't create.
+- Delete the existing ad-hoc rows once the seed replaces them.
+
+Then:
 - `POST /api/livekit/token` per the contract in `PRD.md` §7. Server-side meeting validation, server-derived identity, name sanitisation, narrow grants, 6h TTL, IP rate limit.
 - Fill in `/j/[code]`, which Phase 2 created as a resolving stub: self-preview, camera and mic toggles, live mic level meter, device selectors, display-name field for guests
 - All six permission states (`PRD.md` §3.3), each with real copy. Do not fire the browser prompt on page load.

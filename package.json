@@ -13,7 +13,8 @@
     "predev": "npm run check:env",
     "check:rls": "node --env-file=.env.local scripts/check-rls.mjs",
     "check:codes": "node scripts/check-codes.mjs",
-    "check:meetings": "node --env-file=.env.local scripts/check-meetings.mjs"
+    "check:meetings": "node --env-file=.env.local scripts/check-meetings.mjs",
+    "seed:dev": "node --env-file=.env.local scripts/seed-dev.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
