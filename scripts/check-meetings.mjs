@@ -211,6 +211,66 @@ try {
   );
   await admin(`/auth/v1/admin/users/${other.id}`, { method: "DELETE" });
 
+  // --- /j/[code] resolves for a stranger -----------------------------------
+  //
+  // Fetched with `fetch`, not `app()`, so no cookie is sent. That is the whole
+  // point: the page must resolve through `get_meeting_by_code` as `anon`, the
+  // way someone opening a pasted link does. Using the signed-in helper here
+  // would test the `authenticated` path and prove nothing about the one that
+  // ships.
+  const joinRes = await fetch(`${APP}/j/${instant.code}`);
+  const joinHtml = await joinRes.text();
+  check(
+    joinRes.status === 200 && joinHtml.includes(instant.code),
+    "/j/[code] resolves the meeting with no session cookie",
+    `HTTP ${joinRes.status}`,
+  );
+
+  // The security definer function returns six columns. Anything else reaching
+  // the page would mean it is handing a stranger more than it should.
+  const leaked = [
+    ["host id", user.id],
+    ["meeting row id", (await admin(`/rest/v1/meetings?select=id&code=eq.${instant.code}`).then((r) => r.json()))[0]?.id],
+    ["host email", user.email],
+  ].filter(([, value]) => value && joinHtml.includes(value));
+  check(
+    leaked.length === 0,
+    "/j/[code] leaks no host id, row id or email to an anonymous reader",
+    leaked.length ? `leaked: ${leaked.map(([n]) => n).join(", ")}` : "",
+  );
+
+  // An unknown code is a designed state, not a framework 404.
+  //
+  // Discriminated on status and on our own content. Next inlines its default
+  // not-found component into every page's payload, so "This page could not be
+  // found" appears in the HTML of a perfectly healthy page — searching for it
+  // proves nothing. A genuinely missing route answers 404; this one answers
+  // 200 and offers somewhere to type another code.
+  const unknown = await fetch(`${APP}/j/zzz-zzzz-zzz`);
+  const unknownHtml = await unknown.text();
+  check(
+    unknown.status === 200 &&
+      unknownHtml.includes("That meeting isn’t here") &&
+      unknownHtml.includes("kqr-8mzt-vnp"),
+    "an unknown code renders a designed state with a way forward",
+    `HTTP ${unknown.status}`,
+  );
+
+  const missingRoute = await fetch(`${APP}/definitely-not-a-route`);
+  check(
+    missingRoute.status === 404,
+    "a genuinely missing route still 404s — the join page is the exception, not a blanket catch",
+    `HTTP ${missingRoute.status}`,
+  );
+
+  const malformed = await fetch(`${APP}/j/not-a-code`);
+  const malformedHtml = await malformed.text();
+  check(
+    malformed.status === 200 && malformedHtml.includes("That meeting isn’t here"),
+    "a malformed code renders the same designed state",
+    `HTTP ${malformed.status}`,
+  );
+
   // --- the dashboard renders what was created ------------------------------
   const dash = await app("/dashboard");
   const html = await dash.text();

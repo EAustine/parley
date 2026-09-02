@@ -364,5 +364,6 @@ supabase/migrations/
 - Give avatars a per-identity hue — the fallback is the initial on `--secondary`, uniform
 - Fill the mark's fourth cell, or give the mark a colour
 - Ship a state with no design — silent failure is the worst outcome in this product
+- Ship a working control that lands on a framework default error page. If a button creates a row, the destination route must exist by the end of that phase, even as a minimal designed state. Phase boundaries are for scope, not for leaving the product broken between them.
 - Persist chat (out of scope — it's ephemeral by design)
 - Add recording, captions, or transcription (out of scope; they change the cost model)

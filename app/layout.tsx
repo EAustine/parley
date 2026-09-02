@@ -4,7 +4,6 @@ import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "@/lib/env";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteUrl } from "@/lib/site";
 import { ThemeProvider } from "@/components/theme-provider";
-import { SiteHeader } from "@/components/shared/SiteHeader";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -81,10 +80,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <TooltipProvider>
-            <div className="flex min-h-dvh flex-col">
-              <SiteHeader />
-              <main className="flex-1">{children}</main>
-            </div>
+            {children}
           </TooltipProvider>
         </ThemeProvider>
       </body>

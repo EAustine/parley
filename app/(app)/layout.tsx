@@ -1,5 +1,6 @@
 import { AuthListener } from "@/components/auth/AuthListener";
 import { Toaster } from "@/components/ui/sonner";
+import { SiteShell } from "@/components/shared/SiteShell";
 
 /**
  * Signed-in surfaces only.
@@ -24,7 +25,7 @@ export default function AppLayout({
   return (
     <>
       <AuthListener />
-      {children}
+      <SiteShell>{children}</SiteShell>
       <Toaster />
     </>
   );

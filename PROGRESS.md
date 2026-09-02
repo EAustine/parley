@@ -545,11 +545,76 @@ fetched over HTTP and asserted to contain what was just created.
   skipped in silence and stranded eight fixture accounts. Fixed, and cleanup now
   says so out loud rather than optional-chaining past the problem.
 
+### Phase 2 revision — `/j/[code]` now exists
+
+`CLAUDE.md` gained a rule that names exactly what shipped: *never ship a working
+control that lands on a framework default error page.* "Start meeting" created a
+row and then dropped the user on Next's 404, and calling that a phase boundary
+was the wrong call — the boundary is for scope, not for leaving the product
+broken in between. `BUILD-PLAN.md` Phase 2 now requires the real route file, and
+Phase 3 fills it in rather than replacing it.
+
+**`app/j/[code]/page.tsx`** resolves the meeting and renders its title and code,
+or a designed not-found state with a field to try another code. Native state and
+one parse on submit, not react-hook-form and zod — §10 forbids a form library on
+this route for a single field.
+
+**It resolves anonymously, and that is the point.** `lib/supabase/anon.ts` is a
+session-less client. Using the cookie-backed server client would send the
+browser's session, so a signed-in host would exercise the `authenticated` path
+and the `anon` path — the one guests actually get — would never be tested by
+anyone looking at the page. `get_meeting_by_code` is `security definer`: it runs
+with the owner's rights and is the only thing between a code and the row behind
+it, so it is called as the least-privileged caller there is, on the real page,
+every time. The fetch is server-side, so no supabase-js reaches the browser.
+
+**Four new assertions in `check:meetings`,** run with `fetch` rather than the
+signed-in helper so no cookie is sent: the page resolves with no session; it
+leaks no host id, row id or email; an unknown code answers **200** with a way
+forward while a genuinely missing route still answers **404**; a malformed code
+lands in the same state.
+
+One of those found a bad test of my own. I had asserted the absence of "This
+page could not be found" — but Next inlines its default not-found component into
+every page's payload, so that string is present in the HTML of a perfectly
+healthy page. It discriminated nothing. Status code and our own content do.
+
+### The header moved out of the root layout
+
+Rule 8b forces `.dark` on `/j/[code]`. With the header in the root layout it
+stayed on the *viewer's* theme, so on a light system a white bar sat on top of a
+dark pre-join screen — a seam at exactly the moment the product is meant to
+signal "you've entered the call". The dark surface also failed to fill the
+viewport, leaving white below it.
+
+`components/shared/SiteShell.tsx` now carries header plus content, and is
+rendered by the document surfaces only: `(marketing)`, `(auth)`, `(dev)`, and
+`(app)`. `/j/` renders its own full-height dark shell with no header. The
+marketing page moved into `(marketing)/`, which is what `CLAUDE.md`'s file
+layout specified all along.
+
+Verified with the viewer's theme forced to light: `/` renders `html.light` on a
+white ground, `/j/[code]` renders fully dark with no seam.
+
+It also paid for itself. The header carries HugeIcons, a Radix tooltip and
+next-themes; in the root layout every route paid for them, including the two
+that never render it.
+
+| Route | Phase 1 | Now | Budget |
+|---|---|---|---|
+| Shared baseline | 175 kB | **160 kB** | ≤ 180 |
+| `/` marketing | 161 kB | **151 kB** | ≤ 190 |
+| `/j/[code]` | — | **148 kB** | ≤ 230 |
+| `/dashboard` | 242 kB | 259 kB | ≤ 280 |
+
 ### Known, deferred
 
-- **`/j/[code]` does not exist yet**, so "Start meeting" creates a meeting and
-  then lands on Next's default 404. Phase 3 builds that route. The meeting is
-  created correctly; only the destination is missing.
+- **An ended meeting is indistinguishable from a missing one.**
+  `get_meeting_by_code` filters ended meetings out, so both land on "That
+  meeting isn't here". The distinct "This meeting has ended" state with the
+  host's name needs data the function deliberately does not return — §3.2 asks
+  for it and Phase 3 owns the error routes.
+- **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6. The API
+  accepts scheduled meetings today and `check:meetings` proves it.
 - **Sample meetings are sitting on the live account** from verifying the
-  dashboard renders with real rows: "Design review", "Weekly sync", "Retro",
-  and two instants. Say the word and they go.
+  dashboard renders with real rows. Say the word and they go.

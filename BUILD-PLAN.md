@@ -120,6 +120,9 @@ Tasks:
 - Dashboard: upcoming and past sections, empty state as an invitation
 - "Start meeting" creates an instant meeting and routes to `/j/[code]`
 - Copy-link button with a "Link copied" toast
+- **Minimal `/j/[code]`** — the real route file, not a placeholder to delete. Resolves the meeting through `get_meeting_by_code` as an anonymous request, renders the title and code, and states plainly that the join screen arrives next. Handles a missing meeting without falling through to a 404.
+
+  This is not cosmetic. It is the first anonymous browser call to `get_meeting_by_code`, which is the `security definer` function that decides what a stranger holding a link can see. A script proving it works and a real unauthenticated request proving it works are different claims, and the second is the one that ships. Phase 3 fills this file in rather than replacing it.
 
 **Done when:** both meeting kinds create successfully, codes are unique across 1,000 generated in a loop, and the dashboard lists them correctly.
 
@@ -131,7 +134,7 @@ Tasks:
 
 Tasks:
 - `POST /api/livekit/token` per the contract in `PRD.md` §7. Server-side meeting validation, server-derived identity, name sanitisation, narrow grants, 6h TTL, IP rate limit.
-- `/j/[code]` page: self-preview, camera and mic toggles, live mic level meter, device selectors, display-name field for guests
+- Fill in `/j/[code]`, which Phase 2 created as a resolving stub: self-preview, camera and mic toggles, live mic level meter, device selectors, display-name field for guests
 - All six permission states (`PRD.md` §3.3), each with real copy. Do not fire the browser prompt on page load.
 - Unknown code and ended meeting pages
 - Selected devices persist into the room
