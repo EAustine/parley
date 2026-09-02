@@ -459,3 +459,97 @@ estimate. The 10 kB is banked and waiting.
 Two constraints §10 adds for Phase 3, recorded now so they are not discovered
 late: pre-join uses `navigator.mediaDevices` and needs no LiveKit code, and it
 should not pull in `react-hook-form` and `zod` for a single display-name field.
+
+---
+
+## Phase 2 — Meetings and dashboard
+
+**Status:** complete. Both meeting kinds create, codes are unique and unbiased,
+and the dashboard lists upcoming and past.
+
+### Shipped
+
+- `lib/meetings/code.ts` — generator and a normaliser for codes typed by hand.
+- `lib/meetings/schema.ts` — a zod discriminated union over instant and
+  scheduled, shared between client and route handler.
+- `POST /api/meetings` — generate-and-insert with retry on unique violation.
+- `app/(app)/dashboard` — upcoming and past, empty state as an invitation.
+- `StartMeetingButton`, `CopyLinkButton`, `MeetingRow`.
+- `npm run check:codes` and `npm run check:meetings`.
+
+### Verified, not assumed
+
+**The generator, 7/7.** 100,000 codes — the build plan asks for 1,000 — all
+unique, all matching `xxx-xxxx-xxx`, and not one `i`, `l`, `o`, `0` or `1` in a
+million characters.
+
+The interesting one is bias. The alphabet is 31 characters and a byte holds 256
+values, so `byte % 31` makes the first eight characters about 3% likelier.
+`randomCharacters` rejects bytes at or above 248 and redraws, at a cost of
+looping ~3% of the time. Measured both ways: this generator scores **18.9** on
+chi-squared across 30 degrees of freedom, the naive version scores **2,962.9**,
+and the threshold is 59.7. Max/min character frequency is 1.019 against 1.148.
+The test fails by two orders of magnitude on the wrong implementation, which is
+the only reason to trust it passing on the right one.
+
+**Creation, 15/15,** through the real route handler with a real session cookie —
+so the zod schema, the session lookup and RLS are all on the path. Covers: 401
+for an unauthenticated caller, both meeting kinds, `scheduled_end` computed
+server-side as start + duration, six malformed payloads rejected with 400
+(including an invented timezone and a whitespace-only title), and `host_id` in
+the request body being ignored in favour of the session. The dashboard is then
+fetched over HTTP and asserted to contain what was just created.
+
+### Decisions
+
+1. **Rejection sampling, not `byte % 31`.** Above. A biased keyspace is the kind
+   of flaw that never announces itself.
+
+2. **`<Toaster />` moved into `(app)`,** taking the 10 kB banked last round.
+   Phase 2 is where toasts became real, so the question "which surfaces raise
+   toasts" now has an answer instead of a guess: every one of them — "Link
+   copied", meeting-creation failures — is inside this group. The room route
+   gets its own in Phase 4 rather than the marketing page paying for it.
+   Shared dropped 175 → 165 kB, `/` 161 → 150 kB, and `/sign-in` and
+   `/auth/complete` fell 10 kB each as a side effect.
+
+3. **Two sections, two sort orders, done in JS rather than SQL.** Upcoming reads
+   soonest-first — the next thing you have to be at. Past reads
+   most-recent-first. A single `ORDER BY` cannot do both, and the first version
+   shipped with upcoming sorted backwards: a meeting three days out sat above
+   one two hours away. Instant meetings have no scheduled time and are startable
+   now, so they lead the upcoming list.
+
+4. **`MeetingRow` is a client component** because the time must render in the
+   *viewer's* zone, which the server does not know. Rendering it server-side
+   would print the server's zone and then hydrate into a different string.
+
+5. **The copy-link URL is built from `location.origin`,** not from
+   `NEXT_PUBLIC_APP_URL`, so a link copied on a preview deployment points at
+   that deployment.
+
+6. **No "Schedule meeting" button yet.** `PRD.md` §3.10 lists it as a primary
+   dashboard action, but the form is Phase 6. The API accepts scheduled
+   meetings today and `check:meetings` proves it; shipping a button that leads
+   nowhere would be worse than not shipping it.
+
+### Two test bugs found by running against real data
+
+- **`check-rls`'s control asserted the service role saw exactly two rows.** True
+  only while the project was empty. Seeded data broke it, correctly — the
+  assertion was about the project, not about RLS. It now counts only its own two
+  fixtures. A side benefit: "anonymous reads see no meetings at all" is now
+  meaningful, because it sees zero while the table holds five.
+- **`admin/generate_link` returns the user flattened** — `id` at the top level,
+  not under `.user`. Reading it wrongly meant the cleanup's `user?.id` guard
+  skipped in silence and stranded eight fixture accounts. Fixed, and cleanup now
+  says so out loud rather than optional-chaining past the problem.
+
+### Known, deferred
+
+- **`/j/[code]` does not exist yet**, so "Start meeting" creates a meeting and
+  then lands on Next's default 404. Phase 3 builds that route. The meeting is
+  created correctly; only the destination is missing.
+- **Sample meetings are sitting on the live account** from verifying the
+  dashboard renders with real rows: "Design review", "Weekly sync", "Retro",
+  and two instants. Say the word and they go.

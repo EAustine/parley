@@ -1,4 +1,5 @@
 import { AuthListener } from "@/components/auth/AuthListener";
+import { Toaster } from "@/components/ui/sonner";
 
 /**
  * Signed-in surfaces only.
@@ -8,6 +9,12 @@ import { AuthListener } from "@/components/auth/AuthListener";
  * lands on the marketing page and, later, on /j/[code] — the guest join screen,
  * which is the highest-traffic route in the product and the one route that
  * never needs an auth session at all.
+ *
+ * Toaster is here for the same measured reason: in the root layout, sonner and
+ * its lucide icons cost 10 kB of the shared baseline, paid by every route
+ * whether or not it ever raises a toast. Every toast in Phase 2 — "Link
+ * copied", meeting-creation failures — fires inside this group. The room route
+ * gets its own when it arrives, rather than the marketing page paying for it.
  */
 export default function AppLayout({
   children,
@@ -18,6 +25,7 @@ export default function AppLayout({
     <>
       <AuthListener />
       {children}
+      <Toaster />
     </>
   );
 }

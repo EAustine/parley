@@ -1,0 +1,236 @@
+#!/usr/bin/env node
+/**
+ * Meeting creation, end to end against the running dev server.
+ *
+ * Goes through `POST /api/meetings` with a real session cookie rather than
+ * inserting rows directly, so the route handler, the zod schema, the session
+ * lookup and RLS are all on the path being tested.
+ *
+ * Credentials arrive through `node --env-file=.env.local`; nothing here opens
+ * the file.
+ *
+ * Run with: npm run check:meetings   (needs npm run dev)
+ */
+
+const APP = process.env.CHECK_APP_URL ?? "http://localhost:3000";
+
+function required(name) {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`${name} is not set. Run via npm run check:meetings.`);
+    process.exit(1);
+  }
+  return value;
+}
+
+const SB = required("NEXT_PUBLIC_SUPABASE_URL").replace(/\/$/, "");
+const SERVICE = required("SUPABASE_SERVICE_ROLE_KEY");
+
+const results = [];
+const check = (pass, name, detail = "") => {
+  results.push({ pass, name });
+  console.log(`${pass ? "✔" : "✘"} ${name}${detail ? `  — ${detail}` : ""}`);
+};
+
+const admin = (path, init = {}) =>
+  fetch(`${SB}${path}`, {
+    ...init,
+    headers: {
+      apikey: SERVICE,
+      Authorization: `Bearer ${SERVICE}`,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+
+/** Cookie jar just large enough for one session. */
+const jar = new Map();
+function absorb(response) {
+  for (const raw of response.headers.getSetCookie?.() ?? []) {
+    const [pair] = raw.split(";");
+    const i = pair.indexOf("=");
+    jar.set(pair.slice(0, i).trim(), pair.slice(i + 1).trim());
+  }
+}
+const cookieHeader = () =>
+  [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+
+const app = async (path, init = {}) => {
+  const response = await fetch(`${APP}${path}`, {
+    ...init,
+    redirect: "manual",
+    headers: { cookie: cookieHeader(), ...(init.headers ?? {}) },
+  });
+  absorb(response);
+  return response;
+};
+
+let user;
+try {
+  await fetch(`${APP}/sign-in`).catch(() => {
+    throw new Error(`No server at ${APP}. Start it with npm run dev.`);
+  });
+
+  // A real host, signed in through the real callback route.
+  const email = `meet-${process.hrtime.bigint()}@example.com`;
+  const link = await admin("/auth/v1/admin/generate_link", {
+    method: "POST",
+    body: JSON.stringify({
+      type: "magiclink",
+      email,
+      redirect_to: `${APP}/auth/callback?next=/dashboard`,
+    }),
+  });
+  if (!link.ok) throw new Error(`generate_link: ${link.status}`);
+  // The response *is* the user, flattened — `id` sits at the top level, not
+  // under a `user` key. Reading it wrongly once left eight fixture accounts
+  // behind, because the cleanup below guarded on `user?.id` and skipped in
+  // silence. Hence the explicit check rather than optional chaining.
+  const link_ = await link.json();
+  user = { id: link_.id, email: link_.email };
+  if (!user.id) throw new Error("generate_link returned no user id");
+  const { hashed_token, verification_type } = link_;
+
+  const callback = await app(
+    `/auth/callback?token_hash=${hashed_token}&type=${verification_type}&next=%2Fdashboard`,
+  );
+  check(
+    callback.status === 307 && [...jar.keys()].some((k) => k.startsWith("sb-")),
+    "signed in through the callback route",
+    `HTTP ${callback.status}`,
+  );
+
+  // --- unauthenticated requests are refused before anything else ----------
+  const anon = await fetch(`${APP}/api/meetings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "instant" }),
+  });
+  check(
+    anon.status === 401 && (await anon.json()).error === "unauthenticated",
+    "POST /api/meetings refuses an unauthenticated caller",
+    `HTTP ${anon.status}`,
+  );
+
+  // --- instant -------------------------------------------------------------
+  const instantRes = await app("/api/meetings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "instant" }),
+  });
+  const instant = await instantRes.json();
+  check(instantRes.status === 201, "creates an instant meeting", `HTTP ${instantRes.status}`);
+  check(
+    /^[abcdefghjkmnpqrstuvwxyz23456789]{3}-[abcdefghjkmnpqrstuvwxyz23456789]{4}-[abcdefghjkmnpqrstuvwxyz23456789]{3}$/.test(
+      instant.code ?? "",
+    ),
+    "instant meeting has a well-formed code",
+    instant.code,
+  );
+  check(
+    instant.scheduled_start === null,
+    "instant meeting has no scheduled_start",
+  );
+
+  // --- scheduled -----------------------------------------------------------
+  const start = new Date(Date.now() + 86_400_000).toISOString();
+  const scheduledRes = await app("/api/meetings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "scheduled",
+      title: "Quarterly parley",
+      description: "Agenda to follow.",
+      scheduledStart: start,
+      durationMinutes: 45,
+      timezone: "Africa/Accra",
+    }),
+  });
+  const scheduled = await scheduledRes.json();
+  check(scheduledRes.status === 201, "creates a scheduled meeting", `HTTP ${scheduledRes.status}`);
+  check(
+    scheduled.scheduled_start !== null && scheduled.timezone === "Africa/Accra",
+    "scheduled meeting stores UTC plus the creator's zone",
+    `${scheduled.scheduled_start} / ${scheduled.timezone}`,
+  );
+
+  // scheduled_end must be start + duration, computed server-side.
+  const row = await admin(
+    `/rest/v1/meetings?select=scheduled_start,scheduled_end,title,description&code=eq.${scheduled.code}`,
+  ).then((r) => r.json());
+  const minutes =
+    (new Date(row[0].scheduled_end) - new Date(row[0].scheduled_start)) / 60000;
+  check(minutes === 45, "scheduled_end is start plus the requested duration", `${minutes} min`);
+
+  // --- validation ----------------------------------------------------------
+  const bad = [
+    ["missing kind", {}],
+    ["unknown kind", { kind: "whenever" }],
+    ["scheduled without a start", { kind: "scheduled", title: "x", durationMinutes: 30, timezone: "UTC" }],
+    ["invented timezone", { kind: "scheduled", title: "x", scheduledStart: start, durationMinutes: 30, timezone: "Mars/Olympus" }],
+    ["duration out of range", { kind: "scheduled", title: "x", scheduledStart: start, durationMinutes: 100000, timezone: "UTC" }],
+    ["empty title", { kind: "scheduled", title: "   ", scheduledStart: start, durationMinutes: 30, timezone: "UTC" }],
+  ];
+  let rejected = 0;
+  for (const [label, payload] of bad) {
+    const r = await app("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (r.status === 400) rejected++;
+    else console.log(`   ✘ ${label} returned ${r.status}, expected 400`);
+  }
+  check(rejected === bad.length, `rejects ${bad.length} malformed requests with 400`);
+
+  // --- host_id cannot be forged -------------------------------------------
+  const otherRes = await admin("/auth/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify({
+      email: `other-${process.hrtime.bigint()}@example.com`,
+      password: `Other-${process.hrtime.bigint()}-Aa1!`,
+      email_confirm: true,
+    }),
+  });
+  if (!otherRes.ok) {
+    throw new Error(`create second user: ${otherRes.status} ${await otherRes.text()}`);
+  }
+  const other = await otherRes.json();
+  const forged = await app("/api/meetings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "instant", host_id: other.id }),
+  });
+  const forgedBody = await forged.json();
+  const forgedRow = await admin(
+    `/rest/v1/meetings?select=host_id&code=eq.${forgedBody.code}`,
+  ).then((r) => r.json());
+  check(
+    forgedRow[0]?.host_id === user.id,
+    "host_id in the request body is ignored; the session decides",
+  );
+  await admin(`/auth/v1/admin/users/${other.id}`, { method: "DELETE" });
+
+  // --- the dashboard renders what was created ------------------------------
+  const dash = await app("/dashboard");
+  const html = await dash.text();
+  check(dash.status === 200, "dashboard loads for the signed-in host", `HTTP ${dash.status}`);
+  check(html.includes(instant.code), "dashboard shows the instant meeting's code");
+  check(html.includes(scheduled.code), "dashboard shows the scheduled meeting's code");
+  check(html.includes("Quarterly parley"), "dashboard shows the scheduled meeting's title");
+  check(html.includes("Upcoming"), "dashboard renders the Upcoming section");
+} catch (error) {
+  check(false, "harness completed", String(error.message).slice(0, 160));
+  if (process.env.CHECK_DEBUG) console.error(error.stack);
+} finally {
+  if (user?.id) {
+    const gone = await admin(`/auth/v1/admin/users/${user.id}`, { method: "DELETE" });
+    if (!gone.ok) console.error(`  ! fixture user ${user.id} was not deleted (HTTP ${gone.status})`);
+  } else {
+    console.error("  ! no fixture user id — nothing was cleaned up");
+  }
+}
+
+const failed = results.filter((r) => !r.pass);
+console.log(`\n${results.length - failed.length}/${results.length} meeting checks passed.`);
+if (failed.length) process.exit(1);

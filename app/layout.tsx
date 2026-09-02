@@ -6,7 +6,6 @@ import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteUrl } from "@/lib/site";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SiteHeader } from "@/components/shared/SiteHeader";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -86,7 +85,6 @@ export default function RootLayout({
               <SiteHeader />
               <main className="flex-1">{children}</main>
             </div>
-            <Toaster />
           </TooltipProvider>
         </ThemeProvider>
       </body>

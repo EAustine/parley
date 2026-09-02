@@ -119,14 +119,20 @@ try {
   // it establishes that both rows genuinely exist and the query finds them.
   // Alice and Bob then each see exactly one — theirs. It is the *difference*
   // between these three numbers that is the evidence.
-  const bypass = await admin("/rest/v1/meetings?select=id");
-  const bypassRows = await bypass.json();
-  const aliceCount = (await (await asUser(alice.token, "/rest/v1/meetings?select=id")).json()).length;
-  const bobCount = (await (await asUser(bob.token, "/rest/v1/meetings?select=id")).json()).length;
+  // Counted over this run's two fixtures only. Counting every row in the table
+  // made the control assert `=== 2`, which held only while the project was
+  // empty and broke the moment it had any other data in it — the assertion was
+  // about the project, not about RLS.
+  const mine = `id=in.(${aliceMeeting.id},${bobMeeting.id})`;
+  const seenBy = async (fetcher) => (await (await fetcher(`/rest/v1/meetings?select=id&${mine}`)).json()).length;
+
+  const bypassCount = await seenBy((p) => admin(p));
+  const aliceCount = await seenBy((p) => asUser(alice.token, p));
+  const bobCount = await seenBy((p) => asUser(bob.token, p));
   record(
-    bypassRows.length === 2 && aliceCount === 1 && bobCount === 1,
+    bypassCount === 2 && aliceCount === 1 && bobCount === 1,
     "control: service role sees both rows, each user sees only their own",
-    `service-role ${bypassRows.length}, alice ${aliceCount}, bob ${bobCount}`,
+    `service-role ${bypassCount}, alice ${aliceCount}, bob ${bobCount}`,
   );
 
   // 1. The core claim.

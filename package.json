@@ -11,7 +11,9 @@
     "check:contrast": "node scripts/contrast.mjs",
     "check:env": "node scripts/check-env.mjs",
     "predev": "npm run check:env",
-    "check:rls": "node --env-file=.env.local scripts/check-rls.mjs"
+    "check:rls": "node --env-file=.env.local scripts/check-rls.mjs",
+    "check:codes": "node scripts/check-codes.mjs",
+    "check:meetings": "node --env-file=.env.local scripts/check-meetings.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
