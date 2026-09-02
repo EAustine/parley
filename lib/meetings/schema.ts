@@ -55,6 +55,47 @@ export const createScheduledMeetingSchema = z.object({
   timezone,
 });
 
+/**
+ * Editing a scheduled meeting — §3.9. Every field optional, because a PATCH
+ * that changes only the time should not require resending the description.
+ *
+ * `kind` is absent on purpose: an instant meeting cannot become a scheduled one
+ * or the reverse. That is a different meeting, and it should have a different
+ * link rather than quietly changing under people who already hold this one.
+ */
+export const updateMeetingSchema = z
+  .object({
+    title: title.optional(),
+    description: description.nullable().optional(),
+    scheduledStart: z.string().datetime({ offset: true }).optional(),
+    durationMinutes: z
+      .number()
+      .int()
+      .min(MIN_DURATION_MINUTES)
+      .max(MAX_DURATION_MINUTES)
+      .optional(),
+    timezone: timezone.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "Nothing to change.")
+  .refine(
+    (value) =>
+      value.durationMinutes === undefined || value.scheduledStart !== undefined,
+    // The end time is derived from both, so a duration without a start would
+    // need the stored start read back and re-derived — doable, and a second
+    // place for the two to disagree.
+    "Changing the duration means sending the start time too.",
+  );
+
+export type UpdateMeetingInput = z.infer<typeof updateMeetingSchema>;
+
+export type UpdateMeetingError =
+  | "unauthenticated"
+  | "invalid_request"
+  | "not_found"
+  | "not_scheduled"
+  | "already_ended"
+  | "update_failed";
+
 export const createMeetingSchema = z.discriminatedUnion("kind", [
   createInstantMeetingSchema,
   createScheduledMeetingSchema,

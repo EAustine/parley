@@ -601,6 +601,168 @@ try {
     `${floodOk} allowed, then HTTP ${flood[60]}`,
   );
 
+  // --- scheduling, §3.9 ----------------------------------------------------
+  //
+  // Its own fixtures, not the ones above. The instant meeting up there is
+  // deliberately aged past the 30-day window by an earlier check, and the
+  // scheduled one's title is asserted on further down — reusing either meant
+  // this section read a meeting another section had already changed out from
+  // under it, and both failures looked like bugs in this code.
+  const planRes = await app("/api/meetings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "scheduled",
+      title: "Calendar fixture",
+      description: "Bring the numbers.",
+      scheduledStart: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+      durationMinutes: 45,
+      timezone: "Africa/Accra",
+    }),
+  });
+  const plan = await planRes.json();
+  check(planRes.status === 201 && Boolean(plan.code),
+        "a scheduled meeting for the calendar checks", `HTTP ${planRes.status}`);
+
+  const adhocRes = await app("/api/meetings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "instant", title: "Calendar fixture, instant" }),
+  });
+  const adhoc = await adhocRes.json();
+
+  const ics = await fetch(`${APP}/api/meetings/${plan.code}/ics`);
+  const icsBody = await ics.text();
+  check(
+    ics.status === 200 && /^text\/calendar/.test(ics.headers.get("content-type") ?? ""),
+    "the .ics is served as text/calendar",
+    `HTTP ${ics.status}, ${ics.headers.get("content-type")}`,
+  );
+  check(
+    (ics.headers.get("content-disposition") ?? "").includes(`${plan.code}.ics`),
+    "as an attachment named after the meeting",
+    ics.headers.get("content-disposition"),
+  );
+  // A cached calendar file is the missed-meeting failure §3.9 is about.
+  check(
+    (ics.headers.get("cache-control") ?? "").includes("no-store"),
+    "and is not cached",
+    ics.headers.get("cache-control"),
+  );
+  check(
+    icsBody.startsWith("BEGIN:VCALENDAR\r\n") && icsBody.trimEnd().endsWith("END:VCALENDAR"),
+    "the body is a calendar",
+  );
+  check(
+    icsBody.includes(`/j/${plan.code}`),
+    "carrying the join link",
+  );
+  check(
+    /\r\nUID:[^\r\n]+@/.test(icsBody) && /\r\nDTSTAMP:\d{8}T\d{6}Z/.test(icsBody),
+    "with the properties a VEVENT cannot be valid without",
+  );
+
+  // Public — a link-holder is exactly who needs the file, and it shows them
+  // nothing the join page does not.
+  const icsAnon = await fetch(`${APP}/api/meetings/${plan.code}/ics`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  check(icsAnon.status === 200, "and is readable without a session", `HTTP ${icsAnon.status}`);
+
+  // An instant meeting has no time to put in a calendar.
+  const icsInstant = await fetch(`${APP}/api/meetings/${adhoc.code}/ics`);
+  const icsInstantBody = await icsInstant.text();
+  check(
+    icsInstant.status === 404 && icsInstantBody.includes("not_scheduled"),
+    "an instant meeting has no calendar file, and says so",
+    `HTTP ${icsInstant.status} ${icsInstantBody.slice(0, 80)}`,
+  );
+
+  const icsUnknown = await fetch(`${APP}/api/meetings/${unknownCode()}/ics`);
+  check(icsUnknown.status === 404, "an unknown code gets 404", `HTTP ${icsUnknown.status}`);
+
+  // §3.9: "Editing a scheduled meeting regenerates the .ics with an
+  // incremented SEQUENCE."
+  const sequenceOf = (text) =>
+    Number(text.split("\r\n").find((l) => l.startsWith("SEQUENCE:"))?.slice(9));
+  const before = sequenceOf(icsBody);
+
+  const edited = await app(`/api/meetings/${plan.code}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Roadmap planning, revised" }),
+  });
+  check(edited.status === 200, "a host can edit their scheduled meeting", `HTTP ${edited.status}`);
+
+  const afterEdit = await (await fetch(`${APP}/api/meetings/${plan.code}/ics`)).text();
+  check(
+    sequenceOf(afterEdit) === before + 1,
+    "and the SEQUENCE increments, so calendars replace rather than duplicate",
+    `${before} → ${sequenceOf(afterEdit)}`,
+  );
+  check(
+    // The comma has to survive: unescaped, it starts a second value and
+    // silently truncates the property.
+    afterEdit.includes("SUMMARY:Roadmap planning\\, revised"),
+    "the new title reaches SUMMARY with its comma escaped",
+    afterEdit.split("\r\n").find((l) => l.startsWith("SUMMARY:")),
+  );
+
+  // Ownership is RLS, not a second check. Someone else's meeting is not found,
+  // which is true and declines to confirm that the code exists.
+  const notMine = await fetch(`${APP}/api/meetings/${plan.code}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Taken over" }),
+  });
+  check(
+    notMine.status === 401,
+    "an unauthenticated edit is refused",
+    `HTTP ${notMine.status}`,
+  );
+
+  const instantEdit = await app(`/api/meetings/${adhoc.code}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Now scheduled" }),
+  });
+  check(
+    instantEdit.status === 400 && (await instantEdit.json()).error === "not_scheduled",
+    "an instant meeting cannot be edited into a scheduled one",
+    `HTTP ${instantEdit.status}`,
+  );
+
+  const emptyPatch = await app(`/api/meetings/${plan.code}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  check(emptyPatch.status === 400, "an empty edit is refused", `HTTP ${emptyPatch.status}`);
+
+  // Cancelling, §7's DELETE. It ends the meeting rather than removing the row:
+  // §3.9 keeps past meetings, and a link already sent has to keep resolving to
+  // §3.2's designed "this meeting has ended" rather than to a 404.
+  const cancelled = await app(`/api/meetings/${plan.code}`, { method: "DELETE" });
+  check(cancelled.status === 200, "a host can cancel their meeting", `HTTP ${cancelled.status}`);
+
+  const afterCancel = await (await fetch(`${APP}/api/meetings/${plan.code}/ics`)).text();
+  check(
+    afterCancel.includes("STATUS:CANCELLED"),
+    "and the calendar file says so, keeping its UID so clients can reconcile",
+  );
+  check(
+    sequenceOf(afterCancel) > sequenceOf(afterEdit),
+    "with a further SEQUENCE, or the cancellation would be ignored",
+    `${sequenceOf(afterEdit)} → ${sequenceOf(afterCancel)}`,
+  );
+  const cancelledJoin = await fetch(`${APP}/j/${plan.code}`);
+  check(
+    cancelledJoin.status === 200 && (await cancelledJoin.text()).includes("has ended"),
+    "and the link still resolves, to the designed ended state",
+    `HTTP ${cancelledJoin.status}`,
+  );
+
+
   // --- /room/[code] renders a designed state for each contract failure -----
   //
   // The route requests its token in the browser, so these fetch the page and

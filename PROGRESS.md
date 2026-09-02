@@ -1720,3 +1720,151 @@ instead.
 `check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
 `check:room` **70**, `check:chat` **67**, `check:rls` 18, `typecheck`, `lint`,
 `check:meetings` 43/43, `check:bundle` 8/8, `check:media` **18/18** — all pass.
+
+---
+
+## Phase 6 — Scheduling and calendar
+
+A meeting created in one timezone lands correctly in another, and can be put
+into any calendar without an OAuth consent screen.
+
+### The DST gap, which was a silent hour
+
+§3.9 calls timezones "the one place where a quiet bug produces a missed
+meeting". Measuring rather than assuming found one, in the platform itself:
+
+```
+02:30 Europe/Berlin, 29 March 2026  →  00:30Z  →  01:30 local
+```
+
+That morning the clocks go forward at 02:00, so 02:30 never happens.
+`fromZonedTime` resolves it **backward** — the meeting lands an hour *earlier*
+than typed, not later, and nothing throws or marks it. An hour early is the
+direction nobody checks.
+
+`resolveWallClock` round-trips the instant back through the same zone; if it
+does not come back as what was typed, the time does not exist. The form then
+says so and says what it will schedule instead, rather than being quietly
+wrong. Verified in a browser:
+
+> 02:30 doesn't exist on 2026-03-29 in Europe/Berlin — the clocks change that
+> day. This will be scheduled for **01:30** instead.
+> Starts Sun 29 Mar, 01:30 GMT+1 · 00:30 GMT where you are
+
+It is not blocked. An hour that does not exist is a fact about the calendar,
+not a mistake to be scolded for. The autumn case needs no warning at all: when
+the clocks go back, 02:30 happens twice, both are real, and the round trip is
+exact.
+
+### §3.9's own acceptance case, demonstrated
+
+A meeting scheduled at 14:30 Europe/Berlin, viewed from Africa/Accra, renders:
+
+```
+Tue 15 Sep, 12:30 GMT
+Tue 15 Sep, 14:30 GMT+2 where it was scheduled
+```
+
+Both numbers carry their zone, which is what makes either of them checkable.
+The `.ics` for the same meeting writes `DTSTART:20260915T123000Z` — the instant,
+not the wall clock, so it is the same moment for everyone who imports it.
+
+### The calendar file, written by hand
+
+No dependency: rule 9 would need asking, and the format is a hundred lines of
+string handling whose every rule is checkable. What makes it worth writing
+carefully is that the failure mode is silent — a client that dislikes a file
+imports nothing and says nothing.
+
+Three rules do most of the work and all three are easy to get almost right:
+CRLF everywhere; folding at **75 octets, not characters**; and escaping TEXT
+values. A title with a comma silently truncates the property otherwise, because
+the comma starts a second value. Verified on a real file:
+
+```
+SUMMARY:Quarterly planning\, with numbers
+DESCRIPTION:Bring the Q3 figures.\n\nJoin: http://localhost:3000/j/3ku-zn4a
+ -2u3
+```
+
+Every line within 75 octets, the fold continuing with a single space. Multi-byte
+titles fold by byte and never split a code point — a Greek title and a string of
+emoji are both checked, because a character-counting fold produces a file that
+is no longer valid UTF-8 and only for people whose names are not ASCII.
+
+`SEQUENCE` increments on edit *and* on cancellation. Without the second, a
+calendar already holding the event ignores the cancellation.
+
+### Decisions worth naming
+
+- **Cancelling ends the meeting rather than deleting the row.** §3.9 keeps past
+  meetings, and a link already sent has to keep resolving to §3.2's designed
+  "This meeting has ended" rather than to a 404 that tells someone holding a
+  real invite it was never real. `ended` rather than a new `cancelled` status:
+  a fourth enum value means a migration, a change to `get_meeting_by_code`, and
+  a new join-page state. **Flagged rather than decided** — worth doing if
+  cancelled should read differently from ended.
+- **No `METHOD` in the file.** `METHOD:REQUEST` makes it an iTIP message needing
+  an ORGANIZER and ATTENDEEs; without them some clients import it as a
+  scheduling request from nobody. This is a file someone adds to their own
+  calendar.
+- **Editing cannot change a meeting's kind.** An instant meeting becoming a
+  scheduled one is a different meeting, and should have a different link rather
+  than changing under people who already hold this one.
+- **Ownership is RLS, in both new routes.** Someone else's meeting is not found
+  — true, and it declines to confirm the code exists. Same authority the token
+  endpoint uses.
+
+### Two new routes, and a budget question for §10
+
+`/schedule` at **273 kB** and `/schedule/[code]** at **263 kB**. §10's table
+does not list them; `check:bundle` now carries 290 kB for both, measured plus
+headroom, on the reasoning §10 gives the dashboard. **Proposed, not settled —
+§10 should carry the rows.**
+
+`/schedule/[code]` was 282 kB until the edit form was moved behind
+`next/dynamic`. Most visits to that page copy a link or add a calendar entry
+and never open the form, and weight only some visits need should only be
+fetched by those visits — the same argument rule 8 makes for `livekit-client`.
+
+### A dev tool that was overdue
+
+Every screen behind auth was unreachable in a browser, because magic links
+arrive by email. `npm run dev:signin -- you@example.com` mints one directly.
+It **refuses unless `NEXT_PUBLIC_APP_URL` is localhost** — the same guard
+`seed-dev.mjs` carries, for a stronger reason: the output is a working
+credential for whatever account is named.
+
+### Checks
+
+`check:ics` is new at **64**, covering the format's own rules, both prefill
+conventions, and the timezone arithmetic. Every RFC rule was mutation-tested
+per CLAUDE.md's first testing rule — removing CRLF, comma escaping, octet
+folding, `DTSTAMP` or the `SEQUENCE` increment each turns the suite red.
+
+`check:meetings` went 43 → **63**, against a running server: content type,
+disposition, `no-store`, the join link, an instant meeting having no calendar
+file and saying so, edit incrementing `SEQUENCE`, cancellation writing
+`STATUS:CANCELLED` with a further increment, and the cancelled link still
+resolving to the ended state.
+
+`check:bundle` 8 → **10**. All pass, with `check:room` 70, `check:chat` 67,
+`check:permissions` 39, `check:rls` 18, `check:media` 18/18.
+
+**Two of my own tests were wrong before the code was**, both from reusing
+fixtures other sections deliberately mutate: the instant meeting is aged past
+the 30-day window by an earlier check, and my edit renamed the scheduled one an
+existing assertion depends on. The scheduling section now creates its own.
+
+### Still needs a human
+
+- **Importing the `.ics` into Google, Apple and Outlook.** BUILD-PLAN asks for
+  all three. The file is correct against the spec and checked line by line, but
+  "valid" and "imports cleanly" are different claims and only one of them can
+  be made from here.
+- **The prefill links opening a real composer.** Both are undocumented
+  query-string conventions; the parameters are pinned, but whether Google and
+  Outlook still honour them needs clicking.
+- **A real timezone change**, which BUILD-PLAN asks for by name. The
+  arithmetic is checked across Accra, Berlin, Kolkata and two DST transitions;
+  changing the machine's own zone is a different test.

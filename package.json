@@ -20,7 +20,9 @@
     "check:room": "node scripts/check-room.mjs",
     "fixtures:media": "node scripts/make-media-fixtures.mjs",
     "check:media": "npm run fixtures:media && node --env-file=.env.local node_modules/@playwright/test/cli.js test",
-    "check:chat": "node scripts/check-chat.mjs"
+    "check:chat": "node scripts/check-chat.mjs",
+    "check:ics": "node scripts/check-ics.mjs",
+    "dev:signin": "node --env-file=.env.local scripts/dev-signin.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

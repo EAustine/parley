@@ -65,17 +65,31 @@ export function MeetingRow({
         </div>
       </div>
 
-      {!past && (
-        <div className="flex shrink-0 items-center gap-2">
-          <CopyLinkButton code={meeting.code} />
+      <div className="flex shrink-0 items-center gap-2">
+        {/* A scheduled meeting has a page of its own: the calendar exports and
+            the form to change it. Reachable whether or not it has passed —
+            §3.9 keeps past meetings around, and a host still wants to see what
+            was arranged. */}
+        {meeting.scheduled_start !== null && (
           <Link
-            href={`/j/${meeting.code}`}
+            href={`/schedule/${meeting.code}`}
             className="type-small rounded-md px-3 py-2 underline underline-offset-4"
           >
-            Join
+            Details
           </Link>
-        </div>
-      )}
+        )}
+        {!past && (
+          <>
+            <CopyLinkButton code={meeting.code} />
+            <Link
+              href={`/j/${meeting.code}`}
+              className="type-small rounded-md px-3 py-2 underline underline-offset-4"
+            >
+              Join
+            </Link>
+          </>
+        )}
+      </div>
     </li>
   );
 }

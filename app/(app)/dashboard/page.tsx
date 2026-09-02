@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 
 import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import Link from "next/link";
+
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
+import { Button } from "@/components/ui/button";
 import { MeetingRow, type MeetingRowData } from "@/components/meetings/MeetingRow";
 
 export const metadata: Metadata = {
@@ -83,6 +86,11 @@ export default async function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <StartMeetingButton />
+          {/* §3.10's second primary action. The empty state below has invited
+              it since Phase 2; this is the button that invitation meant. */}
+          <Button asChild variant="outline">
+            <Link href="/schedule">Schedule meeting</Link>
+          </Button>
           <SignOutButton />
         </div>
       </div>
@@ -96,7 +104,11 @@ export default async function DashboardPage() {
       {meetings.length === 0 && !error ? (
         <div className="rounded-lg border border-border p-10 text-center">
           <p className="type-body">
-            No meetings yet. Start one now, or schedule for later.
+            No meetings yet. Start one now, or{" "}
+            <Link href="/schedule" className="underline underline-offset-2">
+              schedule for later
+            </Link>
+            .
           </p>
         </div>
       ) : (

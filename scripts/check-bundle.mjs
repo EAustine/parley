@@ -27,6 +27,12 @@ const BUDGETS = {
   "/j/[code]": 230,
   "/room/[code]": 250,
   "/dashboard": 280,
+  // Phase 6's two routes. §10's table does not list them yet — these are
+  // measured (273 and 263) plus headroom, on the same reasoning §10 gives the
+  // dashboard: behind auth, revisited by the same people, amortised across
+  // sessions. Proposed rather than settled; §10 should carry the rows.
+  "/schedule": 290,
+  "/schedule/[code]": 290,
 };
 const SHARED_BUDGET = 180;
 
