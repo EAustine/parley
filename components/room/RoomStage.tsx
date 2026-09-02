@@ -15,11 +15,13 @@ import { useControlVisibility } from "@/lib/hooks/useControlVisibility";
 import { useRoomMessages } from "@/lib/hooks/useRoomMessages";
 import { useRoomShortcuts } from "@/lib/hooks/useRoomShortcuts";
 import { useScreenShare } from "@/lib/hooks/useScreenShare";
-import { isHost } from "@/lib/room/participant";
+import { displayNameOf, isHost } from "@/lib/room/participant";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { MuteRequestPrompt } from "@/components/room/MuteRequestPrompt";
 import { ParticipantsPanel } from "@/components/room/ParticipantsPanel";
 import { ReactionOverlay } from "@/components/room/ReactionOverlay";
+import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
+import { ReplacedNotice } from "@/components/room/ReplacedNotice";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
 import { ScreenShareStage } from "@/components/room/ScreenShareStage";
@@ -306,6 +308,18 @@ function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
       {/* §3.7: persistent, and deliberately not tied to the auto-hiding
           control bar — what it says is that other people can see your screen. */}
       {share.sharing && <SharingBar onStop={share.stop} />}
+
+      {share.replacing && (
+        <ReplaceShareDialog
+          presenter={displayNameOf(share.replacing)}
+          onConfirm={() => void share.confirmReplace()}
+          onCancel={share.cancelReplace}
+        />
+      )}
+
+      {share.replacedBy && (
+        <ReplacedNotice by={share.replacedBy} onDismiss={share.dismissReplaced} />
+      )}
 
       {messages.muteRequest && (
         <MuteRequestPrompt

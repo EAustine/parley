@@ -2066,3 +2066,93 @@ unchanged at 154 kB against 250.
   person being replaced. Not built: §3.7 specifies it, and it needs a design
   decision about what the replaced person sees and how long they have to
   object. Flagged rather than guessed.
+
+---
+
+## Share replacement, the roomAdmin constraint, and the toggle/disclosure split
+
+### The direction I declined to guess
+
+§3.7 settles it, and the reasoning is the part worth keeping:
+
+> Confirming with the replaced person blocks the second sharer on someone
+> else's dialog — if the current presenter has stepped away, the share simply
+> hangs with no way forward. It also interrupts an active presenter with a
+> modal mid-sentence to ask permission for something they cannot meaningfully
+> evaluate in the moment.
+
+So the dialog goes to the person acting: *"Ama Serwaa is presenting. Sharing
+will replace theirs."* — Continue or Cancel. The replaced person gets a
+non-modal notice that dismisses itself, because their share has already stopped
+and there is nothing left to decide. A notice that must be cleared is a dialog
+wearing a different shape.
+
+No message crosses the wire for this. The replacement *is* the new track
+appearing — whoever was already sharing sees a second share and stops.
+
+### The rare race was the normal path
+
+I wrote that rule with a comment calling the simultaneous case "rare,
+recoverable" — and shipped a bug. "I am sharing and someone else's share
+exists, so I stop" is true for the *incoming* presenter too, during the moment
+both tracks are live. Both sides yielded and the room had nobody presenting.
+
+The test found it on the first run, which is the argument for having written it.
+The fix is a flag the confirming side sets: the person who just took over does
+not yield to the person they took over from, and it clears when the other share
+goes — which is the acknowledgement that the handover finished. Nothing depends
+on clocks agreeing.
+
+Worth recording as a pattern, not just a bug: **a comment describing a race as
+unlikely is a claim, and claims in comments are the ones nothing checks.**
+
+### `roomAdmin` is now constrained by something other than good intentions
+
+§3.8 makes the point sharply — the client-side guarantee (no unmute message
+exists, so no client can send one) is worthless if a server route quietly
+widens it, because `roomAdmin` carries mute *and* unmute on LiveKit's server
+API.
+
+`check:room` now reads every file that constructs a `RoomServiceClient` and
+asserts it calls only an allow-listed method — currently `removeParticipant`
+alone — and separately that it never names `mutePublishedTrack`,
+`updateParticipant`, `updateSubscriptions` or `sendData`. A guard against
+vacuity comes first: if no file spends `roomAdmin` at all, that is reported
+rather than silently passing.
+
+Adding a method is now a deliberate act with a failing check in front of it.
+Proved by adding `mutePublishedTrack` to the remove route: two assertions go
+red and name it.
+
+### The naming flag, resolved into two patterns
+
+The duplication I raised is settled by splitting the rule rather than bending
+one to fit:
+
+- **State toggles** (mic, camera, screen share) name the action and change with
+  it. `aria-pressed` is **gone** — an action name plus a pressed state
+  announces the same fact twice, in an order that reads as a contradiction.
+- **Disclosures** (chat, participants) take a noun name plus `aria-expanded`
+  and `aria-controls`. The bar button is "Participants"; the panel's close
+  button is "Close participants". Different controls, different names.
+
+That is a better resolution than the one I was heading towards. I had assumed
+the floor's "name the action" rule applied to both and that the collision was
+the price; the rule was written for device toggles and over-generalised.
+
+**One document conflict to flag.** PRD §9 still reads *"Mic and camera buttons
+use `aria-pressed`, and the accessible name states the action"*, which CLAUDE.md
+now contradicts with its reasoning stated. I followed CLAUDE.md — it is the
+rules file and the newer, argued position — but §9 should be updated to match
+or the next session will find them disagreeing.
+
+### Checks
+
+`check:room` 87 → **90**, `check:media` 27 → **29**. All pass, with
+`check:chat` 73, `check:ics` 69, `check:meetings` 68, `check:permissions` 39,
+`check:contrast` 24, `check:rls` 18, `check:bundle` 10/10.
+
+Two new e2e tests cover the replacement in both directions: that Cancel leaves
+everything as it was, that Continue hands over and tells the replaced person,
+that the notice is not a dialog, and that sharing when nobody else is presenting
+asks nothing at all.

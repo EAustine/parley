@@ -124,8 +124,10 @@ export function RoomControls({
               <button
                 type="button"
                 onClick={share.toggle}
+                // A state toggle: the name is the action and changes with
+                // it. No `aria-pressed` — an action name plus a pressed state
+                // announces the same fact twice, in a confusing order.
                 aria-label={share.sharing ? "Stop sharing your screen" : "Share your screen"}
-                aria-pressed={share.sharing}
                 className="flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
                 style={{
                   // §3.4: "Active = filled --primary". The only control that
@@ -158,7 +160,11 @@ export function RoomControls({
             <button
               type="button"
               onClick={onToggleChat}
-              aria-label={chatOpen ? "Close chat" : "Open chat"}
+              // A disclosure, not a state toggle: a noun name, with
+              // `aria-expanded` carrying open or closed. Naming it for the
+              // action gave it the same name as the panel's own close button,
+              // heard twice in one tab cycle.
+              aria-label="Chat"
               aria-expanded={chatOpen}
               aria-controls="chat-panel"
               className="relative flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
@@ -203,9 +209,7 @@ export function RoomControls({
             <button
               type="button"
               onClick={onToggleParticipants}
-              aria-label={
-                participantsOpen ? "Close participants" : "Show participants"
-              }
+              aria-label="Participants"
               aria-expanded={participantsOpen}
               aria-controls="participants-panel"
               className="relative flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
@@ -278,11 +282,11 @@ function CircleToggle({
         <button
           type="button"
           onClick={onToggle}
-          // The accessible name states the action, not the state — the
-          // accessibility floor is explicit about this. `aria-pressed`
-          // carries the state.
+          // A state toggle. The name is the action and changes with it —
+          // "Turn off microphone" becomes "Turn on microphone". No
+          // `aria-pressed`: an action name plus a pressed state announces the
+          // same fact twice, and in an order that reads as a contradiction.
           aria-label={label}
-          aria-pressed={!on}
           className="flex size-12 items-center justify-center rounded-full border transition-colors duration-[120ms]"
           style={{
             // Off is a fill and an icon change, never a hue change — rule 5.

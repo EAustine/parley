@@ -91,9 +91,17 @@ test.describe("two participants", () => {
     // Rule 3: the indicator follows the published track, not a local boolean —
     // so it can only appear here if the mute actually crossed the SFU.
     await expect(amaOnKwabena).toHaveCount(1);
+    // The accessibility floor: a state toggle names the action and changes
+    // with it. No `aria-pressed` — that would announce the same fact twice.
     await expect(
       ama.page.getByRole("button", { name: "Turn on microphone" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toBeVisible();
+    expect(
+      await ama.page
+        .getByRole("button", { name: "Turn on microphone" })
+        .getAttribute("aria-pressed"),
+      "a state toggle should not carry aria-pressed",
+    ).toBeNull();
 
     await wakeControls(ama.page);
     await ama.page.getByRole("button", { name: "Turn on microphone" }).click();

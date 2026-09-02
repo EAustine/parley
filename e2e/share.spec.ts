@@ -33,7 +33,7 @@ const sharingBar = (p: Participant) =>
 
 async function openParticipants(p: Participant) {
   await wakeControls(p.page);
-  await p.page.getByRole("button", { name: "Show participants" }).click();
+  await p.page.getByRole("button", { name: "Participants", exact: true }).click();
   await expect(p.page.getByRole("complementary", { name: "Participants" })).toBeVisible();
 }
 
@@ -59,9 +59,10 @@ test.describe("screen share", () => {
     // §3.7: a persistent bar, not one that hides with the controls — what it
     // says is that other people can see your screen.
     await expect(sharingBar(ama)).toBeVisible();
+    // The name changed with the state; no `aria-pressed` alongside it.
     await expect(
       ama.page.getByRole("button", { name: "Stop sharing your screen" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toBeVisible();
 
     // §3.7: "The sharer's own view of the shared content is suppressed."
     await expect(ama.page.getByText(/your own view is hidden/i)).toBeVisible();
@@ -169,6 +170,63 @@ test.describe("screen share", () => {
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeHidden();
   });
 
+  test("a second sharer is asked, and the first is told", async ({ browser }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(ama.page, 2);
+    await expectParticipants(kwabena.page, 2);
+
+    await wakeControls(ama.page);
+    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
+
+    // §3.7: the confirmation goes to the person taking the action. Kwabena is
+    // asked; Ama is not interrupted with a dialog she cannot usefully weigh.
+    await wakeControls(kwabena.page);
+    await kwabena.page.getByRole("button", { name: "Share your screen" }).click();
+    const dialog = kwabena.page.getByRole("dialog", { name: "Replace the current share" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Ama Serwaa is presenting")).toBeVisible();
+    // Nothing has happened yet — asking is not doing.
+    await expect(ama.page.getByRole("dialog")).toHaveCount(0);
+    await expect(sharingBar(ama)).toBeVisible();
+
+    // Cancel leaves everything as it was.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(sharingBar(ama)).toBeVisible();
+
+    // Continue takes over.
+    await wakeControls(kwabena.page);
+    await kwabena.page.getByRole("button", { name: "Share your screen" }).click();
+    await kwabena.page
+      .getByRole("dialog", { name: "Replace the current share" })
+      .getByRole("button", { name: "Continue" })
+      .click();
+
+    // §3.7: one share at a time. Ama yields, and is told rather than asked.
+    await expect(sharingBar(kwabena)).toBeVisible();
+    await expect(sharingBar(ama)).toBeHidden({ timeout: 15_000 });
+    await expect(ama.page.getByText(/Kwabena Osei.*is now presenting/)).toBeVisible();
+    await expect(ama.page.getByText("Kwabena Osei is sharing")).toBeVisible();
+
+    // The notice is not a dialog — her share is already stopped, so there is
+    // nothing to decide and nothing should be demanding an answer.
+    await expect(ama.page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("sharing alone asks nothing", async ({ browser }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    await expectParticipants(ama.page, 1);
+
+    await wakeControls(ama.page);
+    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    // No presenter to replace, so the dialog never appears and the share
+    // starts on one press.
+    await expect(sharingBar(ama)).toBeVisible();
+    await expect(ama.page.getByRole("dialog")).toHaveCount(0);
+  });
+
   test("share survives opening and closing the chat panel", async ({ browser }) => {
     ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
     kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
@@ -181,7 +239,7 @@ test.describe("screen share", () => {
     // §3.7 acceptance. A panel toggle re-renders the room; the share must not
     // be a casualty of that.
     await wakeControls(kwabena.page);
-    await kwabena.page.getByRole("button", { name: "Open chat" }).click();
+    await kwabena.page.getByRole("button", { name: "Chat", exact: true }).click();
     await expect(kwabena.page.getByRole("complementary", { name: "Meeting chat" })).toBeVisible();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 

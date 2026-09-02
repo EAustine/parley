@@ -360,6 +360,72 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+// §3.8: what a server route is allowed to do with roomAdmin
+// ---------------------------------------------------------------------------
+console.log("\nServer-side room powers\n");
+
+// "`roomAdmin` carries mute and unmute powers on LiveKit's server API… Any
+// future route that spends `roomAdmin` inherits this constraint — the
+// client-side guarantee is worthless if a server route quietly widens it."
+//
+// The absence of an unmute message stops a client. Nothing stops a route, so
+// this is what does: every file that constructs a RoomServiceClient may call
+// only the methods on this list. Adding one is a deliberate act with a
+// failing check in front of it, which is the point.
+const ALLOWED_ROOM_SERVICE_CALLS = new Set(["removeParticipant"]);
+
+// Anything on the server SDK that could mute, unmute, or publish on someone
+// else's behalf. Named rather than inferred, so the check states what it is
+// defending against.
+const FORBIDDEN_ROOM_SERVICE_CALLS = [
+  "mutePublishedTrack",
+  "updateParticipant",
+  "updateSubscriptions",
+  "sendData",
+];
+
+const routeFiles = [];
+const walkRoutes = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkRoutes(path);
+    else if (entry.name.endsWith(".ts")) routeFiles.push(path);
+  }
+};
+walkRoutes("app");
+walkRoutes("lib");
+
+const usesRoomService = routeFiles.filter((file) =>
+  /new\s+RoomServiceClient\b/.test(readFileSync(file, "utf8")),
+);
+
+check(
+  usesRoomService.length > 0,
+  `something spends roomAdmin, so this check is not vacuous  (${usesRoomService.length} file)`,
+  "no RoomServiceClient found — either it moved or this check stopped applying",
+);
+
+for (const file of usesRoomService) {
+  const source = readFileSync(file, "utf8").replace(/^\s*\/\/.*$/gm, "");
+  const called = [...source.matchAll(/\bservice\.(\w+)\s*\(/g)].map((m) => m[1]);
+  const beyond = called.filter((name) => !ALLOWED_ROOM_SERVICE_CALLS.has(name));
+  check(
+    beyond.length === 0,
+    `${file} calls only what §3.8 permits  (${[...new Set(called)].join(", ")})`,
+    `also calls: ${[...new Set(beyond)].join(", ")}`,
+  );
+
+  const forbidden = FORBIDDEN_ROOM_SERVICE_CALLS.filter((name) =>
+    source.includes(`${name}(`),
+  );
+  check(
+    forbidden.length === 0,
+    `${file} never reaches for a mute or unmute power`,
+    `found: ${forbidden.join(", ")}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Hiding, owned rather than inherited
 // ---------------------------------------------------------------------------
 console.log("\nWhat hides a panel\n");
@@ -385,6 +451,6 @@ check(
 
 const total =
   desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3 + 2
-  + 3 + 7 + 2 + 5;
+  + 3 + 7 + 2 + 5 + 1 + usesRoomService.length * 2;
 console.log(`\n${total - failed}/${total} room checks passed.`);
 if (failed) process.exit(1);

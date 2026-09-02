@@ -352,8 +352,10 @@ function DeviceToggle({
           type="button"
           onClick={onToggle}
           disabled={disabled}
+          // A state toggle: the name is the action, and no `aria-pressed`.
+          // See the accessibility floor — carrying both says the same thing
+          // twice.
           aria-label={label}
-          aria-pressed={!on}
           className="flex size-12 items-center justify-center rounded-full border transition-colors duration-[120ms] disabled:opacity-50"
           style={{
             // Off is a fill change, not a hue change — rule 5.

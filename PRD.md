@@ -247,7 +247,11 @@ Under `prefers-reduced-motion`, reactions appear and fade in place with no trave
 
 ### 3.7 Screen share
 
-Desktop only. `getDisplayMedia`. One share at a time; a second person starting a share replaces the first, with a confirm dialog for the person being replaced.
+Desktop only. `getDisplayMedia`. One share at a time. **The confirmation goes to the person taking the action, not the person being replaced.**
+
+A second sharer sees "Ama is presenting. Sharing will replace theirs." with Continue and Cancel. The replaced person gets a non-modal notice: "Kofi is now presenting."
+
+The original spec had this backwards. Confirming with the replaced person blocks the second sharer on someone else's dialog — if the current presenter has stepped away, the share simply hangs with no way forward. It also interrupts an active presenter with a modal mid-sentence to ask permission for something they cannot meaningfully evaluate in the moment. The person whose action has a consequence is the person who should weigh it, and they are the only one who can act without waiting.
 
 - The sharer sees a persistent "You're sharing your screen" bar with a stop button, visible even if the tab is backgrounded when they return
 - The sharer's own view of the shared content is suppressed to avoid the infinite mirror
@@ -265,6 +269,10 @@ Desktop only. `getDisplayMedia`. One share at a time; a second person starting a
 List of everyone present: name, mic state, camera state, connection quality, host badge. Host sees per-participant actions: mute (request), remove.
 
 A host cannot unmute someone else. Muting is a request the participant must accept — the host can silence, never activate.
+
+**Built as an absence, not a refusal.** The data envelope has `mute-request` and no counterpart, so a modified client has nothing to send. That is stronger than a receiver declining to honour a message: a refusal is code, and code can be refactored away or bypassed when someone later adds a generic handler. A missing message type is not a rule anyone can forget.
+
+The absence covers client to client. It does not cover the server, and that is where the rule needs restating: **`roomAdmin` carries mute and unmute powers on LiveKit's server API.** The remove route mints that grant for a single request after RLS has verified the caller is the host. It calls `removeParticipant` and nothing else. Any future route that spends `roomAdmin` inherits this constraint — the client-side guarantee is worthless if a server route quietly widens it.
 
 ---
 

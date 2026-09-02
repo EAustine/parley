@@ -295,7 +295,10 @@ Non-negotiable, checked every phase:
 
 - Every control keyboard reachable, `--ring` focus at 2px offset
 - Panels focus-trapped; Escape closes and returns focus to the trigger
-- Mic/camera use `aria-pressed`; accessible name states the **action** ("Turn off microphone"), not the state
+- **State toggles** (mic, camera) name the action and change with it: "Turn off microphone" → "Turn on microphone". No `aria-pressed` — carrying both an action name and a pressed state announces the same fact twice, in a confusing order
+- **Disclosure controls** (chat, participants) are the other pattern: a noun name plus `aria-expanded` and `aria-controls`. The bar button is "Participants"; the panel's close button is "Close participants". They are different controls doing different things and should not share a name
+
+  The rule above was written for mic and camera and over-generalised. A device toggle changes something in the world; a panel toggle reveals part of the interface. Applying "name the action" to both is what produced two controls called "Close participants", heard twice per tab cycle.
 - Join/leave announcements batched — more than 3 events in 5s collapses to "3 people joined"; suppressed entirely above 8 participants
 - Chat announces "{name} sent a message" when the panel is closed, never the body
 - Reactions throttled to one announcement per participant per 2s

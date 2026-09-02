@@ -23,7 +23,7 @@ test.beforeEach(async () => {
 
 async function openChat(p: Participant) {
   await wakeControls(p.page);
-  await p.page.getByRole("button", { name: "Open chat" }).click();
+  await p.page.getByRole("button", { name: "Chat", exact: true }).click();
   await expect(p.page.getByRole("complementary", { name: "Meeting chat" })).toBeVisible();
 }
 
@@ -146,7 +146,7 @@ test.describe("chat", () => {
     await openChat(ama);
 
     // Kwabena's panel is shut.
-    const chatButton = kwabena.page.getByRole("button", { name: "Open chat" });
+    const chatButton = kwabena.page.getByRole("button", { name: "Chat", exact: true });
     await wakeControls(kwabena.page);
     await expect(chatButton).toHaveAttribute("aria-expanded", "false");
 
@@ -159,8 +159,9 @@ test.describe("chat", () => {
 
     // Opening clears it.
     await openChat(kwabena);
-    await expect(kwabena.page.getByRole("button", { name: "Close chat" }).locator("span"))
-      .toHaveCount(0);
+    await expect(
+      kwabena.page.getByRole("button", { name: "Chat", exact: true }).locator("span"),
+    ).toHaveCount(0);
   });
 
   test("groups a run of messages under one header, and breaks on a new sender", async ({ browser }) => {
@@ -298,7 +299,7 @@ test.describe("chat", () => {
     ).toBe("none");
     // A panel that can be opened from the keyboard and not closed from it is a
     // trap; one that closes and drops focus to the body is nearly as bad.
-    await expect(ama.page.getByRole("button", { name: "Open chat" })).toBeFocused();
+    await expect(ama.page.getByRole("button", { name: "Chat", exact: true })).toBeFocused();
   });
 });
 

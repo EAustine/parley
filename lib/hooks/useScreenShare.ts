@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track, type Participant } from "livekit-client";
+
+import { displayNameOf } from "@/lib/room/participant";
 
 /**
  * §3.7. One share at a time, desktop only, and stoppable from either end.
@@ -32,6 +34,18 @@ import { Track, type Participant } from "livekit-client";
  */
 
 export type ScreenShareState = {
+  /**
+   * Set when starting would replace someone else's share — §3.7. The dialog
+   * goes to the person about to act, never to the one being replaced: waiting
+   * on someone else's confirmation means a presenter who has stepped away
+   * blocks everyone behind them, with no way forward.
+   */
+  replacing: Participant | null;
+  confirmReplace: () => Promise<void>;
+  cancelReplace: () => void;
+  /** Set for the person who was replaced — a notice, not a question. */
+  replacedBy: string | null;
+  dismissReplaced: () => void;
   /** Available at all — §3.7 is desktop only. */
   supported: boolean;
   /** This participant is sharing. Derived from the publication, not a boolean. */
@@ -51,6 +65,22 @@ export function useScreenShare(): ScreenShareState {
   const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
   const [error, setError] = useState<string | null>(null);
   const [supported, setSupported] = useState(false);
+  const [replacing, setReplacing] = useState<Participant | null>(null);
+  const [replacedBy, setReplacedBy] = useState<string | null>(null);
+  /**
+   * Set while this participant is deliberately taking over.
+   *
+   * Without it both sides yield. The rule below — "I am sharing and someone
+   * else's share exists, so I stop" — is true for the incoming presenter too
+   * during the moment both tracks are live, so a straight reading of it hands
+   * the room to nobody. The first version of this shipped with that bug and a
+   * comment calling it a rare race; it was the normal path, and the test found
+   * it on the first run.
+   *
+   * This is the ordering the rule needed: the person who just confirmed does
+   * not yield to the person they confirmed over.
+   */
+  const takingOver = useRef(false);
 
   // §3.7: desktop only. Decided by whether the API exists and whether the
   // device has a pointer — iOS Safari exposes `getDisplayMedia` on iPad and
@@ -68,7 +98,7 @@ export function useScreenShare(): ScreenShareState {
   const remoteTrack =
     presenter && !presenter.isLocal ? (share?.publication?.track ?? null) : null;
 
-  const start = useCallback(async () => {
+  const begin = useCallback(async () => {
     setError(null);
     try {
       await localParticipant.setScreenShareEnabled(true, {
@@ -87,6 +117,27 @@ export function useScreenShare(): ScreenShareState {
     }
   }, [localParticipant]);
 
+  /**
+   * §3.7: "One share at a time." Starting while someone else presents asks
+   * first — of the person starting, who is the one whose action has the
+   * consequence and the only one who can act without waiting.
+   */
+  const start = useCallback(async () => {
+    if (presenter && !presenter.isLocal) {
+      setReplacing(presenter);
+      return;
+    }
+    await begin();
+  }, [begin, presenter]);
+
+  const confirmReplace = useCallback(async () => {
+    setReplacing(null);
+    takingOver.current = true;
+    await begin();
+  }, [begin]);
+
+  const cancelReplace = useCallback(() => setReplacing(null), []);
+
   const stop = useCallback(async () => {
     try {
       await localParticipant.setScreenShareEnabled(false);
@@ -96,9 +147,39 @@ export function useScreenShare(): ScreenShareState {
     }
   }, [localParticipant]);
 
+  /**
+   * Yielding, when someone else takes over.
+   *
+   * No message is sent for this. The replacement *is* the new track appearing:
+   * whoever was already sharing sees a second share and stops. What tells the
+   * two apart is `takingOver` — set by the person who just confirmed, so the
+   * rule applies to the one being replaced and not to both.
+   *
+   * The flag clears when the other share goes, which is the acknowledgement
+   * that the handover finished. Nothing here depends on clocks agreeing.
+   */
+  useEffect(() => {
+    const other = shares.find((s) => !s.participant.isLocal);
+
+    if (!other) {
+      // Nobody else is presenting: the handover is complete, or never began.
+      takingOver.current = false;
+      return;
+    }
+    if (!isScreenShareEnabled || takingOver.current) return;
+
+    setReplacedBy(displayNameOf(other.participant));
+    void localParticipant.setScreenShareEnabled(false).catch(() => {});
+  }, [isScreenShareEnabled, shares, localParticipant]);
+
   return {
     supported,
     sharing: isScreenShareEnabled,
+    replacing,
+    confirmReplace,
+    cancelReplace,
+    replacedBy,
+    dismissReplaced: useCallback(() => setReplacedBy(null), []),
     presenter,
     remoteTrack,
     start,
