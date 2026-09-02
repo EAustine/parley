@@ -94,7 +94,11 @@ Collision handling: generate, insert, retry on unique-constraint violation. Do n
 - Code is displayed in mono with letter-spacing, and is selectable as a unit
 - Copy link puts the full URL on the clipboard and confirms with a toast that says "Link copied"
 - Unknown code shows a dedicated page: what happened, and a field to try another code. Not a 404.
-- Ended meeting shows "This meeting has ended" with the host's name and the option to start a new one
+- Ended meeting shows "This meeting has ended", the meeting **title**, and the option to start a new one — distinct from the unknown-code page, never conflated with it
+
+  Not the host's name. The original spec asked for it and contradicted §6, where `get_meeting_by_code` deliberately returns no host identity. The title does the same job — it tells someone holding several links which one this was — without exposing a person's name to anyone who has the code. The title is already disclosed to link-holders while the meeting is live, so surfacing it afterwards is no new class of disclosure; a host's identity would be.
+
+  Distinguishing "ended" from "never existed" does confirm that a code was once real. With roughly 8×10¹⁴ codes and a rate-limited endpoint, enumeration is not a practical attack, and the cost of the alternative is real: the common case here is someone with a legitimate link arriving late, and telling them the meeting doesn't exist is a lie.
 
 ---
 
@@ -557,13 +561,18 @@ as $$
          coalesce((m.settings->>'guests_allowed')::boolean, true)
   from meetings m
   where m.code = p_code
-    and m.status <> 'ended'
+    and (
+      m.status <> 'ended'
+      or coalesce(m.ended_at, m.created_at) > now() - interval '30 days'
+    )
 $$;
 
 grant execute on function public.get_meeting_by_code(text) to anon, authenticated;
 ```
 
 This deliberately leaks nothing: no host identity, no participant list, no settings beyond the one flag the join page needs.
+
+Ended meetings resolve for 30 days so the join page can show "This meeting has ended" rather than pretending the code was never real. After that they fall through to not-found, and stale links stop resolving. Returning `status` is what lets the client tell the two states apart; it is also why the client must branch on `status` rather than treating any successful result as joinable. **Joinability is enforced at the token endpoint, not here** — this function is display data only, and an ended meeting resolving does not mean its room can be entered.
 
 ---
 

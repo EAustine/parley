@@ -607,14 +607,58 @@ that never render it.
 | `/j/[code]` | — | **148 kB** | ≤ 230 |
 | `/dashboard` | 242 kB | 259 kB | ≤ 280 |
 
+### Ended meetings now resolve — the last Phase 2 gap closed
+
+`get_meeting_by_code` filtered `status <> 'ended'`, so an ended meeting and a
+code that never existed both returned nothing and landed on the same page. The
+common case there is someone with a legitimate link arriving late, and telling
+them the meeting doesn't exist is a lie.
+
+**Migration `20260902010539_resolve_ended_meetings.sql`** widens the window:
+ended meetings resolve for 30 days, then fall through. `coalesce(ended_at,
+created_at)` because a meeting can reach `ended` without `ended_at` being set —
+a webhook that never fired, a status changed by hand — and the window has to
+close on those rather than leaving them resolvable forever.
+
+`/j/[code]` branches on `status`: scheduled or live renders the placeholder,
+ended renders "This meeting has ended" with the title, missing renders the
+unknown-code state. No 404 on any path.
+
+**The title, not the host's name.** §3.2 originally asked for the host and
+contradicted §6, where the function returns no host identity. The title does the
+same job — telling someone with several links which one this was — without
+handing a person's name to anyone holding a code. It was already visible to
+link-holders while the meeting ran, so showing it afterwards is no new class of
+disclosure.
+
+**Joinability is not decided here.** A resolving row is display data. Whether a
+room can be entered is the token endpoint's call in Phase 3, which is why the
+page branches on `status` rather than treating any successful result as
+joinable.
+
+### Verified
+
+`check:rls` **18/18**, up from 15. The old assertion — *"refuses an ended
+meeting"* — failed the moment the migration landed, which is what it was for.
+It is replaced by four that test both sides of the window: a recently ended
+meeting resolves and reports `status: ended`; it still discloses only the same
+six columns; one ended 31 days ago stops resolving; and one with a null
+`ended_at` falls back to `created_at` rather than resolving forever.
+
+Testing only that a recent ending resolves would have passed equally against a
+function with no window at all — the version that leaves every stale link alive.
+
+`check:meetings` **23/23**, up from 20, including the three page-level states
+end to end: ended says so and is not the unknown-code state, shows the title and
+not the host, and past 30 days falls through to unknown-code.
+
+Bundles unchanged within noise: shared 160 kB (≤ 180), `/j/[code]` 151 kB
+(≤ 230), `/dashboard` 259 kB (≤ 280).
+
 ### Known, deferred
 
-- **An ended meeting is indistinguishable from a missing one.**
-  `get_meeting_by_code` filters ended meetings out, so both land on "That
-  meeting isn't here". The distinct "This meeting has ended" state with the
-  host's name needs data the function deliberately does not return — §3.2 asks
-  for it and Phase 3 owns the error routes.
 - **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6. The API
   accepts scheduled meetings today and `check:meetings` proves it.
 - **Sample meetings are sitting on the live account** from verifying the
-  dashboard renders with real rows. Say the word and they go.
+  dashboard and the ended state render with real rows — "Design review" is now
+  ended. Say the word and they go.

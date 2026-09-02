@@ -232,21 +232,65 @@ try {
     "no host_id, no row id, no settings in the anonymous payload",
   );
 
-  // 7. An ended meeting must fall out of the function's WHERE clause.
+  // 7. Ended meetings resolve for 30 days, then stop.
+  //
+  // Both sides of the window are tested. Only asserting that a recently ended
+  // meeting resolves would pass just as well against a function with no window
+  // at all, which is the version that leaves every stale link alive forever.
+  const rpcAsAnon = async (code) => {
+    const r = await fetch(`${URL_}/rest/v1/rpc/get_meeting_by_code`, {
+      method: "POST",
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_code: code }),
+    });
+    return r.json();
+  };
+
+  const daysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+
   await admin(`/rest/v1/meetings?id=eq.${aliceMeeting.id}`, {
     method: "PATCH",
-    body: JSON.stringify({ status: "ended" }),
+    body: JSON.stringify({ status: "ended", ended_at: daysAgo(1) }),
   });
-  const ended = await fetch(`${URL_}/rest/v1/rpc/get_meeting_by_code`, {
-    method: "POST",
-    headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ p_code: aliceMeeting.code }),
-  });
-  const endedRows = await ended.json();
+  const recentlyEnded = await rpcAsAnon(aliceMeeting.code);
   record(
-    Array.isArray(endedRows) && endedRows.length === 0,
-    "get_meeting_by_code refuses an ended meeting",
-    `${Array.isArray(endedRows) ? endedRows.length : "?"} row(s)`,
+    Array.isArray(recentlyEnded) &&
+      recentlyEnded.length === 1 &&
+      recentlyEnded[0].status === "ended",
+    "a recently ended meeting still resolves, and says it ended",
+    `${Array.isArray(recentlyEnded) ? recentlyEnded.length : "?"} row(s), status ${recentlyEnded?.[0]?.status}`,
+  );
+
+  record(
+    Array.isArray(recentlyEnded) &&
+      recentlyEnded[0] &&
+      !("host_id" in recentlyEnded[0]) &&
+      Object.keys(recentlyEnded[0]).length === 6,
+    "an ended meeting still discloses only the same six columns",
+  );
+
+  await admin(`/rest/v1/meetings?id=eq.${aliceMeeting.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ended_at: daysAgo(31) }),
+  });
+  const longEnded = await rpcAsAnon(aliceMeeting.code);
+  record(
+    Array.isArray(longEnded) && longEnded.length === 0,
+    "a meeting ended over 30 days ago stops resolving",
+    `${Array.isArray(longEnded) ? longEnded.length : "?"} row(s)`,
+  );
+
+  // ended_at can be null — a webhook that never fired, a status set by hand.
+  // The window then falls back to created_at rather than resolving forever.
+  await admin(`/rest/v1/meetings?id=eq.${aliceMeeting.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ended_at: null, created_at: daysAgo(31) }),
+  });
+  const noEndedAt = await rpcAsAnon(aliceMeeting.code);
+  record(
+    Array.isArray(noEndedAt) && noEndedAt.length === 0,
+    "an ended meeting with no ended_at falls back to created_at",
+    `${Array.isArray(noEndedAt) ? noEndedAt.length : "?"} row(s)`,
   );
 
   // 8. Participants are reachable only through a meeting you host.

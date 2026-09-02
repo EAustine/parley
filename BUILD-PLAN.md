@@ -99,7 +99,7 @@ Verification page:
 Tasks:
 - Migration for `meetings`, `meeting_participants`, the `meeting_status` enum, and indexes (schema is in `PRD.md` §6)
 - RLS policies: hosts read and write only their own meetings
-- `get_meeting_by_code` as a `security definer` function, granted to `anon` and `authenticated`
+- `get_meeting_by_code` as a `security definer` function, granted to `anon` and `authenticated`. It resolves ended meetings within a 30-day window and returns `status`, so the join page can distinguish "ended" from "never existed" — see `PRD.md` §3.2 for why the host's name is not returned.
 - Supabase clients: browser, server, and middleware, using `@supabase/ssr`
 - Magic link sign-in and Google OAuth
 - Protected route middleware
@@ -120,7 +120,7 @@ Tasks:
 - Dashboard: upcoming and past sections, empty state as an invitation
 - "Start meeting" creates an instant meeting and routes to `/j/[code]`
 - Copy-link button with a "Link copied" toast
-- **Minimal `/j/[code]`** — the real route file, not a placeholder to delete. Resolves the meeting through `get_meeting_by_code` as an anonymous request, renders the title and code, and states plainly that the join screen arrives next. Handles a missing meeting without falling through to a 404.
+- **Minimal `/j/[code]`** — the real route file, not a placeholder to delete. Resolves the meeting through `get_meeting_by_code` as an anonymous request, renders the title and code, and states plainly that the join screen arrives next. Branches on `status`: live or scheduled renders the placeholder, ended renders "This meeting has ended" with the title, missing renders the unknown-code state. No 404 on any path.
 
   This is not cosmetic. It is the first anonymous browser call to `get_meeting_by_code`, which is the `security definer` function that decides what a stranger holding a link can see. A script proving it works and a real unauthenticated request proving it works are different claims, and the second is the one that ships. Phase 3 fills this file in rather than replacing it.
 

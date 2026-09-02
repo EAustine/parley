@@ -263,6 +263,44 @@ try {
     `HTTP ${missingRoute.status}`,
   );
 
+  // An ended meeting is its own state, never conflated with a wrong code.
+  // Someone arriving late to a real meeting must be told it finished.
+  await admin(`/rest/v1/meetings?code=eq.${instant.code}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: "ended",
+      ended_at: new Date(Date.now() - 86_400_000).toISOString(),
+    }),
+  });
+  const endedRes = await fetch(`${APP}/j/${instant.code}`);
+  const endedHtml = await endedRes.text();
+  check(
+    endedRes.status === 200 &&
+      endedHtml.includes("This meeting has ended") &&
+      !endedHtml.includes("That meeting isn’t here"),
+    "an ended meeting says so, and is not the unknown-code state",
+    `HTTP ${endedRes.status}`,
+  );
+  check(
+    endedHtml.includes("Meeting") && !endedHtml.includes(user.email),
+    "the ended state shows the meeting title and not the host",
+  );
+
+  // Past the window it becomes indistinguishable, which is the intended end.
+  await admin(`/rest/v1/meetings?code=eq.${instant.code}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      ended_at: new Date(Date.now() - 31 * 86_400_000).toISOString(),
+    }),
+  });
+  const staleRes = await fetch(`${APP}/j/${instant.code}`);
+  const staleHtml = await staleRes.text();
+  check(
+    staleRes.status === 200 && staleHtml.includes("That meeting isn’t here"),
+    "a meeting ended over 30 days ago falls through to unknown-code",
+    `HTTP ${staleRes.status}`,
+  );
+
   const malformed = await fetch(`${APP}/j/not-a-code`);
   const malformedHtml = await malformed.text();
   check(
