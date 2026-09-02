@@ -75,7 +75,13 @@ Next replaces `process.env.NEXT_PUBLIC_FOO` textually at build time and cannot r
 **9. Ask before adding a dependency — and remove it when it stops being used.**
 The stack above is the stack. If something seems to need a new package, say why first.
 
-`check:deps` walks the import graph from `app/` and **fails** on anything unreachable; it does not warn. An exception list is how dead code accumulates, and a warning printed on every run becomes furniture within a week. Three dependencies have already been specified in these documents and never used — `react-day-picker`, `react-hook-form`, `@hookform/resolvers`. Each was audit surface, supply-chain surface, and a lie to the next reader about how the product is built. Delete the code that makes an unused package reachable too: `components/ui/form.tsx` existed solely to keep `react-hook-form` in the graph.
+`check:deps` walks the import graph from `app/` and **fails** on anything unreachable, in two categories that need separating:
+
+**Unused npm packages fail outright.** Audit surface, supply-chain surface, lockfile weight. No exceptions.
+
+**Unrendered local components fail too, and the fix is deletion, not justification.** These are vendored source with no supply-chain surface of their own — but seven of the ten unrendered shadcn components pin a Radix package in `package.json`, so most of them are the first category wearing a local file as a disguise. And shadcn is a copy-paste registry, not a library: `npx shadcn add dialog` takes seconds on the day Phase 8 needs a modal. "We'll want it later" is an argument for adding it later, not for carrying it now.
+
+It does not warn. An exception list is how dead code accumulates, and a warning printed on every run becomes furniture within a week. Three dependencies have already been specified in these documents and never used — `react-day-picker`, `react-hook-form`, `@hookform/resolvers`. Each was audit surface, supply-chain surface, and a lie to the next reader about how the product is built. Delete the code that makes an unused package reachable too: `components/ui/form.tsx` existed solely to keep `react-hook-form` in the graph.
 
 When a document and the build disagree about a dependency, the build is usually right and the document is describing a plan reality overtook. Fix the document.
 

@@ -2342,3 +2342,72 @@ today. The figure has been stale for the whole build, not just since Phase 7.
 `check:deps` **4/4** (new). All others green: `check:room` 96, `check:chat` 73,
 `check:ics` 69, `check:meetings` 68, `check:permissions` 39, `check:contrast`
 24, `check:rls` 18, `check:bundle` 10/10, `check:media` 29/29.
+
+---
+
+## Rule 9's second category, and what the shared baseline actually measures
+
+Rule 9 grew a second half: unrendered local components fail too, "and the fix is
+deletion, not justification." That settles the question I had flagged rather
+than answered — I had put the dead-module sweep behind a `--dead` flag on the
+grounds that Phases 8–10 would want those components. Rule 9's answer is that
+shadcn is a copy-paste registry, not a library, so `npx shadcn add dialog` on
+the day Phase 8 needs a modal costs seconds, and "we'll want it later" is an
+argument for adding it later.
+
+Deleted: `alert`, `avatar`, `card`, `dialog`, `dropdown-menu`, `scroll-area`,
+`sheet`, `switch`, `tabs`, `textarea`. What survives — badge, button, input,
+label, popover, select, separator, skeleton, sonner, tooltip — is exactly
+BUILD-PLAN's new scaffold list, which is the check the two documents now
+constitute for each other.
+
+`--dead` is gone; it is a failing gate, proved by mutation with a throwaway
+unrendered component, and the exit code checked directly rather than through a
+pipe that was reporting `grep`'s status.
+
+### One premise did not survive the check
+
+Rule 9 says "seven of the ten unrendered shadcn components pin a Radix package
+in `package.json`, so most of them are the first category wearing a local file
+as a disguise."
+
+The count is exactly right — seven of the ten import Radix. The consequence is
+not, here. This project installs Radix as the single unified `radix-ui` package,
+and `select`, `popover`, `tooltip`, `button`, `badge`, `separator` and `label`
+all require it. Same for `lucide-react`, which `sonner` and `select` import, and
+`class-variance-authority`, which `button` and `badge` import.
+
+**Deleting all ten freed no package at all.** The decision stands on rule 9's
+other reasoning — vendored source that costs seconds to reinstate and lies to
+the next reader about how the product is built — but not on supply-chain
+grounds, which is the ground the rule leads with.
+
+### And the shared baseline is not what §10 thinks it is
+
+§10 calls the shared baseline "the leveraged number": "a kilobyte removed there
+is a kilobyte removed five times."
+
+Deleting the ten components moved it from **160 kB to 156 kB**. Both figures
+reproduce across two clean builds each.
+
+**Not one route total changed.** All ten are byte-identical either side of the
+deletion — `/` 152, `/_not-found` 146, `/auth/complete` 229, `/dev/tokens` 155,
+`/j/[code]` 184, `/room/[code]` 154, `/dashboard` 263, `/schedule` 273,
+`/schedule/[code]` 264, `/sign-in` 244.
+
+So four kilobytes left the shared baseline and zero kilobytes left any route.
+Whatever "First Load JS shared by all" counts, it is not a term that every route
+total is built from — a drop in it is consistent with no route shipping a single
+byte less. It is a classification of which chunks happen to be common to every
+route, and that classification moved without the bytes moving.
+
+I am not going to explain the mechanism further, because the last time I
+narrated chunk behaviour I was reading minified output and got it wrong. What is
+measured is the pair of numbers above, four builds, and they do not support
+using the shared baseline as an optimisation target.
+
+### Checks
+
+`check:deps` 4/4 → **5/5**. All others green: `check:room` 96, `check:chat` 73,
+`check:ics` 69, `check:meetings` 68, `check:permissions` 39, `check:contrast`
+24, `check:rls` 18, `check:bundle` 10/10, `check:media` 29/29.

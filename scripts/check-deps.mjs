@@ -14,15 +14,22 @@
  * and printed them loudly on every run. Rule 9 is the decision, and it is also
  * a verdict on that design: the loud printout was furniture.
  *
- * Two halves, because packages were only half the problem:
+ * Rule 9 separates two categories, and so does this:
  *
  *   1. Every declared dependency is reachable from `app/`.
- *   2. Every module under `components/` and `lib/` is reachable from `app/`.
+ *   2. Every module under `components/` and `lib/` is rendered.
  *
- * The second is what actually catches this class. `react-hook-form` was
- * reachable — through `components/ui/form.tsx`, which nothing rendered. A
- * package check alone calls that healthy. Rule 9: "Delete the code that makes
- * an unused package reachable too."
+ * They are genuinely different failures. An unused package is audit and
+ * supply-chain surface; an unrendered component is vendored source that costs
+ * nothing to reinstall and lies to the next reader about how the product is
+ * built. Deleting the ten unrendered shadcn components freed no package at all
+ * — `radix-ui` is installed unified here, and `select`, `popover`, `tooltip`,
+ * `button`, `badge`, `separator` and `label` all require it regardless.
+ *
+ * The two gates overlap only when a dead module is the sole thing keeping a
+ * package reachable. `components/ui/form.tsx` was exactly that, and the
+ * package gate is what caught it: form.tsx was never reachable from `app/`,
+ * so `react-hook-form` never entered `packages` in the first place.
  *
  * Run with: npm run check:deps
  */
@@ -176,32 +183,30 @@ for (const name of NOT_IMPORTED) {
 }
 
 /**
- * Dead local modules, on request only — `npm run check:deps -- --dead`.
+ * Unrendered local components fail too — rule 9's second category.
  *
- * Not a check, and deliberately not printed on every run. Rule 9 forbids the
- * warning, and a failure here would be wrong: it reports ten shadcn components
- * that `BUILD-PLAN`'s scaffold installs on purpose and Phases 8-10 have not
- * reached yet. That is a phase not having happened, not a plan reality
- * overtook.
+ * "The fix is deletion, not justification." This was a `--dead` flag for one
+ * round, on the reasoning that Phases 8-10 would want the ten unrendered shadcn
+ * components and that a phase not having happened is not dead code. Rule 9
+ * rejects that: shadcn is a copy-paste registry, not a library, so
+ * `npx shadcn add dialog` on the day Phase 8 needs a modal costs seconds, and
+ * "we'll want it later" is an argument for adding it later.
  *
- * It earns its place because the package check above cannot see this class
- * directly — though it does catch the case rule 9 names. `form.tsx` was never
- * reachable from `app/`, so `react-hook-form` never entered `packages` and was
- * reported unreachable. A dead module only matters to rule 9 when it is the
- * sole thing keeping a package alive, and that is already a failure above.
+ * This catches a class the package gate above cannot see on its own. The two
+ * overlap only when a dead module is the sole thing keeping a package
+ * reachable — `form.tsx` and `react-hook-form` — and in that case the package
+ * gate fires first.
  */
-if (process.argv.includes("--dead")) {
-  const dead = SWEPT_DIRS.flatMap((d) => collect(d, []))
-    .map((f) => relative(process.cwd(), resolve(f)))
-    .filter((f) => !reached.has(resolve(f)));
-  console.log(
-    dead.length
-      ? `\n${dead.length} modules under ${SWEPT_DIRS.map((d) => d + "/").join(", ")} are unreachable from the app:\n` +
-          dead.map((f) => `    ${f}`).join("\n")
-      : `\nNo dead modules under ${SWEPT_DIRS.map((d) => d + "/").join(", ")}.`,
-  );
-}
+const dead = SWEPT_DIRS.flatMap((d) => collect(d, []))
+  .map((f) => relative(process.cwd(), resolve(f)))
+  .filter((f) => !reached.has(resolve(f)));
 
-const total = 3 + NOT_IMPORTED.size;
+check(
+  dead.length === 0,
+  `every module under ${SWEPT_DIRS.map((d) => d + "/").join(", ")} is rendered`,
+  `unreachable, and the fix is deletion: ${dead.join(", ")}`,
+);
+
+const total = 4 + NOT_IMPORTED.size;
 console.log(`\n${total - failed}/${total} dependency checks passed.`);
 if (failed) process.exit(1);

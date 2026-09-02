@@ -722,7 +722,7 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 | `/schedule` | ≤ 290 kB | ~115 kB |
 | `/schedule/[code]` | ≤ 290 kB | ~115 kB |
 
-The two scheduling routes are measured at 273 kB and 263 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
+The two scheduling routes are measured at 273 kB and 264 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
 
 `/schedule` sits ~10 kB above `/dashboard` because it is the only signed-in route mounting a Radix overlay primitive from the scroll-locking family — FocusScope, FocusGuards, `react-remove-scroll`, `aria-hidden` — which this build carries per route rather than hoisting. About 7 kB of the excess is that fixed family cost, which any Dialog, Popover, DropdownMenu or Sheet would carry identically; about 3 kB is Select's own implementation. The split comes from an intervention rather than an inspection: adding a throwaway Popover to `/dashboard`, changing `/schedule` not at all, closed the gap from 10 kB to 3 kB.
 
@@ -734,7 +734,7 @@ Moving the edit form behind `next/dynamic` was the right instinct — most visit
 
 `/j/[code]` is the one that matters. It is a cold load for a stranger on a phone with an empty cache, and §3.3 names it the highest-traffic flow in the product. The dashboard is deliberately loose: it sits behind auth, the same people revisit it, and its bundle amortises across sessions.
 
-**The shared baseline is the leveraged number.** At 175 kB it is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times. Next's App Router floor is roughly 105–120 kB gzipped, which puts 55–70 kB of our own code in the shared chunk before any feature exists. That is worth an itemised look before optimising any individual route — cutting shared beats cutting `/dashboard`.
+**The shared baseline is the leveraged number.** At 160 kB it is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times. Next's App Router floor is roughly 105–120 kB gzipped, which puts 40–55 kB of our own code in the shared chunk before any feature exists. That is worth an itemised look before optimising any individual route — cutting shared beats cutting `/dashboard`.
 
 **These four route numbers are provisional.** They are inferred from a baseline measured against a nearly empty app, not from any route that does its real work yet. Recalibrate at the end of Phase 3, when pre-join actually exists and there is evidence rather than estimate. A budget invented ahead of the code is a guess wearing a number, and the first version of this table put its tightest constraint on the wrong route for exactly that reason.
 

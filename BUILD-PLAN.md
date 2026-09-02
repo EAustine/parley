@@ -49,27 +49,29 @@ cd parley
 
 npx shadcn@latest init
 
-npx shadcn@latest add button input label textarea select dialog sheet \
-  dropdown-menu popover tooltip sonner avatar badge separator card \
-  switch tabs skeleton scroll-area alert form
+# Install only what the current phase renders. Add per phase, not up front.
+npx shadcn@latest add button input label select popover tooltip sonner \
+  badge separator skeleton
 
 # sonner replaces the deprecated shadcn `toast` component.
 #
-# `calendar` was approved earlier and is not installed: the schedule form
-# uses a native <input type="date">, which is smaller, keyboard-accessible
-# without work, and gives mobile the OS picker. If shadcn's Calendar or
-# react-day-picker are already present, remove them — an unused dependency
-# is a maintenance and audit surface with nothing on the other side.
+# `form` is NOT in this list: `shadcn add form` installs react-hook-form and
+# recreates components/ui/form.tsx, reinstalling exactly what rule 9 removed.
+# Every form uses native state plus one zod parse on submit.
+#
+# `calendar` is NOT in this list: the date field is a native <input type="date">,
+# which is smaller, keyboard-accessible without work, and gives mobile the OS picker.
+#
+# The original version of this command installed twenty components up front and
+# ten of them were never rendered. shadcn is a copy-paste registry, not a library —
+# `npx shadcn add dialog` takes seconds on the day Phase 8 needs a modal. Adding
+# late costs nothing; carrying unrendered components pins Radix packages in
+# package.json that show up in every audit.
 
 npm i livekit-client @livekit/components-react livekit-server-sdk
 npm i @supabase/supabase-js @supabase/ssr
 npm i @hugeicons/react @hugeicons/core-free-icons
-npm i zod
-
-# react-hook-form and @hookform/resolvers were in this list and are not
-# installed. Every form converged on native state plus one zod parse on
-# submit — the pattern PRD §10 asked for. zod is used throughout:
-# lib/env.ts, route handlers, shared client/server schemas.
+npm i zod   # lib/env.ts, route handlers, shared client/server schemas
 npm i date-fns date-fns-tz nanoid
 npm i next-themes
 ```
