@@ -176,6 +176,18 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /* Ours, not the framework's.
+     The `hidden` attribute hides via a UA rule that any author `display`
+     declaration outranks, so an element with `display: flex` and `hidden` is
+     visible. It worked in the chat panel only because Tailwind's preflight
+     happens to mark its own `[hidden]` rule important — a correctness property
+     resting on a detail of someone else's reset. Declared here so it is ours to
+     keep. `until-found` is excluded because that value exists precisely to let
+     find-in-page reveal collapsed content. */
+  [hidden]:where(:not([hidden="until-found"])) {
+    display: none !important;
+  }
   body {
     @apply bg-background text-foreground;
   }

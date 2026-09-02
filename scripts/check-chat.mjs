@@ -27,7 +27,7 @@ const out = mkdtempSync(join(tmpdir(), "parley-chat-"));
 try {
   execFileSync(
     "npx",
-    ["tsc", "lib/room/messages.ts", "lib/room/autolink.ts", "lib/room/reaction-limit.ts",
+    ["tsc", "lib/room/messages.ts", "lib/room/autolink.ts", "lib/room/limits.ts",
      "--outDir", out, "--module", "commonjs",
      "--target", "es2022", "--moduleResolution", "node", "--skipLibCheck"],
     { stdio: "pipe" },
@@ -40,8 +40,15 @@ writeFileSync(join(out, "package.json"), '{"type":"commonjs"}');
 const require = createRequire(join(out, "index.cjs"));
 const messages = require(join(out, "messages.js"));
 const { autolink } = require(join(out, "autolink.js"));
-const { Throttle, REACTION_INTERVAL_MS, nextLane, REACTION_LANES } =
-  require(join(out, "reaction-limit.js"));
+const {
+  Throttle,
+  WindowLimit,
+  REACTION_INTERVAL_MS,
+  CHAT_BURST,
+  CHAT_WINDOW_MS,
+  nextLane,
+  REACTION_LANES,
+} = require(join(out, "limits.js"));
 rmSync(out, { recursive: true, force: true });
 
 const { encode, decode, sanitiseChatBody, REACTIONS, CHAT_MAX_LENGTH } = messages;
@@ -279,6 +286,72 @@ t(REACTIONS.length === 6, `six reactions, fixed  (${REACTIONS.join(" ")})`, `${R
   t(new Set(lanes.slice(0, REACTION_LANES)).size === REACTION_LANES,
     `simultaneous reactions take ${REACTION_LANES} distinct lanes`, lanes.join(","));
   t(lanes[REACTION_LANES] === lanes[0], "and wrap rather than drifting off-tile");
+}
+
+// ---------------------------------------------------------------------------
+// The chat rate limit — §3.5
+// ---------------------------------------------------------------------------
+console.log("\nChat flooding\n");
+
+// §3.5 calls the receive side "the only real enforcement", and this is where
+// that half is actually tested. No test driven through the product's own
+// controls can reach it: a well-behaved client never sends the sixth message,
+// so the receiver never gets one to drop. Exercising it needs a client that
+// ignores its own limit, which is exactly the threat it exists for.
+
+t(CHAT_BURST === 5 && CHAT_WINDOW_MS === 10_000,
+  "five messages per ten seconds per sender",
+  `${CHAT_BURST} per ${CHAT_WINDOW_MS}ms`);
+
+{
+  const gate = new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS);
+  const burst = [0, 100, 200, 300, 400, 500].map((ms) => gate.take("ama", ms));
+  t(burst.filter(Boolean).length === 5,
+    "five in a burst pass, the sixth does not", `${burst.filter(Boolean).length} passed`);
+}
+{
+  // Rolling, not fixed — and the difference only shows in one arrangement, so
+  // the first version of this test did not show it at all. A fixed window
+  // resets on a boundary, so a sender who used a slot early and four more just
+  // before the boundary gets all five back the instant it passes: ten messages
+  // inside half a second, which is the burst the limit exists to stop.
+  //
+  // Rolling frees exactly the slots that have aged out — here, the one at t=0.
+  const gate = new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS);
+  gate.take("ama", 0);
+  for (const ms of [9600, 9700, 9800, 9900]) gate.take("ama", ms);
+
+  t(gate.take("ama", 10_050) === true,
+    "the slot used at t=0 reopens once it has aged out");
+  t(gate.take("ama", 10_060) === false,
+    "but only that one — a fixed window would have returned all five");
+  t(gate.take("ama", 19_700) === true,
+    "and the rest reopen individually, on their own schedule");
+}
+{
+  const gate = new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS);
+  for (const ms of [0, 1, 2, 3, 4]) gate.take("ama", ms);
+  const wait = gate.retryAfter("ama", 5000);
+  t(wait === 5000, "retryAfter reports the wait, for the cooldown the sender sees",
+    `${wait}ms`);
+  t(gate.retryAfter("kwabena", 5000) === 0, "and is zero for someone who has not sent");
+}
+{
+  // The reason it is keyed per sender: one flooder must not silence the room.
+  const gate = new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS);
+  for (const ms of [0, 1, 2, 3, 4]) gate.take("ama", ms);
+  t(gate.take("ama", 5) === false, "the flooder is stopped");
+  t(gate.take("kwabena", 5) === true, "and everyone else still gets through");
+}
+{
+  // A refusal must not extend the window. Otherwise someone hammering the
+  // input keeps pushing their own recovery further away, which is a
+  // punishment nobody specified.
+  const gate = new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS);
+  for (const ms of [0, 1, 2, 3, 4]) gate.take("ama", ms);
+  for (let ms = 5; ms < 4000; ms += 50) gate.take("ama", ms);
+  t(gate.take("ama", 10_001) === true,
+    "refusals do not extend the window", `still blocked at 10s`);
 }
 
 console.log(`\n${count - failed}/${count} chat checks passed.`);

@@ -211,6 +211,10 @@ This is a deliberate scope decision: persistence means a table, realtime subscri
 - Enter sends, Shift+Enter newlines
 - System messages for join and leave, visually distinct and quieter
 
+**Rate limiting.** Five messages per ten seconds per sender. The send side disables the input on a brief cooldown; **the receive side drops the excess without rendering it, and that is the only real enforcement** — there is no server on this path, so a modified client ignores anything the send side does. The flooder sees their own input disabled; nobody else sees the flood. §3.6 already specifies this shape for reactions; chat needs it for the same reason.
+
+**Ordering.** Timestamps are stamped on arrival, so two receivers can hold slightly different times for the same message. That is correct — a sender-supplied timestamp is unverifiable — but it means display order is per-receiver arrival order, and no client should treat its own ordering as canonical.
+
 **Acceptance**
 - Message appears for all participants within 500ms
 - Scroll pins to bottom unless the reader has scrolled up, in which case a "New messages" affordance appears

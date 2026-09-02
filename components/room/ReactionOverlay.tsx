@@ -1,6 +1,6 @@
 "use client";
 
-import { REACTION_LANES } from "@/lib/room/reaction-limit";
+import { REACTION_LANES } from "@/lib/room/limits";
 import type { ReactionEvent } from "@/lib/room/chat";
 
 /**

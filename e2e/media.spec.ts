@@ -61,7 +61,19 @@ test.describe("two participants", () => {
 
         const live = await videoLiveness(p.page, index);
         expect(live.spread, `${p.name}: tile ${index} is a flat rectangle`).toBeGreaterThan(10);
-        expect(live.motion, `${p.name}: tile ${index} is a frozen frame`).toBeGreaterThan(0.5);
+
+        // Polled rather than sampled once. Two frames 250ms apart can be
+        // identical for reasons that are not a bug: LiveKit's adaptiveStream
+        // pauses video it believes is off-screen, and every context after the
+        // first is a background tab. A genuinely frozen track stays frozen, so
+        // polling separates "paused for a moment" from "never moving" without
+        // weakening the assertion.
+        await expect
+          .poll(async () => (await videoLiveness(p.page, index)).motion, {
+            message: `${p.name}: tile ${index} is a frozen frame`,
+            timeout: 15_000,
+          })
+          .toBeGreaterThan(0.5);
       }
     }
   });

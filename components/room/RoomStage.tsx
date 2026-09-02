@@ -249,6 +249,7 @@ function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
         <ChatPanel
           open={chatOpen}
           log={messages.log}
+          cooldown={messages.chatCooldown}
           onClose={closeChat}
           onSend={messages.sendChat}
         />

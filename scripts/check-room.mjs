@@ -306,7 +306,31 @@ check(
   "no live regions at all",
 );
 
+// ---------------------------------------------------------------------------
+// Hiding, owned rather than inherited
+// ---------------------------------------------------------------------------
+console.log("\nWhat hides a panel\n");
+
+// CLAUDE.md's testing rules: "A correctness property may not rest on a
+// third-party reset." The `hidden` attribute hides through a UA rule that any
+// author `display` declaration outranks, so a `display: flex` panel with
+// `hidden` set is visible. The chat panel worked only because Tailwind's
+// preflight happens to mark its own `[hidden]` rule important.
+const globals = readFileSync("app/globals.css", "utf8");
+const rule = /\[hidden\][^{]*\{[^}]*display:\s*none\s*!important/;
+check(
+  rule.test(globals),
+  "app/globals.css declares [hidden] { display: none !important } itself",
+  "not found — the panel is relying on Tailwind's preflight again",
+);
+// `until-found` exists so find-in-page can reveal collapsed content; hiding it
+// important would break that.
+check(
+  /until-found/.test(globals),
+  "and excludes hidden=\"until-found\", which find-in-page needs",
+);
+
 const total =
-  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3;
+  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3 + 2;
 console.log(`\n${total - failed}/${total} room checks passed.`);
 if (failed) process.exit(1);

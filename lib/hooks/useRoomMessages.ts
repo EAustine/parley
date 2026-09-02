@@ -14,11 +14,14 @@ import {
   type Reaction,
 } from "@/lib/room/messages";
 import {
+  CHAT_BURST,
+  CHAT_WINDOW_MS,
   REACTION_ANNOUNCE_MS,
   REACTION_INTERVAL_MS,
   Throttle,
+  WindowLimit,
   nextLane,
-} from "@/lib/room/reaction-limit";
+} from "@/lib/room/limits";
 import {
   appendBounded,
   type LogEntry,
@@ -48,6 +51,12 @@ export type RoomMessages = {
   unread: number;
   /** The last thing worth announcing. Read by one polite live region. */
   announcement: string;
+  /**
+   * Seconds until this participant may send again, or null. §3.5: the send
+   * side disables the input on a brief cooldown, so a flooder sees why nothing
+   * is happening rather than typing into a void.
+   */
+  chatCooldown: number | null;
   sendChat: (body: string) => void;
   sendReaction: (emoji: Reaction) => void;
   markRead: () => void;
@@ -73,6 +82,13 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
   // because a screen reader reading six reactions is worse than silence.
   const renderGate = useRef(new Throttle(REACTION_INTERVAL_MS));
   const announceGate = useRef(new Throttle(REACTION_ANNOUNCE_MS));
+
+  // §3.5, and the receiving half is the one that matters: "there is no server
+  // on this path, so a modified client ignores anything the send side does."
+  // One instance covers both directions — a sender is counted against their own
+  // identity whichever end the message is seen from.
+  const chatGate = useRef(new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS));
+  const [chatCooldown, setChatCooldown] = useState<number | null>(null);
 
   const addReaction = useCallback(
     (identity: string, name: string, emoji: Reaction) => {
@@ -125,6 +141,9 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
 
     const name = displayNameOf(from);
     if (envelope.kind === "chat") {
+      // Dropped without rendering. The flooder's own input is disabled at
+      // their end; nobody else sees the flood, which is the whole point.
+      if (!chatGate.current.take(from.identity, Date.now())) return;
       addChat({
         identity: from.identity,
         name,
@@ -148,13 +167,23 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
       const body = sanitiseChatBody(raw);
       if (!body) return;
 
+      const identity = room.localParticipant.identity;
+      const now = Date.now();
+      if (!chatGate.current.take(identity, now)) {
+        // Nothing is sent and nothing is added locally — a message that
+        // appears on the sender's screen and nowhere else is a lie about what
+        // happened.
+        setChatCooldown(Math.ceil(chatGate.current.retryAfter(identity, now) / 1000));
+        return;
+      }
+
       // `publishData` does not echo to the sender, so the local copy is added
       // here rather than waiting for a round trip that will not come.
       addChat({
-        identity: room.localParticipant.identity,
+        identity,
         name: displayNameOf(room.localParticipant),
         body,
-        at: Date.now(),
+        at: now,
         mine: true,
       });
       // Reliable: a chat message that quietly did not arrive is the failure
@@ -222,6 +251,7 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
       // in the map keeps it growing for the length of the meeting.
       renderGate.current.forget(participant.identity);
       announceGate.current.forget(participant.identity);
+      chatGate.current.forget(participant.identity);
       setLog((current) =>
         appendBounded(current, {
           type: "system",
@@ -241,7 +271,27 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
     };
   }, [room]);
 
+  // Tick the cooldown down while it is running, and only while it is running.
+  useEffect(() => {
+    if (chatCooldown === null) return;
+    if (chatCooldown <= 0) {
+      setChatCooldown(null);
+      return;
+    }
+    const timer = setTimeout(() => setChatCooldown((n) => (n === null ? null : n - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [chatCooldown]);
+
   const markRead = useCallback(() => setUnread(0), []);
 
-  return { log, reactions, unread, announcement, sendChat, sendReaction, markRead };
+  return {
+    log,
+    reactions,
+    unread,
+    announcement,
+    chatCooldown,
+    sendChat,
+    sendReaction,
+    markRead,
+  };
 }

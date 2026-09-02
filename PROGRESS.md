@@ -1635,3 +1635,88 @@ chat end to end: 198ms  (§3.5 target < 500ms, harness overhead included)
   since §3.5 asks for them in the panel.
 - **Screen share and participants** remain the two controls §3.4 lists that are
   not in the bar. Phase 7.
+
+---
+
+## Applying the chat rate limit, and the testing rules
+
+### §3.5's rate limit, in the shape the spec argues for
+
+Five messages per ten seconds per sender. The spec is explicit about where the
+enforcement actually is:
+
+> the receive side drops the excess without rendering it, and **that is the only
+> real enforcement** — there is no server on this path, so a modified client
+> ignores anything the send side does.
+
+`lib/room/reaction-limit.ts` became `lib/room/limits.ts`, since it now holds two
+shapes for two features. Reactions get a **minimum gap** — the press is
+reflexive, so one a second. Chat gets a **burst allowance** — typing three quick
+lines is normal, and a minimum gap between them would be an odd thing to enforce
+on a conversation.
+
+Rolling rather than fixed, and the reason is concrete: a fixed window resets on
+a boundary, so a sender who used one slot early and four just before the
+boundary gets all five back the instant it passes — ten messages inside half a
+second, which is the burst the limit exists to stop.
+
+The send half is not decoration. It disables the composer with a countdown, so a
+flooder sees why nothing is happening rather than typing into a void. Nothing is
+sent *and* nothing is added locally: a message that appears on the sender's
+screen and nowhere else is a lie about what happened.
+
+`check:chat` is now **67**.
+
+### The first testing rule, applied to the new guards
+
+CLAUDE.md gained six testing rules, all from things that went wrong here. The
+first one — *"Delete the guard. If no test fails, the guard is untested"* —
+caught two of my own in the space of an hour.
+
+**A test that could not tell rolling from fixed.** The mutation was supposed to
+break it and did not. Neither the test nor my mutation modelled a real fixed
+window: the difference only shows in one arrangement, where a slot is used early
+and the rest just before the boundary. Rewritten so it distinguishes them, and
+re-run against a genuine fixed-window mutation, which now fails it.
+
+**An e2e test that overclaimed in its own name.** It was called *"a flood is
+dropped at the receiving end, not just at the sender's"* — and it passed with
+the receive-side gate deleted.
+
+The reason is worth keeping, because it is not fixable by writing a better test:
+**no test driven through this UI can reach the receive half.** A well-behaved
+client never sends the sixth message, so the receiver never gets one to drop.
+Exercising it needs a client that ignores its own limit, which is precisely the
+threat it exists for and not something the product's own controls can do.
+
+So the test was renamed to what it proves — the sender's cooldown, and that a
+burst reaches nobody as a burst — with the gap named in the test and the pure
+check pointed at as where the receive half is actually covered. An honest
+smaller claim beats a bigger one that is not true.
+
+### Owning `[hidden]`
+
+*"A correctness property may not rest on a third-party reset."* `app/globals.css`
+now declares `[hidden] { display: none !important }` in our own base layer,
+excluding `until-found` so find-in-page can still reveal collapsed content.
+`check:room` asserts both, and fails if the declaration is removed — which is
+what makes it ours rather than Tailwind's to keep.
+
+### One more flake, one more sample-versus-poll
+
+The video liveness assertion sampled two frames 250ms apart and failed once with
+motion of exactly zero, then passed alone. LiveKit's `adaptiveStream` pauses
+video it believes is off-screen, and every browser context after the first is a
+background tab — so identical frames are not necessarily a bug. Polled now: a
+genuinely frozen track stays frozen, so this separates "paused for a moment"
+from "never moving" without weakening anything.
+
+That is the same lesson as the reaction counter earlier in this phase. A
+snapshot of a thing that changes on its own is a race; observe over an interval
+instead.
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
+`check:room` **70**, `check:chat` **67**, `check:rls` 18, `typecheck`, `lint`,
+`check:meetings` 43/43, `check:bundle` 8/8, `check:media` **18/18** — all pass.

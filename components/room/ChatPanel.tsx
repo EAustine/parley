@@ -26,11 +26,14 @@ import { Button } from "@/components/ui/button";
 export function ChatPanel({
   open,
   log,
+  cooldown,
   onClose,
   onSend,
 }: {
   open: boolean;
   log: LogEntry[];
+  /** Seconds until sending is allowed again, or null — §3.5. */
+  cooldown: number | null;
   onClose: () => void;
   onSend: (body: string) => void;
 }) {
@@ -93,13 +96,10 @@ export function ChatPanel({
       // and the room stays live behind it.
       aria-label="Meeting chat"
       hidden={!open}
-      // `flex` is conditional rather than constant, and that is not a
-      // shortcut. The `hidden` attribute's `display: none` comes from a UA
-      // rule that any author `display` declaration outranks — a constant
-      // `flex` here would leave the panel permanently open. Tailwind's
-      // preflight happens to mark its `[hidden]` rule important, which is what
-      // makes the attribute alone work today; a correctness property should
-      // not rest on a detail of someone else's reset.
+      // `hidden` alone does the hiding. `app/globals.css` declares
+      // `[hidden] { display: none !important }` in our own base layer, so this
+      // does not depend on Tailwind's preflight happening to do the same — see
+      // CLAUDE.md's testing rules, which is where that lesson came from.
       className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-card md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
       style={{ borderColor: "var(--tile-border)" }}
       onKeyDown={(event) => {
@@ -170,7 +170,12 @@ export function ChatPanel({
           rows={2}
           value={draft}
           maxLength={CHAT_MAX_LENGTH}
-          placeholder="Message everyone"
+          disabled={cooldown !== null}
+          placeholder={
+            cooldown === null
+              ? "Message everyone"
+              : `Slow down a moment — you can send again in ${cooldown}s`
+          }
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(event) => {
             // §3.5: Enter sends, Shift+Enter newlines. IME composition is
@@ -181,7 +186,7 @@ export function ChatPanel({
               submit();
             }
           }}
-          className="w-full resize-none rounded-lg bg-input px-3 py-2 type-body text-foreground placeholder:text-muted-foreground"
+          className="w-full resize-none rounded-lg bg-input px-3 py-2 type-body text-foreground placeholder:text-muted-foreground disabled:opacity-60"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
           {/* §3.5: the counter appears at 900, not before. A permanent counter
@@ -190,9 +195,17 @@ export function ChatPanel({
             className="type-caption tabular-nums text-muted-foreground"
             aria-live="polite"
           >
-            {draft.length >= CHAT_COUNTER_AT ? `${remaining} left` : ""}
+            {cooldown !== null
+              ? `${cooldown}s`
+              : draft.length >= CHAT_COUNTER_AT
+                ? `${remaining} left`
+                : ""}
           </span>
-          <Button size="sm" onClick={submit} disabled={draft.trim().length === 0}>
+          <Button
+            size="sm"
+            onClick={submit}
+            disabled={draft.trim().length === 0 || cooldown !== null}
+          >
             Send
           </Button>
         </div>

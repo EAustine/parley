@@ -314,6 +314,24 @@ Errors explain what happened and what to do next. They do not apologise and they
 
 ---
 
+## Testing rules
+
+Earned the hard way; each one comes from a check that passed while exercising the wrong thing.
+
+**Delete the guard. If no test fails, the guard is untested.** A cheap mutation check, and the only way to know a test credits the code it names. The `autolink` scheme allow-list survived deletion because the candidate pattern rejected dangerous schemes first — so the allow-list was a backstop being reported as a defence. Name which gate each case exercises, pin the load-bearing one directly, and document the rest as backstops rather than coverage.
+
+**Assert rendered geometry, never declared CSS.** Reading back `aspect-ratio: 16/9` tests your own input. A tile declaring the right ratio still rendered 1956px inside a 1337px container, because `aspect-ratio` sets a shape and not a bound — fitting one needs whichever dimension is tighter to win, which is `min(100cqw, calc(100cqh * 16/9))`, not any single `max-`. Measure the box.
+
+**A correctness property may not rest on a third-party reset.** The chat panel's `hidden` worked only because Tailwind's preflight marks `[hidden]` important. Declare `[hidden] { display: none !important }` in our own base layer and own the behaviour.
+
+**Scope queries by role or test id, not by visible text.** `getByText("Ama Serwaa")` was precise until Phase 5 added join and leave messages carrying the same name. The product grows; text-based queries silently widen.
+
+**Assert room composition, never assume it.** Two tests passed alone and failed in a full run for exactly this reason.
+
+**A test runner that can reuse a stale build is worse than no runner.** `reuseExistingServer: false`. It failed a fix that worked, and the same defect would have passed a break just as quietly.
+
+---
+
 ## Conventions
 
 - Server Components by default; `"use client"` only where interactivity or browser APIs require it

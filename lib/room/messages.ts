@@ -16,6 +16,12 @@
  * stamps arrival, which is both trustworthy and correct: this is an ephemeral
  * chat between people who are all in the meeting right now.
  *
+ * §3.5 names the consequence, which is worth stating rather than discovering:
+ * two receivers can hold slightly different times for the same message, so
+ * display order is *per-receiver arrival order* and no client's ordering is
+ * canonical. Nothing here may assume otherwise — there is no sequence number
+ * to sort by and adding one would only move the unverifiable claim.
+ *
  * **No id travels.** `publishData` does not echo to the sender, so the sender
  * adds its own copy locally and can mint its own key there. An id on the wire
  * would be an attacker-chosen React key and a de-duplication surface, for no

@@ -231,6 +231,55 @@ test.describe("chat", () => {
     ).toBeLessThanOrEqual(open!.panelLeft!);
   });
 
+  /**
+   * §3.5's send half: "the send side disables the input on a brief cooldown."
+   *
+   * What this test cannot show, and it is worth being exact about it: the
+   * *receive* half is what §3.5 calls "the only real enforcement", and no test
+   * driven through this UI can distinguish it from the send half. A
+   * well-behaved client never sends the sixth message, so the receiver never
+   * gets one to drop — deleting the receive-side gate leaves this test passing,
+   * which is how the overclaim in its first name was found.
+   *
+   * Exercising the receive half needs a client that ignores its own limit,
+   * which is the threat it exists for and not something reachable from the
+   * product's own controls. `npm run check:chat` covers `WindowLimit` directly
+   * instead, including that a refusal does not extend the window and that one
+   * flooder cannot silence anyone else.
+   */
+  test("a flood disables the sender's input and reaches nobody as a flood", async ({ browser }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(ama.page, 2);
+    await expectParticipants(kwabena.page, 2);
+    await openChat(ama);
+    await openChat(kwabena);
+
+    // Eight sent as fast as the input allows; it disables partway through.
+    const composer = ama.page.getByLabel("Message");
+    for (let i = 1; i <= 8; i++) {
+      if (await composer.isEnabled()) {
+        await composer.fill(`flood ${i}`);
+        await composer.press("Enter");
+      }
+    }
+
+    // The sender is told why, rather than typing into a void.
+    await expect(composer).toBeDisabled();
+    await expect(composer).toHaveAttribute("placeholder", /send again in \d+s/);
+
+    // §3.5: five per ten seconds. At the far end, no more than five arrive.
+    const kwabenaPanel = kwabena.page.getByRole("complementary", { name: "Meeting chat" });
+    await expect(kwabenaPanel.getByText(/^flood 1$/)).toBeVisible();
+    await ama.page.waitForTimeout(1500);
+    const delivered = await kwabenaPanel.getByText(/^flood \d$/).count();
+    expect(delivered, `${delivered} of 8 flood messages rendered`).toBeLessThanOrEqual(5);
+    expect(delivered, "nothing got through at all").toBeGreaterThan(0);
+
+    // The cooldown ends by itself; nobody has to reload.
+    await expect(composer).toBeEnabled({ timeout: 15_000 });
+  });
+
   test("Escape closes the panel and returns focus to the control", async ({ browser }) => {
     ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
     await openChat(ama);
@@ -239,6 +288,14 @@ test.describe("chat", () => {
     await expect(
       ama.page.getByRole("complementary", { name: "Meeting chat" }),
     ).toBeHidden();
+    // Measured, not inferred from the attribute: `hidden` only hides if a rule
+    // says so, and for a `display: flex` element that rule has to be important.
+    expect(
+      await ama.page.evaluate(() => {
+        const panel = document.querySelector('aside[aria-label="Meeting chat"]');
+        return panel ? getComputedStyle(panel).display : null;
+      }),
+    ).toBe("none");
     // A panel that can be opened from the keyboard and not closed from it is a
     // trap; one that closes and drops focus to the body is nearly as bad.
     await expect(ama.page.getByRole("button", { name: "Open chat" })).toBeFocused();
