@@ -1284,3 +1284,116 @@ over two minutes.
 
 `@playwright/test` is a dev dependency and does not ship. `e2e/fixtures/*.wav`
 is generated rather than committed, and `check:media` builds it first.
+
+---
+
+## §7 rate limiting — two tiers, and a 429 that isn't a dead end
+
+The open question from the last session is answered in the PRD: the flat
+10/min/IP was wrong, and it was wrong twice over.
+
+It blocked the product's own spec — seventeen colleagues joining one meeting
+share one office IP, and carrier-grade NAT puts thousands of Ghanaian mobile
+subscribers behind a handful of addresses, so a limit that low blocked a full
+room and could block unrelated strangers. And it was defending the wrong thing:
+at 8×10¹⁴ codes, enumeration takes geological time whatever the limit is. The
+real defences are the code space, server-side validation before minting, and
+narrow grants.
+
+**The signal that separates an attacker from an office is whether the code
+resolves.** Seventeen colleagues produce seventeen hits; an enumerator produces
+a stream of misses. So the tight limit moved onto misses.
+
+| Tier | Limit | Counted |
+|---|---|---|
+| Overall | 60 / min | Every request |
+| Unresolvable code | 5 / min | **After lookup** — unknown or expired codes only |
+
+Signed-in callers get a bucket keyed on user id rather than address, so an
+office of seventeen is seventeen buckets rather than one.
+
+### Where the ordering does the work
+
+The miss tier is consumed *after* `get_meeting_by_code` returns, and that
+placement is the whole design. Counted before the lookup it would be a limit on
+joining again, just with a different number — which is what §7 removed.
+
+Past the miss allowance the response stops distinguishing "no such code" from
+"expired", because that distinction is exactly what an enumerator is paying
+for. A legitimate late arrival with one expired link never reaches it.
+
+`consume_rate_limit` now returns `(allowed, retry_after)` — a return-type change
+that needed a drop and recreate rather than a `create or replace`. `retry_after`
+is floored at 1: a `Retry-After: 0` invites an immediate retry, which is the
+stampede this exists to spread.
+
+### A 429 on join is not a dead end
+
+§7 asks for the client to hold the join screen with automatic backoff rather
+than showing an error, and both entry paths now do.
+
+Pre-join keeps its "joining" state, counts down, and retries by itself — the
+button reads "Joining in 4s…" and the copy says there is nothing to do.
+`/room/[code]` does the same, which matters more than it looks: that is the
+path a link opened directly takes, and there is no pre-join screen behind it to
+be sent back to.
+
+No exponential backoff. The server knows exactly when the window resets and
+says so, so doubling would keep waiting long after the allowance returned. The
+one addition is a second or two of jitter, because everyone refused inside one
+window is told the same reset second and retrying precisely on it recreates the
+pile-up.
+
+Five attempts — roughly five minutes — before it becomes an error. §7 says a
+large meeting should fill slowly rather than fail, but an unbounded silent loop
+is its own kind of failure.
+
+### Verified
+
+`check:meetings` is now **41 assertions**, and the four new ones are the ones
+that matter:
+
+```
+✔ unresolvable codes are limited to 5 a minute, and the 6th is refused  — 5 allowed, then HTTP 429
+✔ a real code still joins after the miss allowance is spent             — HTTP 200
+✔ a 429 carries a usable Retry-After                                    — Retry-After: 58
+✔ seventeen people can join one meeting from one address                — statuses: 200
+✔ the overall limit allows 60 a minute and refuses the 61st             — 60 allowed, then HTTP 429
+```
+
+Proved able to fail by moving the miss tier back before the lookup — the old
+shape. Four assertions go red, and the two in the middle are the real-world
+symptom stated plainly: *"a real code still joins after the miss allowance is
+spent — HTTP 429"* and *"seventeen people can join one meeting from one address
+— 200, 429."*
+
+**The e2e grid test stopped needing its pacing.** It had a 6.5s gap between
+joins because seventeen people could not join from one address inside a minute
+under the old limit — and that gap was the product's behaviour, not a test
+artifact. It is now zero, and the seventeen-participant sweep went from **2.9
+minutes to 41 seconds**. Its absence is the assertion: if a full room could not
+fill at speed, that test would stop passing.
+
+A ninth e2e test covers the client half — a 429 is intercepted on the first
+attempt, and pre-join is asserted to hold, count down, show no error copy, and
+go through on its own with nothing more from the person.
+
+### Two things worth writing down
+
+**A test fixture that quietly tested nothing.** The miss-tier assertion first
+used codes `zz0-zzzz-zzz` through `zz5-zzzz-zzz`. `0` and `1` are not in the
+code alphabet, so those two were rejected as malformed before any lookup and
+never reached the miss tier — four misses instead of six, and no 429 to read a
+`Retry-After` from. The failure looked like a bug in the limiter. Fixture codes
+now use letters that are actually in the alphabet.
+
+**Next's route announcer is a `role="alert"` live region.** An assertion that no
+`role=alert` existed matched the framework's own page-title announcer rather
+than our copy. Scoped to our text instead. Worth remembering for Phase 9: a
+`role="alert"` is assertive and interrupts, and that one is Next's, not ours.
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
+`check:room` 65, `check:rls` 18, `typecheck`, `lint`, `check:meetings`
+**41/41**, `check:bundle` 8/8, `check:media` **8/8** — all pass.

@@ -3,13 +3,31 @@ import type { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * Fixed-window IP rate limiting, counted in Postgres.
+ * Fixed-window rate limiting, counted in Postgres.
  *
  * §8 leans on this as a security control, which rules out a module-level Map:
  * on serverless each cold instance starts from zero, so the effective limit
- * becomes "10 per minute per instance" — a number nobody chose and nobody can
+ * becomes "N per minute per instance" — a number nobody chose and nobody can
  * observe. The counter has to be shared.
+ *
+ * §7 keys the buckets on the caller, not always on the address: a signed-in
+ * host is not the threat model, and putting them in a bucket shared with
+ * everyone else behind the same office NAT punishes them for their colleagues.
  */
+
+/**
+ * Who to count against.
+ *
+ * A signed-in user gets their own bucket — §7 — which means an office of
+ * seventeen colleagues is seventeen buckets rather than one. Everyone else is
+ * counted by address, which is the only handle available.
+ */
+export function rateLimitSubject(
+  request: NextRequest,
+  userId: string | null,
+): string {
+  return userId ? `user:${userId}` : `ip:${clientIp(request)}`;
+}
 
 /** Best guess at the caller, preferring what the platform vouches for. */
 export function clientIp(request: NextRequest): string {
@@ -35,6 +53,13 @@ export function clientIp(request: NextRequest): string {
  * for this particular risk — it would be the wrong call for, say, a login
  * endpoint.
  */
+export type RateLimitVerdict = {
+  allowed: boolean;
+  /** Seconds until this bucket's window resets. Becomes `Retry-After`. */
+  retryAfter: number;
+  degraded: boolean;
+};
+
 export async function consumeRateLimit({
   key,
   limit,
@@ -43,7 +68,7 @@ export async function consumeRateLimit({
   key: string;
   limit: number;
   windowSeconds: number;
-}): Promise<{ allowed: boolean; degraded: boolean }> {
+}): Promise<RateLimitVerdict> {
   try {
     const supabase = createAdminClient();
     const { data, error } = await supabase.rpc("consume_rate_limit", {
@@ -54,12 +79,21 @@ export async function consumeRateLimit({
 
     if (error) {
       console.error("rate limit unavailable, allowing request:", error.message);
-      return { allowed: true, degraded: true };
+      return { allowed: true, retryAfter: 0, degraded: true };
     }
 
-    return { allowed: data === true, degraded: false };
+    // The function returns a single row; PostgREST gives it back as an array.
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+      allowed: row?.allowed === true,
+      // Falls back to the whole window rather than 0. A Retry-After of zero
+      // invites an immediate retry, which is the stampede this exists to
+      // spread out.
+      retryAfter: Number(row?.retry_after) || windowSeconds,
+      degraded: false,
+    };
   } catch (error) {
     console.error("rate limit threw, allowing request:", error);
-    return { allowed: true, degraded: true };
+    return { allowed: true, retryAfter: 0, degraded: true };
   }
 }

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Lockup } from "@/components/brand/Lockup";
 import { recallJoin } from "@/lib/prejoin-handoff";
+import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 
 /**
  * Rule 8, enforced here.
@@ -45,6 +46,7 @@ type Failure = {
 
 type Outcome =
   | { kind: "requesting" }
+  | { kind: "waiting"; seconds: number }
   | { kind: "ready"; token: string; serverUrl: string }
   | ({ kind: "failed" } & Failure);
 
@@ -105,6 +107,8 @@ function describe(reason: string, status: number, code: string): Failure {
 export function RoomEntry({ code }: { code: string }) {
   const [outcome, setOutcome] = useState<Outcome>({ kind: "requesting" });
 
+  const attempts = useRef(0);
+
   // React 18+ mounts effects twice in development. Without this the token
   // endpoint sees two requests per visit, which is harmless except that it
   // burns the rate limit at double speed and makes 429 look like a bug.
@@ -114,7 +118,23 @@ export function RoomEntry({ code }: { code: string }) {
     if (asked.current) return;
     asked.current = true;
 
-    (async () => {
+    const timers: ReturnType<typeof setInterval>[] = [];
+
+    const hold = (seconds: number) => {
+      setOutcome({ kind: "waiting", seconds });
+      const timer = setInterval(() => {
+        setOutcome((current) => {
+          if (current.kind !== "waiting") return current;
+          if (current.seconds > 1) return { ...current, seconds: current.seconds - 1 };
+          clearInterval(timer);
+          void request();
+          return { kind: "requesting" };
+        });
+      }, 1000);
+      timers.push(timer);
+    };
+
+    const request = async () => {
       // Pre-join already minted one and checked it would be accepted. Asking
       // again would spend a second rate-limit slot to be told the same thing.
       const handed = recallJoin(code);
@@ -140,10 +160,27 @@ export function RoomEntry({ code }: { code: string }) {
         });
 
         if (!response.ok) {
-          const { error } = (await response
+          const payload = (await response
             .json()
-            .catch(() => ({ error: "unknown" }))) as { error: string };
-          setOutcome({ kind: "failed", ...describe(error, response.status, code) });
+            .catch(() => ({ error: "unknown" }))) as {
+            error: string;
+            retryAfter?: number;
+          };
+
+          // §7's rule holds here too. Sending someone back to the join screen
+          // to press the same button again is the dead end it removes — and
+          // this is the path a link opened directly takes, where there is no
+          // pre-join screen behind them to go back to.
+          if (payload.error === "rate_limited" && attempts.current < MAX_JOIN_ATTEMPTS) {
+            attempts.current += 1;
+            hold(retryAfterSeconds(response, payload));
+            return;
+          }
+
+          setOutcome({
+            kind: "failed",
+            ...describe(payload.error, response.status, code),
+          });
           return;
         }
 
@@ -157,10 +194,30 @@ export function RoomEntry({ code }: { code: string }) {
           action: { label: "Back to the join screen", href: `/j/${code}` },
         });
       }
-    })();
+    };
+
+    void request();
+    return () => {
+      for (const timer of timers) clearInterval(timer);
+    };
   }, [code]);
 
   if (outcome.kind === "requesting") return <Joining />;
+
+  if (outcome.kind === "waiting") {
+    return (
+      <Centred>
+        <div className="space-y-2">
+          <p className="type-body tabular-nums" role="status" aria-live="polite">
+            This meeting is busy. Joining in {outcome.seconds}s…
+          </p>
+          <p className="type-small text-muted-foreground">
+            There&rsquo;s nothing to do — it will go through on its own.
+          </p>
+        </div>
+      </Centred>
+    );
+  }
 
   if (outcome.kind === "failed") {
     return (

@@ -609,7 +609,24 @@ Rules for this endpoint:
 - Grant `roomJoin`, `canPublish`, `canSubscribe`, `canPublishData`, `room: code` — nothing wider
 - Set `ttl` to 6 hours
 - Put `displayName` and `role` in token `metadata`, not in the identity string
-- Rate limit by IP: 10 requests per minute
+- Rate limit in two tiers, keyed on IP (see below)
+
+### Rate limiting
+
+A flat 10/minute/IP was the original figure and it is wrong. Seventeen people joining one meeting from a single office share one public IP, and mobile carriers — Ghanaian networks included — put thousands of subscribers behind carrier-grade NAT. A limit that low blocks a full room and can block unrelated strangers.
+
+The number was also defending the wrong thing. Code enumeration is not a live threat: at roughly 8×10¹⁴ codes, a brute-force run takes geological time regardless of the limit. The real defences are the code space, server-side validation before minting, and narrow grants. Rate limiting here is hygiene against flooding, not the wall.
+
+**The signal that separates an attacker from an office is whether the code resolves.** Seventeen colleagues produce seventeen valid-code requests. An enumerator produces a stream of misses. So limit the misses, not the hits:
+
+| Tier | Limit | Applies to |
+|---|---|---|
+| Overall | 60 / min / IP | Every request. Accommodates a full room from one NAT with headroom. |
+| Unresolvable code | 5 / min / IP | Counted after lookup — unknown or expired codes only |
+
+Authenticated requests get their own bucket keyed on user id rather than IP, since a signed-in host is not the threat model.
+
+**A 429 on join is not a dead end.** Return `Retry-After` and have the client hold the pre-join screen in a "joining" state with automatic backoff, not an error. A rare, very large meeting from one network should fill slowly rather than fail — §3.11's rule that nothing fails silently applies here as much as to a dropped connection.
 
 ---
 

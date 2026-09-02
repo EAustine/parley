@@ -422,25 +422,109 @@ try {
     `HTTP ${unknownToken.status}`,
   );
 
-  // The limiter itself, on a bucket of its own so it cannot disturb anything
-  // above. Ten allowed, the eleventh refused — the count is asserted rather
-  // than "some request eventually 429s", because a limiter off by several is
-  // still a bug and would pass the looser test.
-  const limitIp = `10.9.9.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
-  const statuses = [];
-  for (let i = 0; i < 11; i++) {
-    const r = await fetch(`${APP}/api/livekit/token`, {
+  // The limiter, on buckets of its own so it cannot disturb anything above.
+  //
+  // §7 replaced a flat 10/min/IP with two tiers, and the point of the redesign
+  // is that they are counted on different things. A flat limit could not tell
+  // seventeen colleagues behind one office NAT from someone walking the code
+  // space, so it blocked both. What separates them is not how many requests
+  // they make but how many *resolve*.
+  //
+  // These assert exact counts rather than "something eventually 429s". A
+  // limiter off by several is still a bug and would pass the looser test.
+
+  // Tier 1: unresolvable codes, 5 a minute. Fifteen valid-code requests first,
+  // which under the old flat limit would already have exhausted the allowance —
+  // so this also proves hits are not counted against the miss tier.
+  const missIp = `10.9.9.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
+  for (let i = 0; i < 15; i++) {
+    await fetch(`${APP}/api/livekit/token`, {
       method: "POST",
-      headers: asIp(limitIp),
+      headers: asIp(missIp),
       body: JSON.stringify({ code: scheduled.code, displayName: "Ama" }),
     });
-    statuses.push(r.status);
   }
-  const okCount = statuses.filter((s) => s === 200).length;
+
+  const missStatuses = [];
+  let retryAfterHeader = null;
+  // Letters from the code alphabet, not digits: `0` and `1` are not in
+  // `abcdefghjkmnpqrstuvwxyz23456789`, so a code containing them is rejected as
+  // malformed before any lookup happens and never reaches the miss tier. The
+  // first version of this used `zz0-` and `zz1-` and quietly tested nothing.
+  for (const suffix of ["a", "b", "c", "d", "e", "f"]) {
+    // A different unknown code each time, the way an enumerator would.
+    const r = await fetch(`${APP}/api/livekit/token`, {
+      method: "POST",
+      headers: asIp(missIp),
+      body: JSON.stringify({ code: `zz${suffix}-zzzz-zzz`, displayName: "Ama" }),
+    });
+    missStatuses.push(r.status);
+    if (r.status === 429) retryAfterHeader ??= r.headers.get("Retry-After");
+  }
+  const missesAllowed = missStatuses.filter((s) => s === 404).length;
   check(
-    okCount === 10 && statuses[10] === 429,
-    "rate limit allows 10 per minute and refuses the 11th",
-    `${okCount} allowed, then HTTP ${statuses[10]}`,
+    missesAllowed === 5 && missStatuses[5] === 429,
+    "unresolvable codes are limited to 5 a minute, and the 6th is refused",
+    `${missesAllowed} allowed, then HTTP ${missStatuses[5]}`,
+  );
+
+  // The property the whole redesign exists for: burning the miss allowance
+  // must not stop a real join from the same address. Under the old flat limit
+  // it did, which is what blocked a full room from one office.
+  const afterMisses = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: asIp(missIp),
+    body: JSON.stringify({ code: scheduled.code, displayName: "Ama" }),
+  });
+  check(
+    afterMisses.status === 200,
+    "a real code still joins after the miss allowance is spent",
+    `HTTP ${afterMisses.status}`,
+  );
+
+  // §7: "A 429 on join is not a dead end." The header is what lets the client
+  // hold the join screen and come back at the right moment rather than guess.
+  const retryAfter = Number(retryAfterHeader);
+  check(
+    Number.isFinite(retryAfter) && retryAfter > 0 && retryAfter <= 60,
+    "a 429 carries a usable Retry-After",
+    `Retry-After: ${retryAfterHeader}`,
+  );
+
+  // Tier 2: the overall limit, 60 a minute. Seventeen is §3.4's largest grid,
+  // and the figure the old limit made impossible from a single address.
+  const roomIp = `10.7.7.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
+  const fullRoom = [];
+  for (let i = 0; i < 17; i++) {
+    const r = await fetch(`${APP}/api/livekit/token`, {
+      method: "POST",
+      headers: asIp(roomIp),
+      body: JSON.stringify({ code: scheduled.code, displayName: `Guest ${i}` }),
+    });
+    fullRoom.push(r.status);
+  }
+  check(
+    fullRoom.every((s) => s === 200),
+    "seventeen people can join one meeting from one address",
+    `statuses: ${[...new Set(fullRoom)].join(", ")}`,
+  );
+
+  // And it is still a limit. 60 allowed, the 61st refused.
+  const floodIp = `10.6.6.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
+  const flood = [];
+  for (let i = 0; i < 61; i++) {
+    const r = await fetch(`${APP}/api/livekit/token`, {
+      method: "POST",
+      headers: asIp(floodIp),
+      body: JSON.stringify({ code: scheduled.code, displayName: "Ama" }),
+    });
+    flood.push(r.status);
+  }
+  const floodOk = flood.filter((s) => s === 200).length;
+  check(
+    floodOk === 60 && flood[60] === 429,
+    "the overall limit allows 60 a minute and refuses the 61st",
+    `${floodOk} allowed, then HTTP ${flood[60]}`,
   );
 
   // --- /room/[code] renders a designed state for each contract failure -----

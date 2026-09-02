@@ -1,4 +1,4 @@
-import { test, expect, type Browser } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 import { emptyRoom } from "./livekit-admin";
 import { LIVE_CODE, gridShape, joinAs, type Participant } from "./room.helpers";
@@ -17,11 +17,15 @@ import { LIVE_CODE, gridShape, joinAs, type Participant } from "./room.helpers";
  * properly.
  */
 
-// Seventeen joins, and §7 rate-limits the token endpoint to ten a minute per
-// IP. Pacing is not politeness to the test: it is what the product does to a
-// room filling up from one office, and is worth seeing rather than working
-// around.
-const JOIN_INTERVAL_MS = 6_500;
+// This used to be 6,500ms. §7's flat 10/min/IP meant seventeen people could not
+// join one meeting from one address inside a minute, so the test had to trickle
+// them in — and the trickle was the product's behaviour, not a test artifact.
+//
+// The limit is now 60/min overall with the tight tier moved onto unresolvable
+// codes, which is exactly the case this test is: seventeen requests that all
+// resolve. So the pacing is gone, and its absence is the assertion — if the
+// room could not fill at speed, this test would stop passing.
+const JOIN_INTERVAL_MS = 0;
 
 /** §3.4, desktop column. [participants, columns, rows, tiles rendered, +N] */
 const EXPECTED: [number, number, number, number, number][] = [
@@ -51,7 +55,7 @@ test("every breakpoint from 1 to 17, with real participants", async ({ browser }
   try {
     for (const [count, columns, rows, tiles, overflow] of EXPECTED) {
       while (everyone.length < count) {
-        await observer.page.waitForTimeout(JOIN_INTERVAL_MS);
+        if (JOIN_INTERVAL_MS) await observer.page.waitForTimeout(JOIN_INTERVAL_MS);
         everyone.push(
           await joinAs(browser, `Guest ${everyone.length + 1}`, { withMedia: false }),
         );

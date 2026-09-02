@@ -9,6 +9,7 @@ import { ICONS } from "@/lib/icons";
 import { PermissionNotice } from "@/components/prejoin/PermissionState";
 import { MicMeter } from "@/components/prejoin/MicMeter";
 import { rememberJoin } from "@/lib/prejoin-handoff";
+import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,19 @@ export function PreJoin({
   const [name, setName] = useState("");
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // §7: a busy meeting holds this screen and comes back by itself. `countdown`
+  // is what the person watching sees; without it the screen would just sit
+  // there, which is the same as failing as far as anyone can tell.
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const attempts = useRef(0);
+  const timers = useRef<ReturnType<typeof setInterval>[]>([]);
+
+  useEffect(
+    () => () => {
+      for (const timer of timers.current) clearInterval(timer);
+    },
+    [],
+  );
 
   const isGuest = signedInName === null;
 
@@ -60,9 +74,25 @@ export function PreJoin({
   const trimmedName = name.trim();
   const canJoin = !joining && (!isGuest || trimmedName.length > 0);
 
+  /** Hold the screen, count down, and go again — never bounce to an error. */
+  function holdAndRetry(seconds: number) {
+    setCountdown(seconds);
+    const timer = setInterval(() => {
+      setCountdown((remaining) => {
+        if (remaining === null) return null;
+        if (remaining > 1) return remaining - 1;
+        clearInterval(timer);
+        void join();
+        return null;
+      });
+    }, 1000);
+    timers.current.push(timer);
+  }
+
   async function join() {
     setJoining(true);
     setError(null);
+    setCountdown(null);
 
     try {
       const response = await fetch("/api/livekit/token", {
@@ -75,11 +105,27 @@ export function PreJoin({
       });
 
       if (!response.ok) {
-        const { error: reason } = (await response
+        const payload = (await response
           .json()
-          .catch(() => ({ error: "unknown" }))) as { error: string };
+          .catch(() => ({ error: "unknown" }))) as {
+          error: string;
+          retryAfter?: number;
+        };
+
+        // §7. Not a dead end: a full room from one network fills slowly rather
+        // than turning people away, so this screen waits and tries again on
+        // its own. Only a wait long enough to stop being credible becomes an
+        // error.
+        if (payload.error === "rate_limited") {
+          attempts.current += 1;
+          if (attempts.current < MAX_JOIN_ATTEMPTS) {
+            holdAndRetry(retryAfterSeconds(response, payload));
+            return;
+          }
+        }
+
         setJoining(false);
-        setError(joinErrorMessage(reason));
+        setError(joinErrorMessage(payload.error));
         return;
       }
 
@@ -248,9 +294,19 @@ export function PreJoin({
           />
 
           <div className="space-y-2">
-            <Button className="w-full" onClick={join} disabled={!canJoin}>
-              {joining ? "Joining…" : "Join meeting"}
+            <Button className="w-full" onClick={() => join()} disabled={!canJoin}>
+              {countdown !== null
+                ? `Joining in ${countdown}s…`
+                : joining
+                  ? "Joining…"
+                  : "Join meeting"}
             </Button>
+            {countdown !== null && (
+              <p className="type-caption text-muted-foreground" role="status" aria-live="polite">
+                This meeting is busy right now. You&rsquo;ll join automatically —
+                there&rsquo;s nothing to do.
+              </p>
+            )}
             {/* Joining with both off is allowed, and must not read as a fault.
                 "You can turn them on once you're in" is only true when there
                 is something to turn on — with no hardware it is a promise the

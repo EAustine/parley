@@ -191,6 +191,53 @@ test.describe("joining", () => {
   });
 });
 
+test.describe("a busy meeting", () => {
+  test("holds the join screen and goes through by itself", async ({ browser }) => {
+    const context = await browser.newContext({ permissions: ["camera", "microphone"] });
+    const page = await context.newPage();
+
+    // The first attempt is refused the way a full room from one network would
+    // be; the second is let through. Intercepted rather than driven by the real
+    // limiter, so the assertion is about what the *client* does with a 429 —
+    // §7: "not a dead end".
+    let refusals = 0;
+    await page.route("**/api/livekit/token", async (route) => {
+      if (refusals === 0) {
+        refusals += 1;
+        await route.fulfill({
+          status: 429,
+          headers: { "Retry-After": "2", "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "rate_limited", retryAfter: 2 }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto(`/j/${LIVE_CODE}`);
+    await page.getByLabel("Your name").fill("Ama Serwaa");
+    await page.getByRole("button", { name: "Join meeting" }).click();
+
+    // Held, not failed: the button counts down and says why.
+    await expect(page.getByRole("button", { name: /Joining in \d+s/ })).toBeVisible();
+    await expect(page.getByText("This meeting is busy right now")).toBeVisible();
+    // And the rate-limit error copy never appears — being held is not failing.
+    // Asserted on our own text rather than on role=alert: Next's route
+    // announcer is itself a role="alert" live region, so the broader check
+    // matches the framework rather than the product.
+    await expect(page.getByText("Too many attempts")).toHaveCount(0);
+
+    // Then it goes through on its own, with nothing more from the person.
+    await page.waitForURL(`**/room/${LIVE_CODE}`, { timeout: 30_000 });
+    await expect(
+      page.getByRole("heading", { name: /Meeting, \d+ participant/ }),
+    ).toBeAttached({ timeout: 60_000 });
+    expect(refusals, "the refusal actually happened").toBe(1);
+
+    await context.close();
+  });
+});
+
 test.describe("the grid", () => {
   test("reflows on join and leave", async ({ browser }) => {
     const ama = await joinAs(browser, "Ama Serwaa");

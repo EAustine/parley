@@ -9,14 +9,29 @@ import {
   sanitiseDisplayName,
   userIdentity,
 } from "@/lib/livekit/identity";
-import { clientIp, consumeRateLimit } from "@/lib/rate-limit";
+import { consumeRateLimit, rateLimitSubject } from "@/lib/rate-limit";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
 
 /** Six hours, per §7. Long enough for a meeting, short enough to expire. */
 const TOKEN_TTL_SECONDS = 6 * 60 * 60;
 
-const RATE_LIMIT = { limit: 10, windowSeconds: 60 };
+/**
+ * §7's two tiers.
+ *
+ * A flat 10/min/IP was the original figure and it blocked the product's own
+ * spec: seventeen people joining one meeting from one office share one public
+ * IP, and carrier-grade NAT puts thousands of mobile subscribers behind a
+ * handful of addresses. It was also guarding the wrong thing — at 8×10^14
+ * codes, enumeration takes geological time whatever the limit is.
+ *
+ * What separates an office from an enumerator is not how many requests they
+ * make but how many *resolve*. Seventeen colleagues produce seventeen hits; an
+ * enumerator produces a stream of misses. So the tight limit is on misses,
+ * counted only after the lookup says the code is not real.
+ */
+const OVERALL = { limit: 60, windowSeconds: 60 };
+const MISSES = { limit: 5, windowSeconds: 60 };
 
 type TokenError =
   | "invalid_request"
@@ -28,6 +43,19 @@ type TokenError =
 
 function fail(error: TokenError, status: number) {
   return NextResponse.json({ error }, { status });
+}
+
+/**
+ * §7: "A 429 on join is not a dead end." The header is what lets the client
+ * hold the pre-join screen and come back at the right moment instead of
+ * guessing — a guess is how you get either a stampede or a screen that waits
+ * longer than it needs to.
+ */
+function tooManyRequests(retryAfter: number) {
+  return NextResponse.json(
+    { error: "rate_limited" satisfies TokenError, retryAfter },
+    { status: 429, headers: { "Retry-After": String(retryAfter) } },
+  );
 }
 
 /**
@@ -49,12 +77,6 @@ function fail(error: TokenError, status: number) {
  * in metadata, where it is a label rather than a key.
  */
 export async function POST(request: NextRequest) {
-  const { allowed } = await consumeRateLimit({
-    key: `livekit-token:${clientIp(request)}`,
-    ...RATE_LIMIT,
-  });
-  if (!allowed) return fail("rate_limited", 429);
-
   let body: unknown;
   try {
     body = await request.json();
@@ -67,25 +89,47 @@ export async function POST(request: NextRequest) {
     typeof raw.code === "string" ? normaliseMeetingCode(raw.code) : null;
   if (!code) return fail("invalid_request", 400);
 
+  // Who is asking has to be settled before anything is counted, because a
+  // signed-in caller is counted against their own bucket rather than against
+  // whatever NAT they happen to be behind.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const subject = rateLimitSubject(request, user?.id ?? null);
+
+  const overall = await consumeRateLimit({
+    key: `livekit-token:${subject}`,
+    ...OVERALL,
+  });
+  if (!overall.allowed) return tooManyRequests(overall.retryAfter);
+
   // Public facts about the meeting, read the way a guest reads them.
   const anon = createAnonClient();
   const { data: rows, error } = await anon.rpc("get_meeting_by_code", {
     p_code: code,
   });
-  if (error) return fail("meeting_not_found", 404);
 
-  const meeting = rows?.[0];
-  if (!meeting) return fail("meeting_not_found", 404);
-  if (meeting.status === "ended") return fail("meeting_ended", 410);
+  const meeting = error ? undefined : rows?.[0];
+
+  // Counted here and nowhere else — after the lookup, and only on a miss. This
+  // is the tier that actually defends the code space, and putting it before
+  // the lookup would make it a limit on joining, which is what §7 removed.
+  if (!meeting || meeting.status === "ended") {
+    const misses = await consumeRateLimit({
+      key: `livekit-miss:${subject}`,
+      ...MISSES,
+    });
+    // Past the miss allowance the answer stops distinguishing "no such code"
+    // from "expired", which is the distinction an enumerator is paying for.
+    if (!misses.allowed) return tooManyRequests(misses.retryAfter);
+    if (!meeting) return fail("meeting_not_found", 404);
+    return fail("meeting_ended", 410);
+  }
 
   // Is this the host? Asked by trying to read the row as *them* — RLS returns
   // it only to its owner, so a successful read is the authorisation. No
   // separate ownership check to drift out of step with the policy.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   let isHost = false;
   if (user) {
     const { data: owned } = await supabase
