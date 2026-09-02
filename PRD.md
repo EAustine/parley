@@ -626,6 +626,8 @@ The number was also defending the wrong thing. Code enumeration is not a live th
 
 Authenticated requests get their own bucket keyed on user id rather than IP, since a signed-in host is not the threat model.
 
+**Malformed codes are rejected before lookup and do not count toward the miss tier.** This is deliberate, not an oversight: a code containing a character outside the alphabet costs nothing to reject — no database round trip — so the overall limit is sufficient cover. Only requests that reach a lookup and fail it are worth counting, because those are the ones that cost something.
+
 **A 429 on join is not a dead end.** Return `Retry-After` and have the client hold the pre-join screen in a "joining" state with automatic backoff, not an error. A rare, very large meeting from one network should fill slowly rather than fail — §3.11's rule that nothing fails silently applies here as much as to a dropped connection.
 
 ---

@@ -51,7 +51,14 @@ export function RoomControls({
     >
       {(lastMicrophoneError || lastCameraError) && (
         <p
-          role="alert"
+          // `status`, not `alert`. BUILD-PLAN's Phase 9 note: Next mounts its
+          // own route announcer as a `role="alert"` region, which is assertive
+          // and interrupts whatever a screen reader is mid-sentence on. A
+          // second assertive region in the room stacks on top of it and
+          // guarantees the flooding §9 exists to prevent — and this message
+          // stays on screen next to the control that fixes it, so nothing is
+          // lost by waiting for a gap.
+          role="status"
           className="rounded-lg px-3 py-1.5 type-small text-[var(--state-critical)]"
           style={{ background: "var(--scrim)" }}
         >

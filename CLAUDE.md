@@ -321,6 +321,7 @@ Errors explain what happened and what to do next. They do not apologise and they
 - `date-fns` + `date-fns-tz`. Store UTC, render local, always print the zone label.
 - Route handlers return typed JSON with a stable `error` string, never a raw exception
 - Meeting code alphabet: `abcdefghjkmnpqrstuvwxyz23456789` — no `i`, `l`, `o`, `0`, `1`. Format `xxx-xxxx-xxx`.
+- **Test fixtures derive from the same constants as the code under test.** Hand-written codes containing `0` or `1` are rejected as malformed before any lookup, so a miss-tier test using them silently exercises the wrong layer and passes for the wrong reason. Generate them from the exported alphabet; never type them.
 - Generate-and-insert with retry on unique violation. Never check-then-insert.
 - One component per file. Colocate under `components/room/`, `components/schedule/`, `components/ui/`.
 

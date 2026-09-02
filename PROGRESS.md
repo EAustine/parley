@@ -1397,3 +1397,101 @@ than our copy. Scoped to our text instead. Worth remembering for Phase 9: a
 `check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
 `check:room` 65, `check:rls` 18, `typecheck`, `lint`, `check:meetings`
 **41/41**, `check:bundle` 8/8, `check:media` **8/8** — all pass.
+
+---
+
+## Applying the three document updates
+
+All three answered something flagged in the last two sessions.
+
+### Fixture codes now come from the generator, never the keyboard
+
+CLAUDE.md's conventions gained a rule, and this repository is why it exists:
+
+> **Test fixtures derive from the same constants as the code under test.**
+> Hand-written codes containing `0` or `1` are rejected as malformed before any
+> lookup, so a miss-tier test using them silently exercises the wrong layer and
+> passes for the wrong reason. Generate them from the exported alphabet; never
+> type them.
+
+`check-meetings.mjs` now compiles `lib/meetings/code.ts` and calls
+`generateMeetingCode()` for every unknown-code fixture. A generated code is
+well-formed by construction, and at 8×10¹⁴ combinations it will not collide
+with a real meeting. Four typed `zzz-zzzz-zzz` literals are gone with it — they
+happened to be valid, but "happened to be" is the failure mode the rule names.
+
+Worth noting the first fix was only half a fix: after the `zz0-` mistake I
+replaced the digits with hand-picked letters, which was still typed. The rule
+in CLAUDE.md is the stricter and correct version.
+
+### Malformed codes bypassing the miss tier is now documented, and asserted
+
+§7 settled it as deliberate rather than an oversight: a code containing a
+character outside the alphabet costs nothing to reject — no database round trip
+— so the overall limit is sufficient cover, and only requests that reach a
+lookup and fail it are worth counting.
+
+Two assertions pin it. Ten malformed codes on a fresh bucket all return 400,
+and a genuine miss immediately afterwards still gets its 404 — proving the miss
+allowance was untouched. Proved able to fail by counting malformed codes as
+misses: both go red, the second with `HTTP 429`.
+
+`check:meetings` is now **43**.
+
+### The room has no assertive live region
+
+BUILD-PLAN's Phase 9 section gained the audit note about what the framework
+injects. It is Phase 9's work, but two parts were actionable now and cheap.
+
+`RoomControls` carried `role="alert"` on the "your microphone didn't turn on"
+message. `role="alert"` is assertive: it interrupts whatever a screen reader is
+mid-sentence on. Next already mounts its route announcer as one, and a second
+inside the room stacks on top of it — the room being exactly where announcements
+arrive in volume. It is now `role="status"`, and nothing is lost: the message
+stays on screen next to the control that fixes it.
+
+Three checks in `check:room` pin this, and the third exists because of how the
+second could lie:
+
+```
+✔ the room has components to scan  (5 files)
+✔ no assertive live region in the room — the framework already owns one
+✔ the room does announce, politely  (RoomControls, RoomEntry, RoomGrid, RoomStage)
+```
+
+A source scan rather than a rendered assertion, deliberately — it catches the
+next `role="alert"` as it is typed, in the file where someone would reach for
+it, rather than after a room is full enough to notice.
+
+Both were proved able to fail: putting `role="alert"` back names the file;
+stripping every polite region trips the vacuity guard.
+
+**The form errors were left alone**, and that is a judgment worth stating rather
+than burying. `role="alert"` remains on the dashboard, pre-join, sign-in and
+join-code validation messages. §9's list of "announcements" is join and leave
+events, chat, reactions, and connection state — the high-frequency room traffic
+the flooding argument is about. A validation error that appears in response to
+someone's own submit is a different case, and converting it to polite is a real
+accessibility trade-off rather than an obvious win. Phase 9 is where that gets
+decided; flagging it rather than deciding it quietly.
+
+### Two process notes
+
+**A `python` replacement silently did nothing.** The anchor for the new
+live-region section was stale — an earlier edit had changed `+ 5 + 3` to
+`+ 6 + 3` — so the section was never inserted while the import line was. The
+suite still said `65/65 passed`. What caught it was the count not moving, which
+is the argument for printing totals rather than only failures. Subsequent
+replacements assert the anchor exists before writing.
+
+**A check matched its own documentation.** The live-region scan first reported
+`RoomControls.tsx` as assertive immediately after it had been fixed — it was
+matching the comment *explaining* why `role="alert"` is wrong. Comments are
+stripped before scanning now. A check that reads prose as code will keep finding
+the documentation of its own rule.
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
+`check:room` **68**, `check:rls` 18, `typecheck`, `lint`, `check:meetings`
+**43/43**, `check:bundle` 8/8, `check:media` 8/8 — all pass.

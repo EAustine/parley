@@ -11,8 +11,47 @@
  *
  * Run with: npm run check:meetings   (needs npm run dev)
  */
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, renameSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const APP = process.env.CHECK_APP_URL ?? "http://localhost:3000";
+
+/**
+ * Fixture codes come from the real generator, never from the keyboard.
+ *
+ * CLAUDE.md's conventions now say so, and this file is why. The miss-tier
+ * assertions first used `zz0-zzzz-zzz` through `zz5-zzzz-zzz`; `0` and `1` are
+ * not in the alphabet, so those were rejected as malformed before any lookup
+ * and never reached the tier being tested. Four misses instead of six, no 429,
+ * and a failure that read like a bug in the limiter rather than in the fixture.
+ *
+ * A generated code is well-formed by construction and, at 8×10^14
+ * combinations, is not going to collide with a real meeting.
+ */
+const codeLib = await (async () => {
+  const out = mkdtempSync(join(tmpdir(), "parley-code-"));
+  try {
+    execFileSync(
+      "npx",
+      ["tsc", "lib/meetings/code.ts", "--outDir", out, "--module", "esnext",
+       "--target", "es2022", "--moduleResolution", "bundler", "--skipLibCheck"],
+      { stdio: "pipe" },
+    );
+    renameSync(join(out, "code.js"), join(out, "code.mjs"));
+    return await import(pathToFileURL(join(out, "code.mjs")).href);
+  } catch (e) {
+    console.error("Could not compile lib/meetings/code.ts:\n" + e.stdout?.toString());
+    process.exit(1);
+  } finally {
+    setTimeout(() => rmSync(out, { recursive: true, force: true }), 0);
+  }
+})();
+
+/** A well-formed code that resolves to nothing. */
+const unknownCode = () => codeLib.generateMeetingCode();
 
 function required(name) {
   const value = process.env[name];
@@ -246,7 +285,7 @@ try {
   // found" appears in the HTML of a perfectly healthy page — searching for it
   // proves nothing. A genuinely missing route answers 404; this one answers
   // 200 and offers somewhere to type another code.
-  const unknown = await fetch(`${APP}/j/zzz-zzzz-zzz`);
+  const unknown = await fetch(`${APP}/j/${unknownCode()}`);
   const unknownHtml = await unknown.text();
   check(
     unknown.status === 200 &&
@@ -413,7 +452,7 @@ try {
   const unknownToken = await fetch(`${APP}/api/livekit/token`, {
     method: "POST",
     headers: asIp(runIp),
-    body: JSON.stringify({ code: "zzz-zzzz-zzz", displayName: "Ama" }),
+    body: JSON.stringify({ code: unknownCode(), displayName: "Ama" }),
   });
   check(
     unknownToken.status === 404 &&
@@ -447,16 +486,14 @@ try {
 
   const missStatuses = [];
   let retryAfterHeader = null;
-  // Letters from the code alphabet, not digits: `0` and `1` are not in
-  // `abcdefghjkmnpqrstuvwxyz23456789`, so a code containing them is rejected as
-  // malformed before any lookup happens and never reaches the miss tier. The
-  // first version of this used `zz0-` and `zz1-` and quietly tested nothing.
-  for (const suffix of ["a", "b", "c", "d", "e", "f"]) {
-    // A different unknown code each time, the way an enumerator would.
+  for (let i = 0; i < 6; i++) {
+    // A different unknown code each time, the way an enumerator would — and
+    // generated rather than typed, so it is well-formed by construction and
+    // actually reaches the tier under test.
     const r = await fetch(`${APP}/api/livekit/token`, {
       method: "POST",
       headers: asIp(missIp),
-      body: JSON.stringify({ code: `zz${suffix}-zzzz-zzz`, displayName: "Ama" }),
+      body: JSON.stringify({ code: unknownCode(), displayName: "Ama" }),
     });
     missStatuses.push(r.status);
     if (r.status === 429) retryAfterHeader ??= r.headers.get("Retry-After");
@@ -466,6 +503,43 @@ try {
     missesAllowed === 5 && missStatuses[5] === 429,
     "unresolvable codes are limited to 5 a minute, and the 6th is refused",
     `${missesAllowed} allowed, then HTTP ${missStatuses[5]}`,
+  );
+
+  // §7: "Malformed codes are rejected before lookup and do not count toward
+  // the miss tier." Deliberate, not an oversight — a code containing a
+  // character outside the alphabet costs nothing to reject, with no database
+  // round trip, so the overall limit is sufficient cover. Only requests that
+  // reach a lookup and fail it are worth counting, because those cost
+  // something.
+  //
+  // Asserted on a fresh bucket: ten malformed codes, far past the miss
+  // allowance of five, and then a genuine miss that must still get its 404.
+  const malformedIp = `10.5.5.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
+  const malformedStatuses = [];
+  for (let i = 0; i < 10; i++) {
+    // `0` and `1` are not in the alphabet, so this never reaches a lookup.
+    const r = await fetch(`${APP}/api/livekit/token`, {
+      method: "POST",
+      headers: asIp(malformedIp),
+      body: JSON.stringify({ code: `01${i}-0000-111`, displayName: "Ama" }),
+    });
+    malformedStatuses.push(r.status);
+  }
+  check(
+    malformedStatuses.every((s) => s === 400),
+    "a malformed code is rejected as invalid, not counted as a miss",
+    `statuses: ${[...new Set(malformedStatuses)].join(", ")}`,
+  );
+
+  const missAfterMalformed = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: asIp(malformedIp),
+    body: JSON.stringify({ code: unknownCode(), displayName: "Ama" }),
+  });
+  check(
+    missAfterMalformed.status === 404,
+    "and the miss allowance is untouched by them",
+    `HTTP ${missAfterMalformed.status}`,
   );
 
   // The property the whole redesign exists for: burning the miss allowance
@@ -546,7 +620,7 @@ try {
     "/room/[code] is forced dark, like the pre-join boundary",
   );
 
-  const roomUnknown = await fetch(`${APP}/room/zzz-zzzz-zzz`);
+  const roomUnknown = await fetch(`${APP}/room/${unknownCode()}`);
   check(
     roomUnknown.status === 200,
     "an unknown code still reaches a designed room state, not a 404",

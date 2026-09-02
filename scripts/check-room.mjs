@@ -17,7 +17,7 @@
  * Run with: npm run check:room
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -255,7 +255,58 @@ for (const [label, target, expected] of typing) {
         `isTyping returned ${actual}`);
 }
 
+// ---------------------------------------------------------------------------
+// Live regions — BUILD-PLAN's Phase 9 note, pinned early
+// ---------------------------------------------------------------------------
+console.log("\nLive regions in the room\n");
+
+// "Audit what the framework injects before testing our own announcements."
+// Next mounts its route announcer as a `role="alert"` region: assertive, and it
+// interrupts whatever a screen reader is mid-sentence on. A second assertive
+// region inside the room stacks on top of it and guarantees the flooding §9 is
+// trying to prevent — the room is where announcements arrive in volume.
+//
+// A source scan rather than a rendered check, deliberately: the point is to
+// catch the next `role="alert"` as it is typed, in the file where someone would
+// reach for it, rather than after a room is full enough to notice.
+const roomFiles = readdirSync("components/room").filter((f) => f.endsWith(".tsx"));
+
+// Comments are stripped before scanning. The first version of this matched the
+// comment *explaining* why `role="alert"` is wrong, and reported the file that
+// had just been fixed — a check that reads prose as code will keep finding the
+// documentation of its own rule.
+const readRoom = (file) =>
+  readFileSync(join("components/room", file), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+check(
+  roomFiles.length > 0,
+  `the room has components to scan  (${roomFiles.length} files)`,
+  "components/room is empty — every check below would pass vacuously",
+);
+
+const assertive = roomFiles.filter((file) =>
+  /role=["']alert["']|aria-live=["']assertive["']/.test(readRoom(file)),
+);
+check(
+  assertive.length === 0,
+  "no assertive live region in the room — the framework already owns one",
+  `assertive in: ${assertive.join(", ")}`,
+);
+
+// And the polite ones exist, so the scan above is not passing merely because
+// the room announces nothing at all.
+const polite = roomFiles.filter((file) =>
+  /aria-live=["']polite["']|role=["']status["']/.test(readRoom(file)),
+);
+check(
+  polite.length > 0,
+  `the room does announce, politely  (${polite.join(", ")})`,
+  "no live regions at all",
+);
+
 const total =
-  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length;
+  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3;
 console.log(`\n${total - failed}/${total} room checks passed.`);
 if (failed) process.exit(1);

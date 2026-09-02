@@ -304,6 +304,8 @@ Work the full list in `CLAUDE.md`. Specifically:
 - `?` opens a keyboard shortcuts dialog
 - `axe` clean on every route
 
+**Audit what the framework injects before testing our own announcements.** Next mounts its own route announcer as an `role="alert"` live region, which is assertive and interrupts whatever a screen reader is mid-sentence on. Two consequences: every accessibility assertion must be scoped to our tree, or it will match the framework's element and pass without testing anything; and our announcements stay `polite` throughout, since an assertive region already exists and stacking a second one guarantees the flooding §9 is trying to prevent. Check the dev-mode error overlay too — it should not be in the axe run.
+
 **Done when:** the entire product is usable with the keyboard alone, and a screen reader in a 10-person room is not flooded.
 
 ---
