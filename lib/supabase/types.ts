@@ -55,6 +55,12 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["meetings"]["Insert"]>;
         Relationships: [];
       };
+      rate_limits: {
+        Row: { key: string; window_start: string; count: number };
+        Insert: { key: string; window_start?: string; count?: number };
+        Update: Partial<{ key: string; window_start: string; count: number }>;
+        Relationships: [];
+      };
       meeting_participants: {
         Row: {
           id: string;
@@ -84,6 +90,14 @@ export type Database = {
     };
     Views: Record<never, never>;
     Functions: {
+      /**
+       * Fixed-window rate limiter. Returns true when the request may proceed.
+       * Server-side only — EXECUTE is revoked from anon and authenticated.
+       */
+      consume_rate_limit: {
+        Args: { p_key: string; p_limit: number; p_window_seconds: number };
+        Returns: boolean;
+      };
       /** The only anonymous read path into `meetings`. Six columns, one code. */
       get_meeting_by_code: {
         Args: { p_code: string };

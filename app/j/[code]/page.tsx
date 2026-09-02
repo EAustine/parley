@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
 import { JoinCodeForm } from "@/components/meetings/JoinCodeForm";
+import { PreJoin } from "@/components/prejoin/PreJoin";
+import { createClient } from "@/lib/supabase/server";
 import { Lockup } from "@/components/brand/Lockup";
 import { Button } from "@/components/ui/button";
 import type { PublicMeeting } from "@/lib/supabase/types";
@@ -59,33 +61,21 @@ export default async function JoinPage({ params }: Params) {
 
   if (!meeting) return <MeetingNotFound code={code} />;
   if (meeting.status === "ended") return <MeetingEnded meeting={meeting} />;
-  return <MeetingOpen meeting={meeting} />;
-}
 
-/** Scheduled or live. Phase 3 replaces the card with the real join screen. */
-function MeetingOpen({ meeting }: { meeting: PublicMeeting }) {
-  return (
-    <Centred>
-      <div className="space-y-3">
-        <p className="type-caption text-muted-foreground">You&rsquo;re joining</p>
-        <h1 className="type-h1">{meeting.title}</h1>
-        <p className="type-code select-all text-muted-foreground">
-          {meeting.code}
-        </p>
-      </div>
+  // The *meeting* is resolved anonymously; the viewer's session is read
+  // separately and only to decide whether to ask for a name. Auth is never
+  // required to reach this screen — §3.1.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const signedInName = user
+    ? ((user.user_metadata?.full_name as string | undefined) ??
+      user.email ??
+      "Host")
+    : null;
 
-      <div className="rounded-lg border border-border p-6">
-        <p className="type-body">
-          The join screen — camera and microphone preview, device selection, and
-          your display name — is the next thing being built.
-        </p>
-        <p className="type-small mt-2 text-muted-foreground">
-          This meeting exists and is open. Nothing about it is lost in the
-          meantime.
-        </p>
-      </div>
-    </Centred>
-  );
+  return <PreJoin meeting={meeting} signedInName={signedInName} />;
 }
 
 /**

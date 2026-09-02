@@ -309,6 +309,140 @@ try {
     `HTTP ${malformed.status}`,
   );
 
+  // --- the token endpoint --------------------------------------------------
+  //
+  // Each run gets its own rate-limit bucket via `x-real-ip`. That header is
+  // spoofable by any local client, which is exactly why the endpoint trusts it
+  // only where a proxy overwrites it — Vercel does. Being able to set it here
+  // is a property of running against localhost, not a hole in the limiter, and
+  // without it the tenth token request in a suite starts failing the ones
+  // after it.
+  const runIp = `10.0.0.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
+  const asIp = (ip) => ({ "Content-Type": "application/json", "x-real-ip": ip });
+  //
+  // Every claim in §7 that can be checked from outside. The decode is the
+  // point: a token is authority, so what it grants matters more than that a
+  // request succeeded.
+  const decode = (jwt) =>
+    JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString("utf8"));
+
+  const guestToken = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: asIp(runIp),
+    body: JSON.stringify({ code: scheduled.code, displayName: "  Ama   Serwaa  " }),
+  });
+  const guestBody = await guestToken.json();
+  check(guestToken.status === 200, "mints a token for a guest", `HTTP ${guestToken.status}`);
+
+  const claims = guestBody.token ? decode(guestBody.token) : {};
+  check(
+    /^guest_[A-Za-z0-9_-]{10}$/.test(guestBody.identity ?? ""),
+    "guest identity is generated server-side",
+    guestBody.identity,
+  );
+  check(
+    claims.video?.room === scheduled.code &&
+      claims.video?.roomJoin === true &&
+      claims.video?.canPublish === true &&
+      claims.video?.canSubscribe === true &&
+      claims.video?.canPublishData === true,
+    "grants exactly roomJoin, canPublish, canSubscribe, canPublishData, room",
+  );
+  check(
+    !claims.video?.roomAdmin &&
+      !claims.video?.roomCreate &&
+      !claims.video?.roomList &&
+      !claims.video?.canUpdateOwnMetadata,
+    "grants nothing wider — no roomAdmin, roomCreate, roomList, canUpdateOwnMetadata",
+  );
+  // The SDK emits `nbf` and `exp`, not `iat` — measuring against a missing
+  // claim gave NaN, which compared false and looked like a real failure.
+  const ttlHours = (claims.exp - claims.nbf) / 3600;
+  check(ttlHours === 6, "ttl is 6 hours", `${ttlHours}h (exp - nbf)`);
+  const metadata = claims.metadata ? JSON.parse(claims.metadata) : {};
+  check(
+    metadata.displayName === "Ama Serwaa" && metadata.role === "participant",
+    "display name is sanitised and travels in metadata, not identity",
+    JSON.stringify(metadata),
+  );
+
+  // Control characters and bidi overrides are stripped, not escaped downstream.
+  const nasty = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: asIp(runIp),
+    body: JSON.stringify({
+      code: scheduled.code,
+      displayName: "A\u0000m\u202Ea\u200B " + "x".repeat(80),
+    }),
+  });
+  const nastyMeta = JSON.parse(decode((await nasty.json()).token).metadata);
+  check(
+    !/[\u0000-\u001F\u202A-\u202E\u200B]/.test(nastyMeta.displayName) &&
+      nastyMeta.displayName.length <= 40,
+    "control characters and bidi overrides are stripped, and 40 chars enforced",
+    `${nastyMeta.displayName.length} chars`,
+  );
+
+  // A guest with no usable name is refused rather than labelled "Guest".
+  const nameless = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: asIp(runIp),
+    body: JSON.stringify({ code: scheduled.code, displayName: "   " }),
+  });
+  check(
+    nameless.status === 400 &&
+      (await nameless.json()).error === "display_name_required",
+    "a guest with a blank name is refused",
+    `HTTP ${nameless.status}`,
+  );
+
+  // The host gets role: host — decided by RLS, not by anything they send.
+  const hostToken = await app("/api/livekit/token", {
+    method: "POST",
+    headers: asIp(runIp),
+    body: JSON.stringify({ code: scheduled.code }),
+  });
+  const hostBody = await hostToken.json();
+  const hostMeta = JSON.parse(decode(hostBody.token).metadata);
+  check(
+    hostMeta.role === "host" && hostBody.identity === `user_${user.id}`,
+    "the host is recognised by RLS, and identity comes from the session",
+    `${hostBody.identity} / ${hostMeta.role}`,
+  );
+
+  const unknownToken = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: asIp(runIp),
+    body: JSON.stringify({ code: "zzz-zzzz-zzz", displayName: "Ama" }),
+  });
+  check(
+    unknownToken.status === 404 &&
+      (await unknownToken.json()).error === "meeting_not_found",
+    "an unknown code gets 404 meeting_not_found",
+    `HTTP ${unknownToken.status}`,
+  );
+
+  // The limiter itself, on a bucket of its own so it cannot disturb anything
+  // above. Ten allowed, the eleventh refused — the count is asserted rather
+  // than "some request eventually 429s", because a limiter off by several is
+  // still a bug and would pass the looser test.
+  const limitIp = `10.9.9.${Math.floor(Math.random() * 250) + 1}-${Date.now()}`;
+  const statuses = [];
+  for (let i = 0; i < 11; i++) {
+    const r = await fetch(`${APP}/api/livekit/token`, {
+      method: "POST",
+      headers: asIp(limitIp),
+      body: JSON.stringify({ code: scheduled.code, displayName: "Ama" }),
+    });
+    statuses.push(r.status);
+  }
+  const okCount = statuses.filter((s) => s === 200).length;
+  check(
+    okCount === 10 && statuses[10] === 429,
+    "rate limit allows 10 per minute and refuses the 11th",
+    `${okCount} allowed, then HTTP ${statuses[10]}`,
+  );
+
   // --- the dashboard renders what was created ------------------------------
   const dash = await app("/dashboard");
   const html = await dash.text();

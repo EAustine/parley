@@ -699,3 +699,135 @@ previously been both.
 
 - **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6. The API
   accepts scheduled meetings today and `check:meetings` proves it.
+
+---
+
+## Phase 3 — Token endpoint and pre-join
+
+**Status:** the token endpoint is complete and verified. Pre-join is built; four
+of its six permission states could not be produced in this environment — see
+below for exactly which, and what was checked instead.
+
+### Shipped
+
+- `POST /api/livekit/token` — the full §7 contract.
+- Migration `20260902013014_rate_limits.sql` + `lib/rate-limit.ts`.
+- `lib/livekit/identity.ts` — name sanitisation and identity derivation.
+- `lib/supabase/admin.ts` — service-role client, for the limiter only.
+- `lib/hooks/useMediaPreview.ts`, `lib/media/classify.ts`, and the pre-join
+  components. `/j/[code]` is now the real screen.
+- `npm run check:permissions` and `npm run check:bundle`.
+
+### Decisions
+
+1. **The rate limiter counts in Postgres, not in memory.** §8 leans on it as a
+   security control, and a module-level `Map` does not survive serverless — each
+   cold instance starts at zero, making the real limit "10 per minute per
+   instance", a number nobody chose and nobody can observe. One extra round trip
+   on the join path, well inside §10. No new dependency; a Redis would have
+   needed asking for.
+
+   It **fails open** on a database error, deliberately. This guards against code
+   enumeration, already implausible at 8×10^14 codes; a Supabase blip should not
+   take the product down to protect a defence that is not the load-bearing one.
+   The opposite call would be right for a login endpoint.
+
+2. **Host is decided by RLS, not by an ownership check.** The endpoint tries to
+   read the meeting row *as the caller*; the policy returns it only to its
+   owner, so a successful read is the authorisation. A separate `host_id ===
+   user.id` comparison would be a second place for the rule to live and drift.
+
+3. **`server-only` was not added.** `lib/supabase/admin.ts` would benefit — it
+   turns a runtime failure into a build error. The key cannot leak either way,
+   because Next inlines only `NEXT_PUBLIC_` variables, so importing it client-side
+   fails loudly rather than shipping a secret. It is a one-line dependency and
+   rule 9 says ask, so: worth adding if you want it.
+
+4. **Control characters and bidi overrides are stripped server-side, once.** A
+   display name is drawn on a tile, in the participants panel, and read aloud by
+   screen readers. A bidi override in it reorders the text around it; a
+   zero-width joiner lets two participants render identically. Stripping at the
+   single point of entry beats escaping at each point of use.
+
+5. **`canUpdateOwnMetadata` is deliberately not granted.** It is not in §7's
+   list, and granting it would let a participant rename themselves mid-call,
+   undoing the sanitisation above.
+
+### Verified
+
+**`check:meetings` 34/34**, up from 23. The token assertions decode the JWT
+rather than trusting a 200: a token *is* authority, so what it grants matters
+more than that the request succeeded. Grants are exactly the five in §7 and
+nothing wider — `roomAdmin`, `roomCreate`, `roomList` and
+`canUpdateOwnMetadata` are each asserted absent. TTL is 6 hours, guest identity
+matches `guest_[10 chars]` and is server-generated, the display name is
+sanitised into metadata rather than the identity string, a blank guest name is
+refused, and the host is recognised with `identity = user_<id>`.
+
+**The rate limit is asserted as a count, not a vibe:** ten allowed, the eleventh
+refused. "Some request eventually 429s" would pass against a limiter off by
+several, which is still a bug.
+
+**`check:permissions` 13/13** — the classifier that decides which of the six
+states you see.
+
+### What could not be tested, and why
+
+BUILD-PLAN asks for each permission state to be produced by manipulating browser
+settings rather than faked. Two were, in a real browser: **not yet asked**
+(reason shown, no prompt fired on load) and **blocked** (Chrome-specific
+instructions, and correctly *no* "Try again" button, because the browser will
+not ask again).
+
+The remaining four — granted, dismissed, no-device, in-use — need a camera to
+grant, unplug, or hold open, and a prompt to close by hand. The Browser pane
+blocks capture outright. Rather than fake them, `lib/media/classify.ts` extracts
+the mapping from `getUserMedia` failures to states, and `check:permissions`
+tests it exhaustively, including the pair that shares one error name and needs
+different copy: a refusal the browser remembers, and a prompt someone closed.
+An absent Permissions API resolves to "dismissed" — the kinder wrong answer,
+since sending someone to a settings page to fix a permission they never refused
+is the more annoying mistake.
+
+**These four still need a human at a real machine.** That is the honest state.
+
+### Two bad tests of my own, found and fixed
+
+- **`ttl is 6 hours` measured `exp - iat`.** The LiveKit SDK emits `nbf` and
+  `exp`, not `iat`, so the subtraction gave `NaN` — which compares false and
+  looked like a real failure. Now `exp - nbf`.
+- **`check:bundle` first recomputed sizes itself** by gzipping manifest chunks.
+  It did not reconcile with Next: 142 kB against 160 for the shared baseline,
+  191 against 181 for `/j/[code]`. A second measure that disagrees with the
+  documented one is worse than none, because §10 states budgets in Next's units.
+  It now parses the build output. It also has to run `npm run build` rather than
+  a bare `next build` — the project passes `--turbopack`, and webpack reported a
+  103 kB baseline against Turbopack's 160.
+
+Also worth recording: **grepping client chunks for "livekit" is the wrong rule-8
+test.** It matches `/api/livekit/token`, our own endpoint path, and the value of
+`NEXT_PUBLIC_LIVEKIT_URL`, which Next correctly inlines. Both belong there.
+`check:bundle` looks for identifiers that only exist inside the library, and
+confirms 32 chunks carry none of them.
+
+### Bundles
+
+| Route | Now | Budget |
+|---|---|---|
+| Shared baseline | 160 kB | ≤ 180 |
+| `/` | 151 kB | ≤ 190 |
+| `/j/[code]` | **181 kB** | ≤ 230 |
+| `/dashboard` | 260 kB | ≤ 280 |
+
+Pre-join added 30 kB and stays 49 kB inside its budget — it carries no LiveKit
+code and no form library, per §10.
+
+### Known, deferred
+
+- **`/room/[code]` does not exist yet**, so "Join meeting" routes to a 404. Same
+  shape as the Phase 2 gap, and Phase 4 builds it. Flagging it rather than
+  leaving it to be noticed.
+- **Speaker selection is stored but not applied.** `setSinkId` belongs on the
+  room's audio elements, which arrive in Phase 4; storing the choice now is what
+  makes it available then.
+- **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6.
