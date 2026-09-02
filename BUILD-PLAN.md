@@ -151,6 +151,22 @@ Then:
 
 **Done when:** every permission state renders correctly — test each by manipulating browser settings, not by faking state. The mic meter responds within 200ms. Changing camera updates the preview without reload.
 
+#### Manual permission test matrix
+
+A unit-tested classifier proves the error-name mapping. It does not prove the browser emits those names under those conditions, and it proves nothing about whether the copy reads right in situ. Both need a real machine.
+
+| State | How to produce it on macOS |
+|---|---|
+| Granted | Allow the prompt |
+| Denied | Address bar padlock → Camera → Block, then reload |
+| Dismissed | Press Escape on the prompt, or click outside it. Distinct from Denied: the promise never resolves with a decision, and Chrome auto-blocks after three dismissals — so test the third one too |
+| No device | System Settings → Screen Time → Content & Privacy → App Restrictions → uncheck Camera. This genuinely hides it from the browser; unplugging is not an option on a laptop |
+| In use | Hard to reproduce on macOS, which permits concurrent camera access where Windows does not. Try holding it in Safari while testing Chrome. If it cannot be produced, record it as untested rather than passing — an untested path noted is fine, an untested path assumed working is not |
+
+Run the matrix in **Chrome and Safari**. Safari's permission model is per-session by default and its gesture requirements are stricter, so states that look identical in Chrome diverge there.
+
+The copy is the real deliverable in the denied state: it must name where the setting lives, and that location differs per browser. A generic "please enable camera access" is the failure this screen exists to avoid.
+
 ---
 
 ## Phase 4 — The room

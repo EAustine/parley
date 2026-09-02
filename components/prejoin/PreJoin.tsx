@@ -97,8 +97,14 @@ export function PreJoin({
     }
   }
 
-  const showPreview = media.state === "granted" && media.cameraOn;
+  const showPreview =
+    media.state === "granted" && media.cameraOn && media.hasCamera;
   const devicesKnown = media.state === "granted";
+  // Permission was granted and the camera still isn't there — Screen Time has
+  // it switched off, or it was unplugged. Different from "you turned it off",
+  // and it must not be reported as though they chose it.
+  const cameraMissing = media.state === "granted" && !media.hasCamera;
+  const micMissing = media.state === "granted" && !media.hasMicrophone;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-4xl flex-col justify-center gap-8 px-6 py-12">
@@ -123,9 +129,13 @@ export function PreJoin({
                 className="h-full w-full -scale-x-100 object-cover"
               />
             ) : media.state === "granted" ? (
-              <div className="flex h-full items-center justify-center">
-                <p className="type-small text-muted-foreground">
-                  Your camera is off. You&rsquo;ll join without video.
+              <div className="flex h-full items-center justify-center px-8 text-center">
+                <p className="type-small text-balance text-muted-foreground">
+                  {cameraMissing
+                    ? micMissing
+                      ? "No camera or microphone found. You can still join and follow along."
+                      : "No camera found. Your microphone works, so you’ll join with audio only."
+                    : "Your camera is off. You’ll join without video."}
                 </p>
               </div>
             ) : (
@@ -146,15 +156,30 @@ export function PreJoin({
                   onToggle={media.toggleMic}
                   onIcon="micOn"
                   offIcon="micOff"
-                  // Names the action, not the state — accessibility floor.
-                  label={media.micOn ? "Turn off microphone" : "Turn on microphone"}
+                  // Names the action, not the state — accessibility floor. A
+                  // control that can't do anything says why instead.
+                  disabled={micMissing}
+                  label={
+                    micMissing
+                      ? "No microphone found"
+                      : media.micOn
+                        ? "Turn off microphone"
+                        : "Turn on microphone"
+                  }
                 />
                 <DeviceToggle
                   on={media.cameraOn}
                   onToggle={media.toggleCamera}
                   onIcon="cameraOn"
                   offIcon="cameraOff"
-                  label={media.cameraOn ? "Turn off camera" : "Turn on camera"}
+                  disabled={cameraMissing}
+                  label={
+                    cameraMissing
+                      ? "No camera found"
+                      : media.cameraOn
+                        ? "Turn off camera"
+                        : "Turn on camera"
+                  }
                 />
                 <div className="ml-1">
                   <MicMeter level={media.level} muted={!media.micOn} />
@@ -215,11 +240,15 @@ export function PreJoin({
             <Button className="w-full" onClick={join} disabled={!canJoin}>
               {joining ? "Joining…" : "Join meeting"}
             </Button>
-            {/* Joining with both off is allowed, and must not read as a fault. */}
+            {/* Joining with both off is allowed, and must not read as a fault.
+                "You can turn them on once you're in" is only true when there
+                is something to turn on — with no hardware it is a promise the
+                room cannot keep. */}
             {media.state === "granted" && !media.cameraOn && !media.micOn && (
               <p className="type-caption text-muted-foreground">
-                You&rsquo;ll join with your camera and microphone off. You can
-                turn them on once you&rsquo;re in.
+                {cameraMissing && micMissing
+                  ? "You’ll join without a camera or microphone. You’ll still see and hear everyone else."
+                  : "You’ll join with your camera and microphone off. You can turn them on once you’re in."}
               </p>
             )}
             {error && (
@@ -240,12 +269,14 @@ function DeviceToggle({
   onIcon,
   offIcon,
   label,
+  disabled = false,
 }: {
   on: boolean;
   onToggle: () => void;
   onIcon: keyof typeof ICONS;
   offIcon: keyof typeof ICONS;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <Tooltip>
@@ -253,9 +284,10 @@ function DeviceToggle({
         <button
           type="button"
           onClick={onToggle}
+          disabled={disabled}
           aria-label={label}
           aria-pressed={!on}
-          className="flex size-12 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+          className="flex size-12 items-center justify-center rounded-full border transition-colors duration-[120ms] disabled:opacity-50"
           style={{
             // Off is a fill change, not a hue change — rule 5.
             backgroundColor: on ? "transparent" : "var(--secondary)",

@@ -38,10 +38,23 @@ export function errorName(error: unknown): string {
  * away is the worse of the two mistakes — it sends them somewhere confusing to
  * fix something that is not broken. So an unknown hint resolves to "dismissed",
  * which offers a retry that will actually work.
+ *
+ * `previous` is what the screen was showing before this attempt, and it exists
+ * for Safari. Safari has no `camera` descriptor in its Permissions API, so the
+ * hint is permanently null there — meaning a real, deliberate refusal would
+ * read as a dismissal and offer a "Try again" button. Safari will not re-prompt
+ * within a session, so that button does nothing at all: a control that looks
+ * broken, which is the failure this screen exists to avoid.
+ *
+ * Rather than sniff for Safari, ask what happened. If the retry we offered was
+ * taken and produced the same refusal, the retry demonstrably did not work, so
+ * it is not a dismissal. The browser's behaviour answers the question its API
+ * won't.
  */
 export function classifyMediaError(
   error: unknown,
   hint: PermissionHint = null,
+  previous: PermissionState | null = null,
 ): PermissionState {
   switch (errorName(error)) {
     case "NotFoundError":
@@ -57,7 +70,11 @@ export function classifyMediaError(
 
     case "NotAllowedError":
     case "PermissionDeniedError":
-      return hint === "denied" ? "denied" : "dismissed";
+      if (hint === "denied") return "denied";
+      // The second refusal in a row. We already offered a retry; it was taken
+      // and it failed the same way.
+      if (previous === "dismissed") return "denied";
+      return "dismissed";
 
     default:
       return "denied";

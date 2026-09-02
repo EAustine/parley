@@ -2,6 +2,7 @@
 
 import { HugeiconsIcon } from "@hugeicons/react";
 
+import { permissionLocation } from "@/lib/media/browser-hint";
 import type { PermissionState as State } from "@/lib/hooks/useMediaPreview";
 import { ICONS } from "@/lib/icons";
 import { Button } from "@/components/ui/button";
@@ -18,18 +19,6 @@ import { Button } from "@/components/ui/button";
  * Browser-specific instructions are named rather than generic. "Check your
  * browser settings" is the kind of advice that sounds like help.
  */
-
-function browserHint(): string {
-  if (typeof navigator === "undefined") return "your browser's site settings";
-  const ua = navigator.userAgent;
-  if (/Firefox\//.test(ua)) {
-    return "the padlock in the address bar, then Connection secure → More information → Permissions";
-  }
-  if (/Edg\//.test(ua)) return "the padlock in the address bar → Permissions for this site";
-  if (/Chrome\//.test(ua)) return "the icon at the left of the address bar → Site settings";
-  if (/Safari\//.test(ua)) return "Safari → Settings for This Website, or Safari → Settings → Websites → Camera";
-  return "your browser's site settings";
-}
 
 type Copy = {
   icon: keyof typeof ICONS;
@@ -61,7 +50,7 @@ function copyFor(state: State, canJoinWithoutMedia: boolean): Copy | null {
       return {
         icon: "cameraOff",
         title: "Camera and microphone are blocked",
-        body: `This page can't ask again — the browser remembers your answer. To change it, open ${browserHint()}, allow camera and microphone, then reload.`,
+        body: `This page can't ask again — the browser remembers your answer. To change it, open ${permissionLocation(typeof navigator === "undefined" ? null : navigator.userAgent)}, allow camera and microphone, then reload.`,
       };
 
     // Closed without answering. Asking again works, so offer it.

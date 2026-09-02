@@ -889,9 +889,133 @@ rule 8 still holds across 33 chunks.
 ### Known, deferred
 
 - **Four of the six permission states still need a human at a real machine** —
-  granted, dismissed, no-device, in-use. Unchanged from the note above: the
-  classifier is tested exhaustively, but producing the conditions needs a camera
-  to unplug or hold open and a prompt to close by hand.
+  granted, dismissed, no-device, in-use. The classifier is tested exhaustively,
+  but producing the conditions needs a camera to unplug or hold open and a
+  prompt to close by hand. See the matrix status table at the end of this file
+  for where each row stands after the second revision.
 - **Speaker selection is stored but not applied.** `setSinkId` belongs on the
   room's audio elements, which arrive in Phase 4.
 - **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6.
+
+---
+
+## Phase 3, second revision — working the permission matrix
+
+BUILD-PLAN gained a **manual permission test matrix** under Phase 3: how to
+produce each of §3.3's states on macOS, an instruction to run them in Chrome
+*and* Safari, and a blunt statement that in the denied state the copy is the
+deliverable — it must name where the setting lives, and that differs per
+browser.
+
+Working the matrix against the code found four bugs before any of them reached
+a human tester. None were visible from the classifier, because none of them
+were classification mistakes — they were about what gets *asked for*, and what
+gets thrown away on the way.
+
+### Safari would have shown a button that does nothing
+
+Safari has no `camera` descriptor in its Permissions API, so the hint that
+separates "refused" from "closed the prompt" is permanently `null` there. Every
+refusal therefore read as a **dismissal**, which offers "Try again" — and
+Safari will not re-prompt within a session, so that button was guaranteed to do
+nothing. A control that looks broken is exactly what this screen exists to
+avoid, and it would have been invisible in Chrome.
+
+Rather than sniff for Safari, `classifyMediaError` now takes what the screen
+was showing before the attempt. If the retry we offered was taken and produced
+the same refusal, the retry demonstrably did not work, so it is not a
+dismissal. The browser's behaviour answers the question its API won't. The same
+rule covers Chrome's embargo after three dismissals, which the matrix calls out
+separately.
+
+### A missing camera took the working microphone with it
+
+`getUserMedia({video, audio})` succeeds or fails as a pair. On the matrix's own
+"No device" row — camera switched off in Screen Time — the combined request
+throws `NotFoundError` and there is no preview, no level meter, no device list,
+and copy offering to join with audio only above a screen that never found any
+audio either. Each device is now asked for separately once the pair fails.
+
+### A remembered device could lock someone out permanently
+
+A stored `deviceId` is a *hard* constraint, and hardware leaves. Asking for a
+dead id meant every attempt failed identically and "Try again" could never
+succeed, because each attempt asked for the same missing device. The constraint
+is now dropped and the stored ids forgotten.
+
+### …but not when the answer was simply "no"
+
+Measured in Chromium rather than assumed: **an exact `deviceId` is evaluated
+before permission is checked**. Asking for a device nobody has throws
+`OverconstrainedError` even when permission is already denied. So someone who
+clicks Block *and* has a device remembered arrives at the "hardware has gone"
+rung — and the first version wiped their preference as a side effect of the
+answer they gave. They would have found their camera choice missing after
+going to settings and allowing. The ids are now forgotten only once the
+unconstrained retry proves they were the problem.
+
+This one is worth naming as a method note: it was found by asking a real
+browser what it does, not by reasoning about what it should do.
+
+### iOS Safari was being sent to a menu that isn't there
+
+The denied copy named "Safari → Settings for This Website" for every Safari
+user. iPhones have no menu bar. It now names the ᴀA button and the Settings
+app.
+
+### What is now provable without hardware
+
+Two more pure modules, extracted for the same reason `classify.ts` was — the
+conditions can't be produced from a script, but the decisions can be driven
+exactly:
+
+- **`lib/media/acquire.ts`** — the ladder. What to ask for, and what to ask for
+  next when that fails. Returns every attempt it made, so a test can assert
+  that a dead id is never asked for twice and that a refusal is never retried.
+- **`lib/media/browser-hint.ts`** — where the setting lives, per browser. The
+  matrix makes this copy the deliverable, so it is asserted rather than
+  eyeballed once. Chrome's UA contains `Safari/` and Edge's contains `Chrome/`;
+  the table checks that five families get five distinct locations.
+
+`check:permissions` is now **39 assertions**, up from 13. Every new one was
+proved able to fail by reverting its fix and watching the suite go red — the
+split-request rung, the second-refusal rule, the dead-id drop, the
+forget-only-when-proven rule, and the iOS branch each break a named check.
+
+### Verified in a real browser
+
+The Browser pane blocks media capture, which makes it a genuine **Denied**
+machine rather than a simulated one: `permissions.query` returns `denied` and
+`getUserMedia` throws `NotAllowedError`. End to end on a production build, that
+produced "Camera and microphone are blocked", naming Chrome's actual location,
+with no retry button offered and "Join meeting" still available. That is one
+matrix row genuinely closed.
+
+The dismissed → denied escalation was driven through the real React tree with
+the Permissions API made to throw the way Safari's does: idle → "No answer yet"
+with a retry → "blocked" with the retry withdrawn. That proves the escalation
+works when a browser behaves that way; it is **not** proof that Safari does,
+which the matrix is right to insist a human confirms.
+
+### Matrix status
+
+| Row | Chrome | Safari |
+|---|---|---|
+| Granted | needs a human | needs a human |
+| Denied | **verified** (real block, production build) | needs a human |
+| Dismissed | needs a human | shape verified, browser unconfirmed |
+| Dismissed ×3 (embargo) | logic covered, unconfirmed | n/a |
+| No device | logic covered, unconfirmed | logic covered, unconfirmed |
+| In use | logic covered, unconfirmed | logic covered, unconfirmed |
+
+"Logic covered" means the ladder and the classifier are asserted against the
+error names browsers document. It is not the same as having seen it, and the
+matrix's own instruction stands: an untested path noted is fine, an untested
+path assumed working is not.
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` **39**,
+`check:rls` 18, `typecheck`, `lint`, `check:meetings` **37/37**, `check:bundle`
+**6/6** — all pass. `/j/[code]` moved 181 → **182 kB** against a 230 kB budget
+for the extra branches.

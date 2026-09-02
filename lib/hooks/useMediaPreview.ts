@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { acquireStream } from "@/lib/media/acquire";
 import {
   classifyMediaError,
   type PermissionHint,
@@ -36,6 +37,9 @@ export type MediaPreview = {
   speakerId: string | null;
   cameraOn: boolean;
   micOn: boolean;
+  /** Whether a working track of that kind was actually acquired. */
+  hasCamera: boolean;
+  hasMicrophone: boolean;
   /** 0–1, smoothed. Drives the input meter. */
   level: number;
   request: () => Promise<void>;
@@ -79,11 +83,37 @@ function writeStored(patch: StoredDevices) {
 }
 
 /**
- * Asks the Permissions API which reading of `NotAllowedError` applies, then
- * hands both to the shared classifier. Firefox has no `camera` descriptor, so
- * a null hint is normal rather than exceptional.
+ * Drop remembered device ids, keeping the on/off preferences.
+ *
+ * A stored `deviceId` is a hard constraint, and hardware goes away: a headset
+ * is unplugged, a camera is switched off in Screen Time, the meeting is joined
+ * from a docking station that isn't there today. Without this, one remembered
+ * choice locks someone out of their own preview permanently — every attempt
+ * fails the same way, and the "Try again" button can never succeed because the
+ * dead id is asked for again each time.
  */
-async function classifyError(error: unknown): Promise<PermissionState> {
+function forgetStoredDevices() {
+  const { cameraOn, micOn, speakerId } = readStored();
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ cameraOn, micOn, speakerId }),
+    );
+  } catch {
+    // Same as above: not being able to forget is survivable.
+  }
+}
+
+/**
+ * Asks the Permissions API which reading of `NotAllowedError` applies, then
+ * hands both to the shared classifier. Firefox has no `camera` descriptor and
+ * Safari has neither, so a null hint is normal rather than exceptional — see
+ * `classifyMediaError` for what stands in for it.
+ */
+async function classifyError(
+  error: unknown,
+  previous: PermissionState | null,
+): Promise<PermissionState> {
   let hint: PermissionHint = null;
   try {
     const status = await navigator.permissions.query({
@@ -93,7 +123,7 @@ async function classifyError(error: unknown): Promise<PermissionState> {
   } catch {
     hint = null;
   }
-  return classifyMediaError(error, hint);
+  return classifyMediaError(error, hint, previous);
 }
 
 export function useMediaPreview(): MediaPreview {
@@ -107,10 +137,17 @@ export function useMediaPreview(): MediaPreview {
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
+  const [hasCamera, setHasCamera] = useState(false);
+  const [hasMicrophone, setHasMicrophone] = useState(false);
   const [level, setLevel] = useState(0);
 
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<{ context: AudioContext; frame: number } | null>(null);
+  // Read inside `request` without making it a dependency: the classifier needs
+  // to know what the screen was showing, and re-creating the callback on every
+  // state change would restart the effects that depend on it.
+  const stateRef = useRef<PermissionState>("idle");
+  stateRef.current = state;
 
   // Restore remembered choices before anything is requested, so the first
   // getUserMedia asks for the right devices rather than the defaults.
@@ -182,6 +219,9 @@ export function useMediaPreview(): MediaPreview {
    * Ask for devices. Called from a click, never on mount — §3.3 is explicit
    * that the browser prompt must not fire on page load, because a prompt with
    * no explanation in front of it is one people dismiss.
+   *
+   * What to ask for, and what to ask for next when that fails, is
+   * `acquireStream` — see there for why one request can take three attempts.
    */
   const request = useCallback(
     async (overrides?: { cameraId?: string; microphoneId?: string }) => {
@@ -190,52 +230,73 @@ export function useMediaPreview(): MediaPreview {
         return;
       }
 
+      const previous = stateRef.current;
       setState("requesting");
-      const wantCamera = overrides?.cameraId ?? cameraId;
-      const wantMic = overrides?.microphoneId ?? microphoneId;
 
-      try {
-        const next = await navigator.mediaDevices.getUserMedia({
-          video: wantCamera ? { deviceId: { exact: wantCamera } } : true,
-          audio: wantMic ? { deviceId: { exact: wantMic } } : true,
-        });
+      const { stream: next, error, forgotDevices } = await acquireStream(
+        (constraints) => navigator.mediaDevices.getUserMedia(constraints),
+        {
+          cameraId: overrides?.cameraId ?? cameraId,
+          microphoneId: overrides?.microphoneId ?? microphoneId,
+        },
+      );
 
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = next;
-        setStream(next);
-        setState("granted");
-
-        // Labels are empty strings until permission is granted, which is why
-        // the list is only read after, never before.
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const byKind = (kind: MediaDeviceKind) =>
-          devices
-            .filter((d) => d.kind === kind && d.deviceId)
-            .map((d, i) => ({
-              deviceId: d.deviceId,
-              label: d.label || `${kind} ${i + 1}`,
-            }));
-
-        setCameras(byKind("videoinput"));
-        setMicrophones(byKind("audioinput"));
-        setSpeakers(byKind("audiooutput"));
-
-        const activeCamera = next.getVideoTracks()[0]?.getSettings().deviceId;
-        const activeMic = next.getAudioTracks()[0]?.getSettings().deviceId;
-        if (activeCamera) setCameraId(activeCamera);
-        if (activeMic) setMicrophoneId(activeMic);
-
-        // Apply the remembered on/off state to the real tracks. Rule 3: the UI
-        // reads track state, so the track is what gets set.
-        next.getVideoTracks().forEach((t) => (t.enabled = cameraOn));
-        next.getAudioTracks().forEach((t) => (t.enabled = micOn));
-
-        if (micOn) startMeter(next);
-      } catch (error) {
-        setState(await classifyError(error));
+      if (forgotDevices) {
+        forgetStoredDevices();
+        setCameraId(null);
+        setMicrophoneId(null);
       }
+
+      if (!next) {
+        setState(await classifyError(error, previous));
+        return;
+      }
+
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = next;
+      setStream(next);
+      setState("granted");
+
+      // Labels are empty strings until permission is granted, which is why
+      // the list is only read after, never before.
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const byKind = (kind: MediaDeviceKind) =>
+        devices
+          .filter((d) => d.kind === kind && d.deviceId)
+          .map((d, i) => ({
+            deviceId: d.deviceId,
+            label: d.label || `${kind} ${i + 1}`,
+          }));
+
+      setCameras(byKind("videoinput"));
+      setMicrophones(byKind("audioinput"));
+      setSpeakers(byKind("audiooutput"));
+
+      const videoTracks = next.getVideoTracks();
+      const audioTracks = next.getAudioTracks();
+      setHasCamera(videoTracks.length > 0);
+      setHasMicrophone(audioTracks.length > 0);
+
+      const activeCamera = videoTracks[0]?.getSettings().deviceId;
+      const activeMic = audioTracks[0]?.getSettings().deviceId;
+      if (activeCamera) setCameraId(activeCamera);
+      if (activeMic) setMicrophoneId(activeMic);
+
+      // Apply the remembered on/off state to the real tracks. Rule 3: the UI
+      // reads track state, so the track is what gets set. A device that isn't
+      // there reads as off — but the stored preference is left alone, so it
+      // comes back on its own when the hardware does.
+      videoTracks.forEach((t) => (t.enabled = cameraOn));
+      audioTracks.forEach((t) => (t.enabled = micOn));
+      const cameraLive = videoTracks.some((t) => t.enabled);
+      const micLive = audioTracks.some((t) => t.enabled);
+      setCameraOn(cameraLive);
+      setMicOn(micLive);
+
+      if (micLive) startMeter(next);
+      else stopMeter();
     },
-    [cameraId, microphoneId, cameraOn, micOn, startMeter],
+    [cameraId, microphoneId, cameraOn, micOn, startMeter, stopMeter],
   );
 
   const setCamera = useCallback(
@@ -266,9 +327,11 @@ export function useMediaPreview(): MediaPreview {
    * Toggles set `track.enabled` and then read it back, rather than flipping a
    * React boolean and hoping. Rule 3 is about the room, but the habit starts
    * here: if the track refuses, the UI must show what the track actually is.
+   * With no track at all there is nothing to turn on, so the state holds.
    */
   const toggleCamera = useCallback(() => {
     const tracks = streamRef.current?.getVideoTracks() ?? [];
+    if (streamRef.current && tracks.length === 0) return;
     const next = !cameraOn;
     tracks.forEach((t) => (t.enabled = next));
     const actual = tracks.length > 0 ? tracks.some((t) => t.enabled) : next;
@@ -278,6 +341,7 @@ export function useMediaPreview(): MediaPreview {
 
   const toggleMic = useCallback(() => {
     const tracks = streamRef.current?.getAudioTracks() ?? [];
+    if (streamRef.current && tracks.length === 0) return;
     const next = !micOn;
     tracks.forEach((t) => (t.enabled = next));
     const actual = tracks.length > 0 ? tracks.some((t) => t.enabled) : next;
@@ -296,6 +360,15 @@ export function useMediaPreview(): MediaPreview {
       setCameras(devices.filter((d) => d.kind === "videoinput" && d.deviceId).map((d, i) => ({ deviceId: d.deviceId, label: d.label || `camera ${i + 1}` })));
       setMicrophones(devices.filter((d) => d.kind === "audioinput" && d.deviceId).map((d, i) => ({ deviceId: d.deviceId, label: d.label || `microphone ${i + 1}` })));
       setSpeakers(devices.filter((d) => d.kind === "audiooutput" && d.deviceId).map((d, i) => ({ deviceId: d.deviceId, label: d.label || `speaker ${i + 1}` })));
+      // The stream is the truth about what is still live — a track whose
+      // device has gone ends, and an ended track is not a camera.
+      const live = (kind: "video" | "audio") =>
+        (kind === "video"
+          ? streamRef.current?.getVideoTracks()
+          : streamRef.current?.getAudioTracks()
+        )?.some((t) => t.readyState === "live") ?? false;
+      setHasCamera(live("video"));
+      setHasMicrophone(live("audio"));
     };
     navigator.mediaDevices.addEventListener("devicechange", onChange);
     return () =>
@@ -317,6 +390,8 @@ export function useMediaPreview(): MediaPreview {
     speakerId,
     cameraOn,
     micOn,
+    hasCamera,
+    hasMicrophone,
     level,
     request: () => request(),
     setCamera,
