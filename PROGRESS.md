@@ -405,23 +405,57 @@ the time client code runs, the leak it looks for is already compiled in — whil
 leaked key, because it runs before the build rather than after. Verified:
 `typeof Buffer` is `undefined` on the client.
 
-### Bundle budgets are per-route now, and the dashboard overage is closed
+### Bundle budgets: measured, and the baseline itemised
 
-`PRD.md` §10 replaces the single 180 kB dashboard budget with five per-route
-numbers, and moves the tight one onto `/j/[code]` — the cold-cache stranger on a
-phone — rather than the authenticated route people revisit.
+`PRD.md` §10 now states the unit explicitly — **First Load JS totals, gzipped,
+inclusive of the shared baseline** — which settles the earlier ambiguity. The
+first version of the table put its tightest number on `/dashboard`, the route
+behind auth that the same people revisit; it now sits on `/j/[code]`, the cold
+load for a stranger on a phone.
 
-| Route | Now | Budget | |
+| Route | Now | Budget | Headroom |
 |---|---|---|---|
-| Shared baseline | 175 kB | ≤ 180 kB | within |
-| `/dashboard` | 242 kB | ≤ 260 kB | within — the Phase 1 overage is resolved by the new budget, not by a code change |
-| `/` marketing | 161 kB | ≤ 130 kB | **see below** |
-| `/j/[code]` | — | ≤ 200 kB | Phase 3 |
-| `/room/[code]` | — | ≤ 220 kB | Phase 4 |
+| Shared baseline | 175 kB | ≤ 180 kB | **5 kB** |
+| `/` marketing | 161 kB | ≤ 190 kB | 29 kB |
+| `/dashboard` | 242 kB | ≤ 280 kB | 38 kB |
+| `/j/[code]` | — | ≤ 230 kB | Phase 3 |
+| `/room/[code]` | — | ≤ 250 kB | Phase 4 |
 
-**Open question on the `/` budget.** "≤ 130 kB above nothing" cannot be a First
-Load JS total: the shared baseline alone is 175 kB and its own budget is 180 kB,
-so no route can come in under 130 kB. Two readings are possible — 130 kB of
-route-specific weight *above* the shared baseline, which `/` meets trivially at
-0 B, or a 130 kB total, which is arithmetically unreachable. Flagged rather than
-guessed. The other four budgets are unambiguous and are being tracked.
+Every route is within budget. `/sign-in` (250 kB) and `/auth/complete` (242 kB)
+have no budget of their own; both are auth surfaces, comparable to `/dashboard`.
+
+**The itemised look §10 asks for.** The shared baseline is the tightest number
+of the five and the only leveraged one, so it is where a kilobyte is worth five.
+The four named shared chunks account for 116.8 kB gzipped:
+
+| Chunk | Size | Contents |
+|---|---|---|
+| `9f66e819…` | 57.8 kB | react-dom, Next client |
+| `b3bdc7c2…` | 29.1 kB | **ours** — radix-ui, next-themes, sonner, HugeIcons, lucide |
+| `e48fa16f…` | 16.8 kB | Next client |
+| `92fbc226…` | 13.1 kB | Next client |
+
+So roughly 88 kB is framework, matching §10's stated 105–120 kB floor once the
+unnamed chunks and CSS are counted, and **29 kB is what the root layout drags in
+for every route**.
+
+Two measurements, taken by removing each and rebuilding rather than estimating:
+
+- **`TooltipProvider` cannot be removed.** The build fails —
+  `` `Tooltip` must be used within `TooltipProvider` `` — because the header's
+  own theme toggle uses one. Radix's tooltip and HugeIcons are genuinely shared,
+  since the header is on every route by design.
+- **`<Toaster />` costs 10 kB.** Removing it takes shared from 175 kB to 165 kB
+  and `/` from 161 kB to 151 kB, tripling the baseline's headroom from 5 kB to
+  15 kB. Nothing renders a toast yet, so the cost is currently paid for nothing.
+
+**Not acted on, deliberately.** Moving `<Toaster />` into a route group means
+deciding which surfaces raise toasts. `(app)` is the obvious home — Phase 2's
+"Link copied" fires on the dashboard — but `/j/[code]` sits outside that group
+and may want one too. That is a design decision, and §10 says to recalibrate at
+the end of Phase 3 when pre-join exists and there is evidence rather than
+estimate. The 10 kB is banked and waiting.
+
+Two constraints §10 adds for Phase 3, recorded now so they are not discovered
+late: pre-join uses `navigator.mediaDevices` and needs no LiveKit code, and it
+should not pull in `react-hook-form` and `zod` for a single display-name field.

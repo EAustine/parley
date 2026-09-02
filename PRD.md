@@ -655,17 +655,23 @@ Target WCAG 2.1 AA. This is the part of the product that separates it from a wee
 
 ### Bundle budgets
 
-All figures are **First Load JS, gzipped** — the units Next reports. Verify that assumption once per major Next upgrade rather than trusting it.
+All figures are **First Load JS totals, gzipped** — the units Next reports, and inclusive of the shared baseline. Verify that unit assumption once per major Next upgrade rather than trusting it.
 
-| Route | Budget | Why this number |
+| Route | Budget | Route-specific headroom |
 |---|---|---|
-| Shared baseline | ≤ 180 kB | Paid by every route. Framework floor is around 105 kB, so this is the real headroom. |
-| `/` marketing | ≤ 130 kB above nothing | Cold load, first impression, no session needed |
-| `/j/[code]` pre-join | ≤ 200 kB | **The tightest budget that matters.** Highest-traffic flow, always a cold load, frequently on mobile data. |
-| `/room/[code]` | ≤ 220 kB before the dynamic import | `livekit-client` loads after the join gesture, not with the route |
-| `/dashboard` | ≤ 260 kB | Authenticated, returning users, warm cache. Deliberately loose. |
+| Shared baseline | ≤ 180 kB | — |
+| `/` marketing | ≤ 190 kB | ~15 kB |
+| `/j/[code]` pre-join | ≤ 230 kB | ~55 kB |
+| `/room/[code]` | ≤ 250 kB before the dynamic import | ~75 kB |
+| `/dashboard` | ≤ 280 kB | ~105 kB |
 
-The original spec put a single 180 kB budget on the dashboard, which was the wrong route to defend. The dashboard is behind auth and revisited by the same people; its bundle is amortised across sessions. `/j/[code]` is where a stranger on a phone meets the product for the first time with an empty cache, and §3.3 already names it the highest-traffic flow. That is where a byte costs something.
+`/j/[code]` is the one that matters. It is a cold load for a stranger on a phone with an empty cache, and §3.3 names it the highest-traffic flow in the product. The dashboard is deliberately loose: it sits behind auth, the same people revisit it, and its bundle amortises across sessions.
+
+**The shared baseline is the leveraged number.** At 175 kB it is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times. Next's App Router floor is roughly 105–120 kB gzipped, which puts 55–70 kB of our own code in the shared chunk before any feature exists. That is worth an itemised look before optimising any individual route — cutting shared beats cutting `/dashboard`.
+
+**These four route numbers are provisional.** They are inferred from a baseline measured against a nearly empty app, not from any route that does its real work yet. Recalibrate at the end of Phase 3, when pre-join actually exists and there is evidence rather than estimate. A budget invented ahead of the code is a guess wearing a number, and the first version of this table put its tightest constraint on the wrong route for exactly that reason.
+
+Two specifics that follow from the `/j/[code]` budget: pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code, and it should not pull in `react-hook-form` and `zod` for a single display-name field. Native state and one parse on submit is a fraction of the weight.
 
 `livekit-client` is dynamically imported on the room route only and must not appear in any other bundle. Pre-join uses `navigator.mediaDevices` directly for preview and device enumeration — it needs no LiveKit code at all.
 
