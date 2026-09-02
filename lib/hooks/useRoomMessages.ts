@@ -57,7 +57,11 @@ export type RoomMessages = {
    * is happening rather than typing into a void.
    */
   chatCooldown: number | null;
+  /** A host has asked this participant to mute — §3.8. Null when none stands. */
+  muteRequest: { from: string; at: number } | null;
   sendChat: (body: string) => void;
+  requestMute: (identity: string) => void;
+  dismissMuteRequest: () => void;
   sendReaction: (emoji: Reaction) => void;
   markRead: () => void;
 };
@@ -89,6 +93,8 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
   // identity whichever end the message is seen from.
   const chatGate = useRef(new WindowLimit(CHAT_BURST, CHAT_WINDOW_MS));
   const [chatCooldown, setChatCooldown] = useState<number | null>(null);
+  const [muteRequest, setMuteRequest] =
+    useState<{ from: string; at: number } | null>(null);
 
   const addReaction = useCallback(
     (identity: string, name: string, emoji: Reaction) => {
@@ -140,6 +146,19 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
     if (!envelope || !from) return;
 
     const name = displayNameOf(from);
+
+    if (envelope.kind === "mute-request") {
+      // Addressed to someone else; nothing to do. Every participant receives
+      // every packet on a broadcast channel, which is why the target is
+      // compared here rather than assumed.
+      if (envelope.to !== room.localParticipant.identity) return;
+      // §3.8: "a request the participant must accept". It is surfaced, not
+      // applied — the whole point is that a host cannot reach into someone
+      // else's microphone. Accepting mutes; ignoring it does nothing.
+      setMuteRequest({ from: name, at: Date.now() });
+      return;
+    }
+
     if (envelope.kind === "chat") {
       // Dropped without rendering. The flooder's own input is disabled at
       // their end; nobody else sees the flood, which is the whole point.
@@ -282,6 +301,19 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
     return () => clearTimeout(timer);
   }, [chatCooldown]);
 
+  const requestMute = useCallback(
+    (identity: string) => {
+      // Reliable: a request that quietly did not arrive leaves a host thinking
+      // they asked and a participant never asked.
+      void send(encode({ v: 1, kind: "mute-request", to: identity }), {
+        reliable: true,
+      }).catch(() => {});
+    },
+    [send],
+  );
+
+  const dismissMuteRequest = useCallback(() => setMuteRequest(null), []);
+
   const markRead = useCallback(() => setUnread(0), []);
 
   return {
@@ -290,8 +322,11 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
     unread,
     announcement,
     chatCooldown,
+    muteRequest,
     sendChat,
     sendReaction,
+    requestMute,
+    dismissMuteRequest,
     markRead,
   };
 }

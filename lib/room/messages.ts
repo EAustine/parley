@@ -52,7 +52,23 @@ export const REACTION_NAMES: Record<Reaction, string> = {
 
 export type Envelope =
   | { v: 1; kind: "chat"; body: string }
-  | { v: 1; kind: "reaction"; emoji: Reaction };
+  | { v: 1; kind: "reaction"; emoji: Reaction }
+  /**
+   * §3.8: a host asking someone to mute.
+   *
+   * `to` is a *target*, not a sender — the sender still comes from LiveKit's
+   * `from`, and a receiver ignores anything not addressed to itself. It is
+   * carried in the payload because the data channel here is a broadcast: the
+   * alternative is a per-participant channel, which is more moving parts for a
+   * message nobody minds others seeing.
+   *
+   * There is deliberately no `unmute` counterpart. §3.8: "A host cannot unmute
+   * someone else… the host can silence, never activate." The absence is the
+   * feature — a message that does not exist cannot be sent by a modified
+   * client, which is a stronger guarantee than a receiver that declines to
+   * honour one.
+   */
+  | { v: 1; kind: "mute-request"; to: string };
 
 /**
  * A hard cap on bytes, checked before parsing.
@@ -122,6 +138,16 @@ export function decode(payload: Uint8Array): Envelope | null {
     // Sanitising can empty a message that was only control characters. That is
     // not a message.
     return body.length > 0 ? { v: 1, kind: "chat", body } : null;
+  }
+
+  if (value.kind === "mute-request") {
+    // An identity, bounded. Nothing is looked up by it — the receiver only
+    // compares it against its own — but an unbounded string on a broadcast
+    // channel is a place to put something else.
+    const to = value.to;
+    return typeof to === "string" && to.length > 0 && to.length <= 200
+      ? { v: 1, kind: "mute-request", to }
+      : null;
   }
 
   if (value.kind === "reaction") {

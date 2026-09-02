@@ -1,0 +1,251 @@
+import { test, expect } from "@playwright/test";
+
+import { emptyRoom } from "./livekit-admin";
+import {
+  LIVE_CODE,
+  expectParticipants,
+  joinAs,
+  wakeControls,
+  type Participant,
+} from "./room.helpers";
+
+/**
+ * §3.7 and §3.8, between two real browsers.
+ *
+ * Screen share is automatable because Chrome takes
+ * `--auto-select-desktop-capture-source`, which answers the picker and hands
+ * back a genuine display track. That matters most for the criterion §3.7
+ * singles out — stopping from the browser's own bar — because the whole risk is
+ * that our UI does not hear about it.
+ */
+
+test.beforeEach(async () => {
+  await emptyRoom(LIVE_CODE);
+});
+
+/**
+ * The persistent share bar, not the suppressed-view copy on the stage.
+ * Both legitimately contain the phrase — one tells you others can see your
+ * screen, the other explains why you cannot.
+ */
+const sharingBar = (p: Participant) =>
+  p.page.getByRole("status").filter({ hasText: "You’re sharing your screen" });
+
+async function openParticipants(p: Participant) {
+  await wakeControls(p.page);
+  await p.page.getByRole("button", { name: "Show participants" }).click();
+  await expect(p.page.getByRole("complementary", { name: "Participants" })).toBeVisible();
+}
+
+test.describe("screen share", () => {
+  let ama: Participant;
+  let kwabena: Participant;
+
+  test.afterEach(async () => {
+    for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
+  });
+
+  test("reaches the other participant, and collapses them to a filmstrip", async ({
+    browser,
+  }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(ama.page, 2);
+    await expectParticipants(kwabena.page, 2);
+
+    await wakeControls(ama.page);
+    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+
+    // §3.7: a persistent bar, not one that hides with the controls — what it
+    // says is that other people can see your screen.
+    await expect(sharingBar(ama)).toBeVisible();
+    await expect(
+      ama.page.getByRole("button", { name: "Stop sharing your screen" }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    // §3.7: "The sharer's own view of the shared content is suppressed."
+    await expect(ama.page.getByText(/your own view is hidden/i)).toBeVisible();
+
+    // At the other end it is real video, in the main area.
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
+    const sample = async () => kwabena.page.evaluate(async () => {
+      const video = [...document.querySelectorAll("video")].find(
+        (v) => getComputedStyle(v).objectFit === "contain",
+      );
+      if (!video) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 36;
+      const context = canvas.getContext("2d", { willReadFrequently: true })!;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let min = 255, max = 0;
+      for (let p = 0; p < data.length; p += 4) {
+        const luma = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+        if (luma < min) min = luma;
+        if (luma > max) max = luma;
+      }
+      return { width: video.videoWidth, spread: max - min };
+    });
+    // Polled, not sampled once. A track that has published still takes a
+    // moment to produce its first frame, and `videoWidth` is 0 until it does —
+    // the same lesson as the tile liveness check.
+    await expect
+      .poll(async () => (await sample())?.width ?? 0, {
+        message: "the shared track never produced a frame",
+        timeout: 20_000,
+      })
+      .toBeGreaterThan(0);
+
+    const live = await sample();
+    // `object-fit: contain`, not `cover`: a cropped screen cuts off the thing
+    // being pointed at.
+    expect(live, "no contain-fitted video — the share is not in the main area").not.toBeNull();
+    expect(live!.spread, "the shared surface is a flat rectangle").toBeGreaterThan(5);
+
+    // §3.4: participants collapse to a filmstrip beside the content.
+    await expect(kwabena.page.getByRole("heading", { name: /^Participants, \d+$/ })).toBeAttached();
+  });
+
+  /**
+   * §3.7's acceptance criterion, and the one place worth naming who does the
+   * work: `livekit-client`'s `LocalParticipant.handleTrackEnded` unpublishes
+   * any ended track whose source is ScreenShare. We wrote our own listener for
+   * this and a mutation check showed it could be deleted with nothing failing,
+   * so it was removed.
+   *
+   * This test stays, and matters more for it — it is what would notice if that
+   * behaviour ever changed underneath us.
+   */
+  test("stopping from the browser's own control updates the app", async ({ browser }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    // Keep a handle on whatever getDisplayMedia returns. A wrapper, not a
+    // stub: the real call still runs and a real display track still publishes.
+    await ama.page.evaluate(() => {
+      const original = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getDisplayMedia = async (constraints) => {
+        const stream = await original(constraints);
+        (window as unknown as { __share?: MediaStream }).__share = stream;
+        return stream;
+      };
+    });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(ama.page, 2);
+
+    await wakeControls(ama.page);
+    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await expect(sharingBar(ama)).toBeVisible();
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
+
+    // Chrome's own bar does exactly one thing to the page: it ends the
+    // MediaStreamTrack. Nothing else is signalled — no LiveKit event, no
+    // publication change — which is precisely why the `ended` listener exists
+    // and precisely what §3.7 makes an acceptance criterion.
+    //
+    // Reached by capturing the stream `getDisplayMedia` returned, because the
+    // sharer's own view is suppressed and the track is therefore attached to
+    // no element on their page. Ending that track is the same event Chrome's
+    // button produces.
+    const ended = await ama.page.evaluate(() => {
+      const held = (window as unknown as { __share?: MediaStream }).__share;
+      const track = held?.getVideoTracks()[0];
+      if (!track) return false;
+      track.stop();
+      // `stop()` does not fire `ended` on the track that called it — the event
+      // is for tracks ended from elsewhere — so it is dispatched here, which is
+      // what the browser does when its own control is the one stopping.
+      track.dispatchEvent(new Event("ended"));
+      return true;
+    });
+    expect(ended, "no captured display track to end").toBe(true);
+
+    // The UI must agree, at both ends.
+    await expect(sharingBar(ama)).toBeHidden({
+      timeout: 15_000,
+    });
+    await expect(
+      ama.page.getByRole("button", { name: "Share your screen" }),
+    ).toBeVisible();
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeHidden();
+  });
+
+  test("share survives opening and closing the chat panel", async ({ browser }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(kwabena.page, 2);
+
+    await wakeControls(ama.page);
+    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
+
+    // §3.7 acceptance. A panel toggle re-renders the room; the share must not
+    // be a casualty of that.
+    await wakeControls(kwabena.page);
+    await kwabena.page.getByRole("button", { name: "Open chat" }).click();
+    await expect(kwabena.page.getByRole("complementary", { name: "Meeting chat" })).toBeVisible();
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
+
+    await kwabena.page.keyboard.press("Escape");
+    await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
+    await expect(sharingBar(ama)).toBeVisible();
+  });
+});
+
+test.describe("participants panel", () => {
+  let ama: Participant;
+  let kwabena: Participant;
+
+  test.afterEach(async () => {
+    for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
+  });
+
+  test("lists everyone with their device state", async ({ browser }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(ama.page, 2);
+
+    await openParticipants(ama);
+    const panel = ama.page.getByRole("complementary", { name: "Participants" });
+    await expect(panel.getByText("Ama Serwaa (you)")).toBeVisible();
+    await expect(panel.getByText("Kwabena Osei", { exact: true })).toBeVisible();
+
+    // Both joined with media off, so both mic-off markers are present — named,
+    // not colour-coded. Rule 5.
+    await expect(panel.getByLabel("Kwabena Osei's microphone is off")).toBeVisible();
+    await expect(panel.getByLabel("Kwabena Osei's camera is off")).toBeVisible();
+
+    // §3.4: the control shows the count.
+    // Scoped to the control bar: the panel's own header carries a close button
+    // with the same accessible name, which is a naming duplication worth
+    // Phase 9's attention rather than a defect — both do close the panel.
+    await expect(
+      ama.page.locator("button[aria-controls='participants-panel']"),
+    ).toContainText("2");
+  });
+
+  test("offers no way for a guest to act on anyone", async ({ browser }) => {
+    // §3.8's actions are the host's. Neither of these participants is one —
+    // both are guests on a meeting owned by someone else.
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    await expectParticipants(ama.page, 2);
+
+    await openParticipants(ama);
+    const panel = ama.page.getByRole("complementary", { name: "Participants" });
+    await expect(panel.getByRole("button", { name: /Ask to mute/ })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
+  });
+
+  test("has no unmute action anywhere — a host can silence, never activate", async ({
+    browser,
+  }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+    await openParticipants(ama);
+
+    // §3.8's rule, asserted as an absence across the whole room rather than
+    // one panel: there is no unmute message to send and no control to send it.
+    const body = await ama.page.locator("body").innerText();
+    expect(body).not.toMatch(/unmute/i);
+    expect(body).not.toMatch(/turn on their (microphone|camera)/i);
+  });
+});

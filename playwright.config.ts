@@ -54,6 +54,10 @@ export default defineConfig({
       args: [
         "--use-fake-device-for-media-stream",
         "--use-fake-ui-for-media-stream",
+        // §3.7. `getDisplayMedia` normally opens a picker no automation can
+        // answer; this selects a source and returns a real display track —
+        // real capture, real `ended` event, real publish through the SFU.
+        "--auto-select-desktop-capture-source=Entire screen",
         `--use-file-for-fake-audio-capture=${SPEECH}`,
         // Without this Chrome throttles rendering and media in backgrounded
         // pages, and every context after the first is backgrounded.

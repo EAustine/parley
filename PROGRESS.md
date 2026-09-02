@@ -1952,3 +1952,117 @@ All pass, with `check:room` 70, `check:chat` 67, `check:permissions` 39,
 
 Importing the `.ics` into Google, Apple and Outlook remains the one manual item
 from Phase 6 — and stays manual by BUILD-PLAN's own reasoning.
+
+---
+
+## Phase 7 — Screen share and participants
+
+The control bar is now §3.4's full table: mic, camera, screen share, reactions,
+chat, participants, leave.
+
+### Screen share turned out to be automatable
+
+`getDisplayMedia` normally opens a picker no automation can answer, but Chrome
+takes `--auto-select-desktop-capture-source` and hands back a genuine display
+track — real capture, real `ended` event, real publish through the SFU. Probed
+before building anything, because it decided how much of §3.7 could be verified
+rather than asserted.
+
+So all of it is: the share reaching the other participant as moving video, the
+filmstrip, the persistent bar, the browser's own stop, and surviving a panel
+toggle.
+
+### A guard I wrote that did nothing
+
+The hook listened for `ended` on the display track and unpublished, with a
+comment calling it "the acceptance criterion for the phase". Deleting it failed
+no test.
+
+That sent me to the SDK rather than to the test.
+`LocalParticipant.handleTrackEnded` already unpublishes any ended track whose
+source is `ScreenShare` — its own log line reads *"unpublishing local track due
+to TrackEnded"*. Our listener sat downstream of that and never fired.
+
+Removed rather than kept as a backstop, which is the opposite call from the
+`autolink` allow-list and for a reason worth stating: that one guards against a
+change *we* might make to a pattern we own, and is reachable by widening it.
+This one guarded against a library changing its own documented behaviour, could
+not be reached at all, and carried a comment claiming it was the mechanism. A
+guard that cannot fire cannot be tested; one that misdescribes itself is worse
+than none.
+
+The end-to-end test stays and matters more for it — it pins the *behaviour*
+whoever provides it, so if LiveKit ever stops doing this the test goes red and
+the listener comes back with evidence behind it.
+
+### §3.8's asymmetry, built as an absence
+
+> A host cannot unmute someone else. Muting is a request the participant must
+> accept — the host can silence, never activate.
+
+There is no unmute action because **there is no unmute message**. The envelope
+has `mute-request` and no counterpart, so a modified client has nothing to send
+— which is a stronger guarantee than a receiver that declines to honour one. A
+test asserts the word "unmute" appears nowhere in the room at all.
+
+The mute request is a prompt, not an effect: the host has asked, the microphone
+is still on, and ignoring it is a valid answer that costs nothing. That is what
+"a request the participant must accept" means, and it is the reading that
+survives our narrow token grants — force-muting would need `roomAdmin` or a
+server endpoint, and §7 withholds the first deliberately.
+
+**Remove** does need server authority, so it is a route: the host is verified
+by RLS the same way everywhere else, and the `roomAdmin` power is spent once per
+request rather than living in a token for six hours. Removing is not muting —
+it is visible to the person, and it is the power a host actually needs when
+something has gone wrong.
+
+### Decisions worth naming
+
+- **`object-fit: contain` on shared content**, against the room's `cover`
+  everywhere else. A cropped face is still a face; a cropped screen cuts off
+  the thing being pointed at. The one surface where letterboxing is right.
+- **The sharing bar does not auto-hide** with the control bar. What it says is
+  that other people can see your screen, which is exactly the fact that must
+  not quietly disappear while you work in another window.
+- **Screen share is hidden, not disabled, off desktop.** §3.7 is desktop only;
+  a control that can never work on this device is not a control. Gated on the
+  API existing *and* a hover-capable pointer, because iPad Safari exposes
+  `getDisplayMedia` and then refuses.
+- **Filmstrip capacity: 5 on desktop, 3 on mobile.** The three is §3.4's; the
+  five is a choice — what a right rail holds at a legible size — and the only
+  number in `layout.ts` that is not a transcription.
+
+### One thing for Phase 9
+
+Two controls share the accessible name "Close participants": the panel's own X
+and the control-bar toggle. The same duplication exists for chat. Both members
+of each pair do close the panel, so it is a naming smell rather than a defect —
+but a screen reader user hears the same name twice in one tab cycle. The
+conventional fix is naming a disclosure for its target and letting
+`aria-expanded` carry the state, which conflicts with the accessibility floor's
+"name the action" rule as currently written. Phase 9 owns tab order and
+naming; flagged rather than churned mid-phase.
+
+### Checks
+
+`check:room` 70 → **87** (filmstrip geometry, the cut at five places rather than
+sixteen), `check:chat` 67 → **73** (the new envelope kind, and that an unmute
+message does not decode), `check:media` 21 → **27**.
+
+All pass, with `check:meetings` 68, `check:ics` 69, `check:permissions` 39,
+`check:contrast` 24, `check:rls` 18, `check:bundle` 10/10. `/room/[code]` is
+unchanged at 154 kB against 250.
+
+### Still needs a human
+
+- **Picking a specific window or tab.** Automation selects "Entire screen"
+  through a flag; the picker's own behaviour, and what Chrome's bar looks like
+  over a real page, is a real machine's job.
+- **Audio share.** §3.7 asks for it "where supported" and the request is made;
+  Chrome only offers tab audio, and whether it is audible at the other end is
+  the same speaker-path question Phase 4 left open.
+- **A second sharer replacing the first**, with the confirm dialog for the
+  person being replaced. Not built: §3.7 specifies it, and it needs a design
+  decision about what the replaced person sees and how long they have to
+  object. Flagged rather than guessed.

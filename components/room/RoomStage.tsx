@@ -6,6 +6,7 @@ import {
   RoomAudioRenderer,
   RoomContext,
   useLocalParticipant,
+  useParticipants,
 } from "@livekit/components-react";
 import { Room, RoomEvent } from "livekit-client";
 
@@ -13,10 +14,16 @@ import { readDevices } from "@/lib/media/devices";
 import { useControlVisibility } from "@/lib/hooks/useControlVisibility";
 import { useRoomMessages } from "@/lib/hooks/useRoomMessages";
 import { useRoomShortcuts } from "@/lib/hooks/useRoomShortcuts";
+import { useScreenShare } from "@/lib/hooks/useScreenShare";
+import { isHost } from "@/lib/room/participant";
 import { ChatPanel } from "@/components/room/ChatPanel";
+import { MuteRequestPrompt } from "@/components/room/MuteRequestPrompt";
+import { ParticipantsPanel } from "@/components/room/ParticipantsPanel";
 import { ReactionOverlay } from "@/components/room/ReactionOverlay";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
+import { ScreenShareStage } from "@/components/room/ScreenShareStage";
+import { SharingBar } from "@/components/room/SharingBar";
 import { Button } from "@/components/ui/button";
 import { Lockup } from "@/components/brand/Lockup";
 
@@ -172,11 +179,29 @@ export function RoomStage({
 function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
   const visible = useControlVisibility();
   const [chatOpen, setChatOpen] = useState(false);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const chatTrigger = useRef<HTMLElement | null>(null);
+  const participantsTrigger = useRef<HTMLElement | null>(null);
   const surface = useRef<HTMLDivElement>(null);
 
   const messages = useRoomMessages({ panelOpen: chatOpen });
   const { markRead } = messages;
+  const share = useScreenShare();
+  const { localParticipant } = useLocalParticipant();
+  const participants = useParticipants();
+  const localIsHost = isHost(localParticipant);
+
+  const removeParticipant = useCallback(
+    async (identity: string) => {
+      // Host-only, and enforced on the server — §7's grants withhold
+      // roomAdmin deliberately, so the client cannot do this itself.
+      await fetch(
+        `/api/livekit/participants/${code}?identity=${encodeURIComponent(identity)}`,
+        { method: "DELETE" },
+      ).catch(() => {});
+    },
+    [code],
+  );
 
   useEffect(() => {
     if (chatOpen) markRead();
@@ -185,6 +210,22 @@ function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
   const closeChat = useCallback(() => {
     setChatOpen(false);
     chatTrigger.current?.focus?.();
+  }, []);
+
+  const closeParticipants = useCallback(() => {
+    setParticipantsOpen(false);
+    participantsTrigger.current?.focus?.();
+  }, []);
+
+  const toggleParticipants = useCallback(() => {
+    setParticipantsOpen((open) => {
+      if (open) {
+        participantsTrigger.current?.focus?.();
+        return false;
+      }
+      participantsTrigger.current = document.activeElement as HTMLElement | null;
+      return true;
+    });
   }, []);
 
   const toggleChat = useCallback(() => {
@@ -239,9 +280,43 @@ function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
     >
       <Shortcuts onToggleChat={toggleChat} />
 
-      <div className={chatOpen ? "h-full md:pr-[360px]" : "h-full"}>
-        <RoomGrid />
+      <div
+        className={
+          chatOpen || participantsOpen ? "h-full md:pr-[360px]" : "h-full"
+        }
+      >
+        {share.presenter ? (
+          // §3.4: shared content takes the main area, participants collapse to
+          // a filmstrip — right edge on desktop, a top strip on mobile.
+          <div className="flex h-full flex-col gap-3 md:flex-row">
+            <div className="min-h-0 flex-1 order-last md:order-first">
+              <ScreenShareStage
+                presenter={share.presenter}
+                track={share.remoteTrack}
+                isLocal={share.presenter.isLocal}
+              />
+            </div>
+            <RoomGrid filmstrip />
+          </div>
+        ) : (
+          <RoomGrid />
+        )}
       </div>
+
+      {/* §3.7: persistent, and deliberately not tied to the auto-hiding
+          control bar — what it says is that other people can see your screen. */}
+      {share.sharing && <SharingBar onStop={share.stop} />}
+
+      {messages.muteRequest && (
+        <MuteRequestPrompt
+          from={messages.muteRequest.from}
+          onMute={() => {
+            void localParticipant.setMicrophoneEnabled(false);
+            messages.dismissMuteRequest();
+          }}
+          onDismiss={messages.dismissMuteRequest}
+        />
+      )}
 
       <ReactionOverlay reactions={messages.reactions} anchorFor={anchorFor} />
 
@@ -255,14 +330,41 @@ function RoomSurface({ code, onLeave }: { code: string; onLeave: () => void }) {
         />
       </div>
 
+      <div id="participants-panel">
+        <ParticipantsPanel
+          open={participantsOpen}
+          isLocalHost={localIsHost}
+          onClose={closeParticipants}
+          onRequestMute={messages.requestMute}
+          onRemove={removeParticipant}
+        />
+      </div>
+
       <RoomControls
         visible={visible}
         unread={messages.unread}
         chatOpen={chatOpen}
+        participantsOpen={participantsOpen}
+        participantCount={participants.length}
+        share={{
+          supported: share.supported,
+          sharing: share.sharing,
+          toggle: () => void (share.sharing ? share.stop() : share.start()),
+        }}
         onToggleChat={toggleChat}
+        onToggleParticipants={toggleParticipants}
         onReact={messages.sendReaction}
         onLeave={onLeave}
       />
+
+      {share.error && (
+        <p
+          role="status"
+          className="absolute inset-x-0 bottom-24 z-30 text-center type-small text-[var(--state-critical)]"
+        >
+          {share.error}
+        </p>
+      )}
 
       {/* One polite live region for the whole room. §9 and BUILD-PLAN's Phase 9
           note: Next already mounts an assertive one, and a second would

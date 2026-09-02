@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
-import { gridLayout, visibleOrder, type Viewport } from "@/lib/room/layout";
+import {
+  filmstripLayout,
+  gridLayout,
+  visibleOrder,
+  type Viewport,
+} from "@/lib/room/layout";
 import { OverflowTile, Tile } from "@/components/room/Tile";
 import { Button } from "@/components/ui/button";
 
@@ -16,7 +21,7 @@ import { Button } from "@/components/ui/button";
  * rendering: which viewport we are in, which tracks belong to whom, and the
  * paging control mobile needs and desktop does not.
  */
-export function RoomGrid() {
+export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
   const participants = useParticipants();
   const viewport = useViewport();
   const [page, setPage] = useState(0);
@@ -28,6 +33,9 @@ export function RoomGrid() {
     { onlySubscribed: false },
   );
 
+  // §3.4: while someone is sharing, the grid collapses to a rail beside the
+  // content. A different shape, not a narrower grid — see `filmstripLayout`.
+  const strip = filmstripLayout(participants.length, viewport);
   const layout = gridLayout(participants.length, viewport, page);
 
   // Paging past the end is not hypothetical: it is what happens when the
@@ -48,7 +56,7 @@ export function RoomGrid() {
       joinedAt: p.joinedAt ?? null,
       participant: p,
     })),
-    layout,
+    filmstrip ? strip : layout,
   );
 
   const cameraFor = (identity: string) => {
@@ -61,6 +69,39 @@ export function RoomGrid() {
     // flowing, or muted. Either way there is nothing to attach.
     return ref?.publication?.track ?? undefined;
   };
+
+  if (filmstrip) {
+    return (
+      <div
+        className={
+          strip.orientation === "vertical"
+            ? "flex h-full w-[200px] shrink-0 flex-col gap-2 overflow-hidden"
+            : "flex h-[110px] w-full shrink-0 gap-2 overflow-hidden"
+        }
+      >
+        <h2 className="sr-only">
+          Participants, {participants.length}
+        </h2>
+        {shown.map(({ participant }) => (
+          <div
+            key={participant.identity}
+            className={strip.orientation === "vertical" ? "aspect-video w-full" : "aspect-video h-full"}
+          >
+            <Tile
+              participant={participant}
+              track={cameraFor(participant.identity)}
+              cameraOn={participant.isCameraEnabled}
+            />
+          </div>
+        ))}
+        {strip.overflow > 0 && (
+          <div className={strip.orientation === "vertical" ? "aspect-video w-full" : "aspect-video h-full"}>
+            <OverflowTile count={strip.overflow} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full flex-col gap-3">

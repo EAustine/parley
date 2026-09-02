@@ -36,7 +36,8 @@ try {
 }
 writeFileSync(join(out, "package.json"), '{"type":"commonjs"}');
 const require = createRequire(join(out, "index.cjs"));
-const { gridLayout, visibleOrder } = require(join(out, "layout.js"));
+const { gridLayout, filmstripLayout, visibleOrder, FILMSTRIP_CAPACITY } =
+  require(join(out, "layout.js"));
 const { isTyping } = require(join(out, "typing.js"));
 rmSync(out, { recursive: true, force: true });
 
@@ -213,6 +214,58 @@ const person = (identity, joinedAt, lastSpokeAt = null, isLocal = false) =>
 }
 
 // ---------------------------------------------------------------------------
+// §3.4, share mode: the filmstrip
+// ---------------------------------------------------------------------------
+console.log("\nFilmstrip\n");
+
+// "shared content takes the main area, participants collapse to a filmstrip
+// (desktop: right edge; mobile: top strip, 3 visible)."
+check(filmstripLayout(4, "desktop").orientation === "vertical",
+  "desktop puts the strip on the right edge, so it runs vertically");
+check(filmstripLayout(4, "mobile").orientation === "horizontal",
+  "mobile puts it across the top");
+check(FILMSTRIP_CAPACITY.mobile === 3,
+  "mobile shows three, as §3.4 specifies", `${FILMSTRIP_CAPACITY.mobile}`);
+
+for (const [people, viewport, tiles, overflow] of [
+  [1, "desktop", 1, 0],
+  [5, "desktop", 5, 0],
+  [6, "desktop", 4, 2],
+  [20, "desktop", 4, 16],
+  [3, "mobile", 3, 0],
+  [4, "mobile", 2, 2],
+  [17, "mobile", 2, 15],
+]) {
+  const l = filmstripLayout(people, viewport);
+  check(l.tiles === tiles && l.overflow === overflow,
+    `${String(people).padStart(2)} on ${viewport.padEnd(7)} → ${l.tiles} tiles, +${l.overflow}`,
+    `expected ${tiles} tiles, +${overflow}`);
+}
+{
+  // Same rule as the grid's 4×4: the "+N" cell takes a place, so everyone is
+  // either shown or counted and nobody is silently dropped.
+  const l = filmstripLayout(20, "desktop");
+  check(l.tiles + l.overflow === 20, "everyone is either shown or counted",
+    `${l.tiles} + ${l.overflow}`);
+  check(l.tiles + 1 === l.capacity, "with the +N cell occupying one place",
+    `${l.tiles} in ${l.capacity}`);
+}
+{
+  // A filmstrip never pages — there is nowhere to page to beside the content —
+  // so the cut matters far more often than in a sixteen-cell grid.
+  const people = [];
+  for (let i = 1; i <= 8; i++) people.push(person(`p${i}`, i, 5000 + i));
+  people.push(person("me", 99, null, true));
+
+  const shown = visibleOrder(people, filmstripLayout(9, "desktop")).map((p) => p.identity);
+  check(shown.length === 4, "nine people, four places", `${shown.length}`);
+  check(shown.includes("me"), "the local participant is never the one hidden", shown.join(","));
+  check(shown.includes("p8"), "nor is the most recent speaker", shown.join(","));
+  check(!shown.includes("p1"), "the one who spoke longest ago is dropped", shown.join(","));
+  check(shown[0] === "me", "and the order is still join order, local first", shown.join(","));
+}
+
+// ---------------------------------------------------------------------------
 // Keyboard suppression — §9 and §3.4's acceptance list
 // ---------------------------------------------------------------------------
 console.log("\nShortcut suppression\n");
@@ -331,6 +384,7 @@ check(
 );
 
 const total =
-  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3 + 2;
+  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3 + 2
+  + 3 + 7 + 2 + 5;
 console.log(`\n${total - failed}/${total} room checks passed.`);
 if (failed) process.exit(1);

@@ -98,6 +98,13 @@ const rejected = [
   ["a reaction that is an object", bytes('{"v":1,"kind":"reaction","emoji":{}}')],
   // §3.6 fixes six. An arbitrary string is someone probing the renderer.
   ["a reaction that is a script tag", bytes('{"v":1,"kind":"reaction","emoji":"<img src=x onerror=1>"}')],
+  ["a mute request with no target", bytes('{"v":1,"kind":"mute-request"}')],
+  ["a mute request targeting nobody", bytes('{"v":1,"kind":"mute-request","to":""}')],
+  ["a mute request with an object target", bytes('{"v":1,"kind":"mute-request","to":{}}')],
+  ["a mute request with an unbounded target", bytes('{"v":1,"kind":"mute-request","to":"' + "x".repeat(500) + '"}')],
+  // §3.8: "the host can silence, never activate." There is no unmute message
+  // to send, which is stronger than a receiver that declines to honour one.
+  ["an unmute request, which does not exist", bytes('{"v":1,"kind":"unmute-request","to":"user_1"}')],
 ];
 for (const [label, payload] of rejected) {
   t(decode(payload) === null, `rejected: ${label}`, `decoded to ${JSON.stringify(decode(payload))}`);
@@ -124,6 +131,12 @@ for (const [label, payload] of rejected) {
   t(round?.body?.length === CHAT_MAX_LENGTH,
     "an over-long message is truncated to the limit rather than dropped",
     `${round?.body?.length}`);
+}
+
+{
+  const round = decode(encode({ v: 1, kind: "mute-request", to: "user_abc" }));
+  t(round?.kind === "mute-request" && round.to === "user_abc",
+    "a mute request survives a round trip", JSON.stringify(round));
 }
 
 console.log("\nSanitising a body\n");

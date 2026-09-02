@@ -111,6 +111,52 @@ function clamp(value: number, low: number, high: number): number {
 }
 
 /**
+ * §3.4, share mode: "shared content takes the main area, participants collapse
+ * to a filmstrip (desktop: right edge; mobile: top strip, 3 visible)."
+ *
+ * A different shape from `gridLayout`, not a variant of it. The grid divides
+ * one area among equals; the filmstrip is a fixed-capacity rail beside
+ * something more important, and the interesting question stops being "how many
+ * columns" and becomes "who does not fit".
+ *
+ * Mobile's three is from §3.4. Desktop is not specified there — five is what a
+ * right rail holds at a legible tile size on a laptop, and it is the one number
+ * here that is a choice rather than a transcription.
+ */
+export type FilmstripLayout = {
+  /** "vertical" on the right edge, "horizontal" as a top strip. */
+  orientation: "vertical" | "horizontal";
+  /** Tiles rendered, the "+N" cell included where there is one. */
+  capacity: number;
+  tiles: number;
+  overflow: number;
+};
+
+export const FILMSTRIP_CAPACITY = { desktop: 5, mobile: 3 } as const;
+
+export function filmstripLayout(
+  count: number,
+  viewport: Viewport,
+): FilmstripLayout {
+  const people = Math.max(0, Math.floor(count));
+  const capacity = FILMSTRIP_CAPACITY[viewport];
+  const orientation = viewport === "desktop" ? "vertical" : "horizontal";
+
+  if (people <= capacity) {
+    return { orientation, capacity, tiles: people, overflow: 0 };
+  }
+
+  // Same rule as the grid's 4×4: the last cell stops being a person and
+  // becomes the count of everyone who is not shown.
+  return {
+    orientation,
+    capacity,
+    tiles: capacity - 1,
+    overflow: people - (capacity - 1),
+  };
+}
+
+/**
  * Who is on screen, and in what order.
  *
  * §3.4: "Overflow ordering: most recent speaker first, then join order. The
@@ -139,8 +185,13 @@ export type Rankable = {
 
 export function visibleOrder<T extends Rankable>(
   participants: T[],
-  layout: GridLayout,
+  layout: GridLayout | FilmstripLayout,
 ): T[] {
+  // A filmstrip never pages — there is nowhere to page to beside the shared
+  // content — so it is the single-page case with a smaller capacity.
+  if (!("pages" in layout)) {
+    return orderForCut(participants, layout.tiles);
+  }
   const start = layout.page * layout.capacity;
   const byJoin = [...participants].sort(joinOrder);
 
@@ -149,10 +200,25 @@ export function visibleOrder<T extends Rankable>(
   if (layout.pages > 1) return byJoin.slice(start, start + layout.tiles);
   if (participants.length <= layout.tiles) return byJoin;
 
+  return orderForCut(participants, layout.tiles);
+}
+
+/**
+ * The cut, shared by the grid and the filmstrip.
+ *
+ * Speaking recency decides *who* is shown — §3.4's "the person talking is never
+ * the person hidden" — and join order decides where they sit, so nobody moves
+ * while everyone fits. The filmstrip makes this matter far more often: five
+ * places instead of sixteen.
+ */
+function orderForCut<T extends Rankable>(participants: T[], tiles: number): T[] {
+  const byJoin = [...participants].sort(joinOrder);
+  if (participants.length <= tiles) return byJoin;
+
   const chosen = new Set(
     [...participants]
       .sort(speakingPriority)
-      .slice(0, layout.tiles)
+      .slice(0, tiles)
       .map((p) => p.identity),
   );
   return byJoin.filter((p) => chosen.has(p.identity));

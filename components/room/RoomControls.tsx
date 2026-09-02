@@ -14,10 +14,8 @@ import {
 } from "@/components/ui/tooltip";
 
 /**
- * Mic, camera, reactions, chat, leave. §3.4's table lists two more — screen
- * share and participants — and they arrive in Phase 7. A button that does
- * nothing is worse than a button that isn't there yet, so they are not here
- * yet.
+ * §3.4's control bar, complete: mic, camera, screen share, reactions, chat,
+ * participants, leave.
  *
  * **Rule 3.** Nothing in this file keeps a boolean for mute state.
  * `useLocalParticipant` reports what the published track actually is, so a
@@ -29,14 +27,23 @@ export function RoomControls({
   visible,
   unread,
   chatOpen,
+  participantsOpen,
+  participantCount,
+  share,
   onToggleChat,
+  onToggleParticipants,
   onReact,
   onLeave,
 }: {
   visible: boolean;
   unread: number;
   chatOpen: boolean;
+  participantsOpen: boolean;
+  participantCount: number;
+  /** §3.7 is desktop only, so this is absent rather than disabled elsewhere. */
+  share: { supported: boolean; sharing: boolean; toggle: () => void };
   onToggleChat: () => void;
+  onToggleParticipants: () => void;
   onReact: (emoji: Reaction) => void;
   onLeave: () => void;
 }) {
@@ -108,6 +115,42 @@ export function RoomControls({
           onToggle={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
         />
 
+        {/* §3.7: desktop only. Hidden rather than disabled — a control that
+            can never work on this device is not a control, and a tooltip
+            explaining why is worse than the space it takes. */}
+        {share.supported && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={share.toggle}
+                aria-label={share.sharing ? "Stop sharing your screen" : "Share your screen"}
+                aria-pressed={share.sharing}
+                className="flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+                style={{
+                  // §3.4: "Active = filled --primary". The only control that
+                  // fills with primary, because it is the only one whose "on"
+                  // state changes what everyone else is looking at.
+                  backgroundColor: share.sharing ? "var(--primary)" : "transparent",
+                  borderColor: share.sharing ? "var(--primary)" : "var(--tile-border)",
+                  color: share.sharing ? "var(--primary-foreground)" : "var(--foreground)",
+                }}
+              >
+                <HugeiconsIcon
+                  icon={ICONS[share.sharing ? "stopShare" : "screenShare"].icon}
+                  size={20}
+                  strokeWidth={1.5}
+                  color="currentColor"
+                  aria-hidden
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {share.sharing ? "Stop sharing your screen" : "Share your screen"}
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         <ReactionPicker onReact={onReact} />
 
         <Tooltip>
@@ -152,6 +195,45 @@ export function RoomControls({
                 , {unread} unread {unread === 1 ? "message" : "messages"}
               </span>
             )}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onToggleParticipants}
+              aria-label={
+                participantsOpen ? "Close participants" : "Show participants"
+              }
+              aria-expanded={participantsOpen}
+              aria-controls="participants-panel"
+              className="relative flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+              style={{
+                backgroundColor: participantsOpen ? "var(--secondary)" : "transparent",
+                borderColor: participantsOpen ? "var(--secondary)" : "var(--tile-border)",
+                color: "var(--foreground)",
+              }}
+            >
+              <HugeiconsIcon
+                icon={ICONS.participants.icon}
+                size={20}
+                strokeWidth={1.5}
+                color="currentColor"
+                aria-hidden
+              />
+              {/* §3.4: "shows count". Tabular so it does not shift width as
+                  people arrive. */}
+              <span className="type-caption tabular-nums absolute -right-0.5 -top-0.5 rounded-full bg-secondary px-1">
+                {participantCount}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {participantsOpen ? "Close participants" : "Show participants"}{" "}
+            <span className="text-muted-foreground">
+              {participantCount} in the meeting
+            </span>
           </TooltipContent>
         </Tooltip>
 
