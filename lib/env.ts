@@ -85,12 +85,6 @@ const publicValues = {
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
 };
 
-const serverSchema = z.object({
-  LIVEKIT_API_KEY: z.string().min(1),
-  LIVEKIT_API_SECRET: z.string().min(20),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
-});
-
 function parse<T extends z.ZodTypeAny>(
   schema: T,
   label: string,
@@ -125,8 +119,8 @@ if (typeof window === "undefined") {
 export const publicEnv = parse(publicSchema, "public", publicValues);
 
 /**
- * Server-only. Importing this from a client component is a build error,
- * which is the intended behaviour.
+ * Server values live in `lib/env.server.ts`, which imports `server-only` — see
+ * rule 8d. They cannot be re-exported from here: this module is imported by
+ * client components for `publicEnv`, and re-exporting would put them back on
+ * the path the split exists to close.
  */
-export const serverEnv =
-  typeof window === "undefined" ? parse(serverSchema, "server") : (null as never);

@@ -1,0 +1,195 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
+import { Lockup } from "@/components/brand/Lockup";
+import { recallJoin } from "@/lib/prejoin-handoff";
+
+/**
+ * Requests a room token and reports what happened.
+ *
+ * Every failure the §7 contract can return has its own state here. That is the
+ * point of building this now rather than alongside the video grid: when a join
+ * fails under a grid it looks like the grid is broken, and the actual cause —
+ * an ended meeting, a rate limit, a guest hitting a closed meeting — is three
+ * layers down. Each one gets a sentence that says what happened and what to do.
+ */
+
+type Failure = {
+  title: string;
+  body: string;
+  /** The one thing that fixes this state. Never a generic "try again". */
+  action: { label: string; href: string };
+};
+
+type Outcome =
+  | { kind: "requesting" }
+  | { kind: "ready"; identity: string; displayName: string; role: string }
+  | ({ kind: "failed" } & Failure);
+
+/**
+ * The contract's error strings, in Parley's voice, each with the action that
+ * actually resolves it.
+ *
+ * An earlier version had a single `retry` flag deciding whether to show "Back
+ * to the join screen". It produced a state whose copy said "go back to the join
+ * screen" above a button that went somewhere else — the copy and the control
+ * disagreeing, which is its own kind of undesigned state. Each case now names
+ * its own way out.
+ */
+function describe(reason: string, status: number, code: string): Failure {
+  const backToJoin = { label: "Back to the join screen", href: `/j/${code}` };
+  const newMeeting = { label: "Start a new meeting", href: "/dashboard" };
+
+  switch (reason) {
+    case "meeting_ended":
+      return {
+        title: "This meeting has ended",
+        body: "It finished while you were on the way in. There's nothing to join.",
+        action: newMeeting,
+      };
+    case "meeting_not_found":
+      return {
+        title: "That meeting isn't here",
+        body: "The code doesn't match an open meeting. Check the link, or ask whoever sent it.",
+        action: backToJoin,
+      };
+    case "guests_not_allowed":
+      return {
+        title: "This meeting needs an account",
+        body: "The host has limited it to signed-in people. Sign in and the link will work.",
+        action: { label: "Sign in", href: `/sign-in?next=/j/${code}` },
+      };
+    case "rate_limited":
+      return {
+        title: "Too many attempts",
+        body: "This connection has asked to join too many times in the last minute. Wait a moment, then try again.",
+        action: backToJoin,
+      };
+    case "display_name_required":
+      return {
+        title: "A name is needed first",
+        body: "The join screen asks for the name people will see. It only takes a moment.",
+        action: backToJoin,
+      };
+    default:
+      return {
+        title: "Couldn't join the meeting",
+        body: `The server refused the request (${status}). Try again from the join screen; if it keeps happening the meeting may have been closed.`,
+        action: backToJoin,
+      };
+  }
+}
+
+export function RoomEntry({ code }: { code: string }) {
+  const [outcome, setOutcome] = useState<Outcome>({ kind: "requesting" });
+
+  // React 18+ mounts effects twice in development. Without this the token
+  // endpoint sees two requests per visit, which is harmless except that it
+  // burns the rate limit at double speed and makes 429 look like a bug.
+  const asked = useRef(false);
+
+  useEffect(() => {
+    if (asked.current) return;
+    asked.current = true;
+
+    (async () => {
+      try {
+        const response = await fetch("/api/livekit/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // A guest's name comes from pre-join; a host's comes from the
+          // session and is not sent at all.
+          body: JSON.stringify({ code, displayName: recallJoin(code) ?? undefined }),
+        });
+
+        if (!response.ok) {
+          const { error } = (await response
+            .json()
+            .catch(() => ({ error: "unknown" }))) as { error: string };
+          setOutcome({ kind: "failed", ...describe(error, response.status, code) });
+          return;
+        }
+
+        const data = (await response.json()) as {
+          identity: string;
+          displayName: string;
+          role: string;
+        };
+        setOutcome({ kind: "ready", ...data });
+      } catch {
+        setOutcome({
+          kind: "failed",
+          title: "Couldn't reach the server",
+          body: "Check your connection, then try joining again.",
+          action: { label: "Back to the join screen", href: `/j/${code}` },
+        });
+      }
+    })();
+  }, [code]);
+
+  if (outcome.kind === "requesting") {
+    return (
+      <Centred>
+        <p className="type-body text-muted-foreground" role="status" aria-live="polite">
+          Getting you in…
+        </p>
+      </Centred>
+    );
+  }
+
+  if (outcome.kind === "failed") {
+    return (
+      <Centred>
+        <div className="flex flex-col items-center gap-6 text-center">
+          <Lockup variant="stacked" markSize={40} />
+          <div className="space-y-2">
+            <h1 className="type-h1">{outcome.title}</h1>
+            <p className="type-body text-balance text-muted-foreground">
+              {outcome.body}
+            </p>
+          </div>
+        </div>
+        <Button asChild className="w-full">
+          <Link href={outcome.action.href}>{outcome.action.label}</Link>
+        </Button>
+      </Centred>
+    );
+  }
+
+  return (
+    <Centred>
+      <div className="space-y-3">
+        <p className="type-caption text-muted-foreground">You&rsquo;re in</p>
+        <h1 className="type-h1">{outcome.displayName}</h1>
+        <p className="type-data text-muted-foreground">
+          {code} · {outcome.role}
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-tile-border p-6">
+        <p className="type-body">
+          Your token is minted and the room is open. The video grid, controls,
+          chat and reactions are the next thing being built.
+        </p>
+        <p className="type-small mt-2 text-muted-foreground">
+          Nothing connects to the media server yet — that arrives with the grid.
+        </p>
+      </div>
+
+      <Button asChild variant="outline">
+        <Link href="/dashboard">Back to meetings</Link>
+      </Button>
+    </Centred>
+  );
+}
+
+function Centred({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-8 px-6 py-16">
+      {children}
+    </div>
+  );
+}

@@ -69,6 +69,9 @@ Next replaces `process.env.NEXT_PUBLIC_FOO` textually at build time and cannot r
 
 **8b. `defaultTheme="system"`, not `"dark"`.** My earlier instruction said `"dark"` and contradicted `PRD.md` §4.2. §4.2 wins: the dashboard and scheduling screens follow the OS, because light mode exists precisely for those document-like surfaces and a light mode nobody defaults into is unverified code that still has to be maintained. Force `.dark` on `/j/[code]` and `/room/[code]` via a wrapper element in the route-group layout — the flip happens at the pre-join boundary, which is the right moment to signal "you've entered the call," and it means the video preview is never shown on a light ground.
 
+**8d. Any module holding a server-only secret imports `server-only` at the top.**
+`lib/supabase/admin.ts`, the LiveKit token signing module, `lib/env.ts`'s server section — all of them. The package exists solely to turn "this leaked into the client bundle" from a runtime failure into a build failure, which is the same reasoning as the env guard: the thing being prevented has no visible symptom when it goes wrong.
+
 **9. Ask before adding a dependency.**
 The stack above is the stack. If something seems to need a new package, say why first.
 

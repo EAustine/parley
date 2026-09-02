@@ -443,6 +443,32 @@ try {
     `${okCount} allowed, then HTTP ${statuses[10]}`,
   );
 
+  // --- /room/[code] renders a designed state for each contract failure -----
+  //
+  // The route requests its token in the browser, so these fetch the page and
+  // assert the server-rendered shell, then the copy each failure maps to. The
+  // token request itself is client-side, so what is checked here is that the
+  // route exists, is dark, and never 404s — the mapped copy is asserted through
+  // the endpoint's own error strings above.
+  const roomShell = await fetch(`${APP}/room/${scheduled.code}`);
+  const roomHtml = await roomShell.text();
+  check(
+    roomShell.status === 200 && roomHtml.includes("Getting you in"),
+    "/room/[code] renders rather than 404ing",
+    `HTTP ${roomShell.status}`,
+  );
+  check(
+    /class="[^"]*\bdark\b/.test(roomHtml),
+    "/room/[code] is forced dark, like the pre-join boundary",
+  );
+
+  const roomUnknown = await fetch(`${APP}/room/zzz-zzzz-zzz`);
+  check(
+    roomUnknown.status === 200,
+    "an unknown code still reaches a designed room state, not a 404",
+    `HTTP ${roomUnknown.status}`,
+  );
+
   // --- the dashboard renders what was created ------------------------------
   const dash = await app("/dashboard");
   const html = await dash.text();

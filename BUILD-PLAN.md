@@ -145,6 +145,9 @@ Then:
 - All six permission states (`PRD.md` §3.3), each with real copy. Do not fire the browser prompt on page load.
 - Unknown code and ended meeting pages
 - Selected devices persist into the room
+- **Minimal `/room/[code]`** — the real route file, same treatment as the Phase 2 stub. Requests a token from `/api/livekit/token`, reports success or the mapped failure state, and states that the room UI arrives next. Does **not** import `livekit-client`, so the Phase 3 bundle numbers stay clean.
+
+  This exercises the token endpoint from a real browser with a real session — server-side meeting validation, server-derived identity, narrow grants, rate limiting. It is the most security-sensitive surface in the product, and finding it wrong now beats finding it wrong under a video grid. Each of the contract's failure codes (403, 404, 410, 429) gets a designed state, not a crash.
 
 **Done when:** every permission state renders correctly — test each by manipulating browser settings, not by faking state. The mic meter responds within 200ms. Changing camera updates the preview without reload.
 

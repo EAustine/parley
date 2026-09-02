@@ -8,6 +8,7 @@ import { useMediaPreview } from "@/lib/hooks/useMediaPreview";
 import { ICONS } from "@/lib/icons";
 import { PermissionNotice } from "@/components/prejoin/PermissionState";
 import { MicMeter } from "@/components/prejoin/MicMeter";
+import { rememberJoin } from "@/lib/prejoin-handoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,6 +82,10 @@ export function PreJoin({
         setError(joinErrorMessage(reason));
         return;
       }
+
+      // The room mints its own token and needs the name to do it. Handed over
+      // here rather than in the URL — see lib/prejoin-handoff.
+      if (isGuest) rememberJoin({ code: meeting.code, displayName: trimmedName });
 
       // The camera is released before navigating: the room re-acquires it, and
       // two claims on the same device is how you get a black tile on Windows.

@@ -10,7 +10,8 @@ import {
   userIdentity,
 } from "@/lib/livekit/identity";
 import { clientIp, consumeRateLimit } from "@/lib/rate-limit";
-import { publicEnv, serverEnv } from "@/lib/env";
+import { publicEnv } from "@/lib/env";
+import { serverEnv } from "@/lib/env.server";
 
 /** Six hours, per §7. Long enough for a meeting, short enough to expire. */
 const TOKEN_TTL_SECONDS = 6 * 60 * 60;

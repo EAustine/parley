@@ -822,12 +822,76 @@ confirms 32 chunks carry none of them.
 Pre-join added 30 kB and stays 49 kB inside its budget — it carries no LiveKit
 code and no form library, per §10.
 
+### Phase 3 revision — `server-only`, and the real `/room/[code]`
+
+**Rule 8d approves `server-only`,** which I had flagged and left out under rule
+9. Installed and applied — and applying it required a split, because
+`lib/env.ts` is imported by client components for `publicEnv` and could not take
+the import wholesale.
+
+`lib/env.server.ts` now holds `serverEnv` behind `server-only`. Before this,
+`serverEnv` was exported from a module client code imports, with only a
+`typeof window` check stopping it evaluating there — a runtime guard where a
+structural one belongs. `lib/supabase/admin.ts` imports it too. The values could
+never have reached a bundle either way, since Next inlines only `NEXT_PUBLIC_`
+variables; what changes is *when you find out*.
+
+**`/room/[code]` exists**, which closes the gap flagged at the end of Phase 3.
+It requests a token from a real browser with a real session — the most
+security-sensitive surface in the product — and gives each contract failure its
+own state. It deliberately does not import `livekit-client`: Phase 4 adds it
+behind a dynamic import, and pulling ~200 kB in now would both break rule 8 and
+make the Phase 4 measurement meaningless. The route lands at **152 kB against a
+250 kB budget**.
+
+### Two bugs the room route exposed immediately
+
+Both were found by walking the flow rather than by a test, and neither would
+have been visible without the route existing.
+
+**A guest's name never reached the room.** Pre-join collected it, then navigated
+to `/room/[code]`, which minted its own token with no name — so the endpoint
+correctly refused and *every guest* hit "a name is needed first" having just
+typed one. `lib/prejoin-handoff.ts` carries it in `sessionStorage`: per-tab, so
+two meetings side by side don't overwrite each other, and cleared when the tab
+closes. Not the URL — a query parameter would put the name in history, in
+referrer headers, and in any link the person pastes onward.
+
+**A failure state whose copy and control disagreed.** The first version had one
+`retry` flag deciding whether "Back to the join screen" appeared. On
+`display_name_required` the copy said "go back to the join screen" above a
+button labelled "Start a new meeting". Each failure now names its own way out:
+ended → start a new meeting, guests-not-allowed → sign in with `next` set back
+to the join link, everything else → back to pre-join.
+
+### Verified
+
+`check:meetings` **37/37**, up from 34 — the room route renders rather than
+404ing, is forced dark like the pre-join boundary, and an unknown code still
+reaches a designed state.
+
+In a real browser, end to end: a guest typed a name on pre-join, landed in the
+room as **Ama Serwaa · participant** with the handoff intact in
+`sessionStorage`, and navigating directly to an ended meeting's room produced
+"This meeting has ended" with the right action.
+
+`check:bundle` **6/6** — `/room/[code]` is now budgeted and measured, and
+rule 8 still holds across 33 chunks.
+
+| Route | Now | Budget |
+|---|---|---|
+| Shared baseline | 160 kB | ≤ 180 |
+| `/` | 151 kB | ≤ 190 |
+| `/j/[code]` | 181 kB | ≤ 230 |
+| `/room/[code]` | **152 kB** | ≤ 250 |
+| `/dashboard` | 262 kB | ≤ 280 |
+
 ### Known, deferred
 
-- **`/room/[code]` does not exist yet**, so "Join meeting" routes to a 404. Same
-  shape as the Phase 2 gap, and Phase 4 builds it. Flagging it rather than
-  leaving it to be noticed.
+- **Four of the six permission states still need a human at a real machine** —
+  granted, dismissed, no-device, in-use. Unchanged from the note above: the
+  classifier is tested exhaustively, but producing the conditions needs a camera
+  to unplug or hold open and a prompt to close by hand.
 - **Speaker selection is stored but not applied.** `setSinkId` belongs on the
-  room's audio elements, which arrive in Phase 4; storing the choice now is what
-  makes it available then.
+  room's audio elements, which arrive in Phase 4.
 - **No "Schedule meeting" button.** §3.10 lists it; the form is Phase 6.
