@@ -4,6 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { acquireStream } from "@/lib/media/acquire";
 import {
+  forgetStoredDevices,
+  readDevices,
+  writeDevices,
+} from "@/lib/media/devices";
+import {
   classifyMediaError,
   type PermissionHint,
   type PermissionState,
@@ -50,59 +55,6 @@ export type MediaPreview = {
   toggleMic: () => void;
   stop: () => void;
 };
-
-const STORAGE_KEY = "parley:devices";
-
-type StoredDevices = {
-  cameraId?: string;
-  microphoneId?: string;
-  speakerId?: string;
-  cameraOn?: boolean;
-  micOn?: boolean;
-};
-
-/** Device choices survive into the room, and into the next meeting. */
-function readStored(): StoredDevices {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-function writeStored(patch: StoredDevices) {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ ...readStored(), ...patch }),
-    );
-  } catch {
-    // Private mode, or storage disabled. The preview still works; the choice
-    // simply will not be remembered.
-  }
-}
-
-/**
- * Drop remembered device ids, keeping the on/off preferences.
- *
- * A stored `deviceId` is a hard constraint, and hardware goes away: a headset
- * is unplugged, a camera is switched off in Screen Time, the meeting is joined
- * from a docking station that isn't there today. Without this, one remembered
- * choice locks someone out of their own preview permanently — every attempt
- * fails the same way, and the "Try again" button can never succeed because the
- * dead id is asked for again each time.
- */
-function forgetStoredDevices() {
-  const { cameraOn, micOn, speakerId } = readStored();
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ cameraOn, micOn, speakerId }),
-    );
-  } catch {
-    // Same as above: not being able to forget is survivable.
-  }
-}
 
 /**
  * Asks the Permissions API which reading of `NotAllowedError` applies, then
@@ -152,7 +104,7 @@ export function useMediaPreview(): MediaPreview {
   // Restore remembered choices before anything is requested, so the first
   // getUserMedia asks for the right devices rather than the defaults.
   useEffect(() => {
-    const stored = readStored();
+    const stored = readDevices();
     if (stored.cameraId) setCameraId(stored.cameraId);
     if (stored.microphoneId) setMicrophoneId(stored.microphoneId);
     if (stored.speakerId) setSpeakerId(stored.speakerId);
@@ -302,7 +254,7 @@ export function useMediaPreview(): MediaPreview {
   const setCamera = useCallback(
     (deviceId: string) => {
       setCameraId(deviceId);
-      writeStored({ cameraId: deviceId });
+      writeDevices({ cameraId: deviceId });
       // Re-acquire so the preview changes without a reload, per §3.3.
       void request({ cameraId: deviceId });
     },
@@ -312,7 +264,7 @@ export function useMediaPreview(): MediaPreview {
   const setMicrophone = useCallback(
     (deviceId: string) => {
       setMicrophoneId(deviceId);
-      writeStored({ microphoneId: deviceId });
+      writeDevices({ microphoneId: deviceId });
       void request({ microphoneId: deviceId });
     },
     [request],
@@ -320,7 +272,7 @@ export function useMediaPreview(): MediaPreview {
 
   const setSpeaker = useCallback((deviceId: string) => {
     setSpeakerId(deviceId);
-    writeStored({ speakerId: deviceId });
+    writeDevices({ speakerId: deviceId });
   }, []);
 
   /**
@@ -336,7 +288,7 @@ export function useMediaPreview(): MediaPreview {
     tracks.forEach((t) => (t.enabled = next));
     const actual = tracks.length > 0 ? tracks.some((t) => t.enabled) : next;
     setCameraOn(actual);
-    writeStored({ cameraOn: actual });
+    writeDevices({ cameraOn: actual });
   }, [cameraOn]);
 
   const toggleMic = useCallback(() => {
@@ -346,7 +298,7 @@ export function useMediaPreview(): MediaPreview {
     tracks.forEach((t) => (t.enabled = next));
     const actual = tracks.length > 0 ? tracks.some((t) => t.enabled) : next;
     setMicOn(actual);
-    writeStored({ micOn: actual });
+    writeDevices({ micOn: actual });
     if (actual && streamRef.current) startMeter(streamRef.current);
     else stopMeter();
   }, [micOn, startMeter, stopMeter]);

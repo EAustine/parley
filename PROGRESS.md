@@ -1019,3 +1019,152 @@ path assumed working is not.
 `check:rls` 18, `typecheck`, `lint`, `check:meetings` **37/37**, `check:bundle`
 **6/6** — all pass. `/j/[code]` moved 181 → **182 kB** against a 230 kB budget
 for the extra branches.
+
+---
+
+## Phase 4 — The room
+
+Two people can hold a conversation. `/room/[code]` connects to LiveKit, the
+grid implements §3.4's table, and mic, camera and leave work.
+
+### Rule 8 is now a real constraint rather than an absence
+
+Until this phase `livekit-client` was in no chunk at all, so rule 8 could be
+checked by grepping for library markers and expecting zero. That answer is no
+longer right — the room genuinely loads the SDK — and a test whose expected
+value has changed from "never" to "exactly once, over there" needs to say
+*where*.
+
+`check:bundle` now reads Next's own route→chunk manifest and asserts that no
+chunk any route pulls into its **first load** carries a marker. A dynamically
+imported chunk appears against no route, which is precisely the property being
+claimed. Two supporting checks stop it passing vacuously: one that the manifest
+paths resolve to real files (otherwise every lookup misses and everything
+passes), and one that the markers appear in exactly one chunk — zero would mean
+the dynamic import had been deleted and the room could not connect, which the
+first check would happily call a success.
+
+Proved by making the import static and rebuilding: `/room/[code]` jumps to
+**316 kB against a 250 kB budget** and rule 8 names both the offending chunk and
+the route that pulls it. With the dynamic import, **153 kB**.
+
+### The grid is arithmetic, and the arithmetic is checked
+
+§3.4 opens with "write these before writing layout code" and then gives the
+breakpoints as a table. A table is a specification, so it is transcribed once
+into `lib/room/layout.ts` and asserted row by row — desktop and mobile, every
+row, in the PRD's own words — by the new `npm run check:room`. A wrong cell
+count is otherwise only visible with seven real people in a room, which is the
+most expensive place to find one.
+
+Desktop and mobile differ in *kind*, not just in size: desktop overflows into a
+"+N" cell and never pages, mobile pages and never overflows. That is why the
+viewport is matched in JS rather than expressed as a CSS breakpoint — no media
+query renders a different number of children.
+
+**One reading had to be settled.** §3.4 says "most recent speaker first, then
+join order", and §3.4's own acceptance criteria say the grid must reflow
+"without layout thrash". Taken as an instruction about *arrangement* those
+contradict each other — sorting every tile by speaking recency reshuffles the
+whole grid every time someone says a word. They are only in tension on that
+reading. The rule is headed "overflow ordering" and exists to decide who makes
+the cut, so: **speaking recency picks the visible set, join order arranges it.**
+Nobody moves while everyone fits.
+
+### A test that passed for the wrong reason
+
+The first version of the overflow fixture put the local participant first in
+join order. Deleting the local-priority rule from the ranking still passed —
+join order alone kept them visible. The fixture now makes the local participant
+the worst candidate on both counts, joined last and never having spoken, so the
+rule is the only thing keeping them on screen.
+
+Re-run against three deliberate breakages, each now failing distinctly: losing
+local priority in the visible set, losing it in the arrangement, and sorting the
+whole grid by speaking recency — that last one being exactly the thrash bug the
+PRD warns about.
+
+### Decisions worth naming
+
+- **`RoomContext.Provider`, not `<LiveKitRoom>`.** Rule 1 says the hooks; the
+  hooks need a room in context and nothing more. The wrapper additionally
+  renders a div carrying their class names, which is the edge of a design
+  system we have declined. `RoomAudioRenderer` stays the documented exception.
+- **Tracks are attached by hand**, not through `VideoTrack`. `useIsSpeaking`
+  earns its import because smoothing speech detection is hard;
+  `track.attach(element)` is two lines and keeps every class on the tile ours.
+- **The local participant is always visible, and arranged first.** §3.4 does not
+  say. Being pushed off your own screen by a crowd is the wrong failure when
+  rule 3 makes your own mute state a privacy matter.
+- **Only mic, camera and leave.** §3.4's table lists four more controls; screen
+  share, reactions, chat and participants belong to Phases 5 and 7. A button
+  that does nothing is worse than a button that isn't there yet.
+- **Leaving is a decision, not a failure.** The disconnect the Leave button
+  causes is otherwise indistinguishable from the connection dropping, and the
+  person who just left would be told something went wrong.
+
+### Deferred items closed
+
+**Speaker selection now applies.** Pre-join collected it and had nowhere to put
+it — `setSinkId` needs audio elements, and until this phase there were none.
+`switchActiveDevice("audiooutput", …)` runs after connect, failing quietly on
+Firefox, which has no `setSinkId` and where the default output is the right
+outcome.
+
+`lib/media/devices.ts` now holds the device store both ends share. A second copy
+of the `"parley:devices"` key is the kind of thing that drifts silently: the
+preview would honour a choice the room ignored, and nothing would look broken
+from either side.
+
+### Verified in two real browser tabs
+
+Not by faking participant counts — two tabs, two guests, one meeting:
+
+- Both tabs showed **both participants**, each listing itself first
+- Two participants rendered **2 columns × 1 row** — §3.4's "side by side"
+- Tile borders measured `rgb(93, 103, 119)` at 1px: `--tile-border`, the idle
+  state, exactly as specified
+- Leaving in one tab reflowed the other **live to 1 × 1 with `aspect-ratio:
+  16 / 9`**, and the heading updated to "1 participant"
+- Mic-off indicators on both tiles, named "{name} is muted"
+- The mic control read "Turn on microphone" with `aria-pressed="true"` — the
+  accessible name states the action, `aria-pressed` carries the state
+- Controls hid after 4s idle and returned on both pointer movement and a
+  keypress; hidden controls keep their tab stops but stop accepting clicks
+
+**Rule 3 demonstrated itself.** The Browser pane blocks media capture, so
+`setMicrophoneEnabled(true)` genuinely failed — and the UI showed muted and said
+so, rather than showing a live microphone to someone who had none. That is the
+privacy requirement working, observed rather than asserted.
+
+One measurement misread at first: a backgrounded tab does not advance CSS
+transitions, so the control bar's opacity appeared stuck at 0. Fronting the tab
+showed the transition working correctly. Worth remembering — it looks exactly
+like a bug.
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
+`check:room` **65** (new), `check:rls` 18, `typecheck`, `lint`,
+`check:meetings` 37/37, `check:bundle` **8/8** — all pass.
+
+| Route | Now | Budget |
+|---|---|---|
+| Shared baseline | 160 kB | ≤ 180 |
+| `/` | 151 kB | ≤ 190 |
+| `/j/[code]` | 182 kB | ≤ 230 |
+| `/room/[code]` | **153 kB** | ≤ 250 |
+| `/dashboard` | 262 kB | ≤ 280 |
+
+### Still needs a human at a real machine
+
+- **Hearing each other.** The Browser pane blocks capture, so nothing was ever
+  published. Presence, roster, grid, borders and controls are verified; audio
+  and video actually flowing between two machines on different networks is
+  not, and BUILD-PLAN asks for exactly that.
+- **The speaking ring.** 2px `--foreground` is specified and coded, but
+  producing speech needs a microphone. The idle 1px state is measured.
+- **Grid breakpoints above two.** The arithmetic is asserted for every row of
+  §3.4's table; 1 and 2 were confirmed with real tabs. Three through seventeen
+  need more tabs than were opened.
+- **The four permission states** from Phase 3's matrix are unchanged.

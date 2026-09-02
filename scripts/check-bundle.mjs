@@ -18,7 +18,7 @@
  * Run with: npm run check:bundle
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /** `PRD.md` §10. First Load JS totals, gzipped, inclusive of the baseline. */
@@ -98,17 +98,27 @@ if (unbudgeted.length) {
 
 // --- rule 8 -----------------------------------------------------------------
 //
-// Grepping the chunks for "livekit" is the obvious test and it is wrong: it
-// matches `/api/livekit/token`, which is our own endpoint path, and the value
-// of NEXT_PUBLIC_LIVEKIT_URL, which Next correctly inlines. Both belong there.
-// These identifiers only exist inside the library.
+// The rule is that `livekit-client` "is dynamically imported on the room route
+// only" and "must not appear in any other bundle". Until Phase 4 that could be
+// checked by grepping every chunk for library markers, because the right
+// answer was zero. It no longer is: the room loads the SDK, so one chunk must
+// contain it and the test has to say *which*.
+//
+// Grepping for "livekit" was already wrong for a different reason — it matches
+// `/api/livekit/token`, our own endpoint path, and the inlined value of
+// NEXT_PUBLIC_LIVEKIT_URL. Both belong in the bundle. These identifiers only
+// exist inside the library.
+//
+// So: read Next's own route→chunk manifest, and require that no chunk any
+// route loads *statically* contains a marker. A dynamically imported chunk is
+// not listed against any route, which is exactly the property being asserted —
+// it is fetched when the import runs, not with the page.
 
 const LIVEKIT_MARKERS = [
   "livekit-client",
-  "RoomEvent",
-  "createLocalTracks",
   "SignalClient",
   "RTCEngine",
+  "createLocalTracks",
 ];
 
 const chunkDir = join(".next", "static", "chunks");
@@ -122,18 +132,63 @@ const walk = (dir) => {
 };
 walk(chunkDir);
 
-const offenders = chunks.filter((path) => {
+const carriesMarker = (path) => {
   const source = readFileSync(path, "utf8");
   return LIVEKIT_MARKERS.some((marker) => source.includes(marker));
-});
+};
+const marked = new Set(chunks.filter(carriesMarker));
+
+let manifest;
+try {
+  manifest = JSON.parse(readFileSync(join(".next", "app-build-manifest.json"), "utf8"));
+} catch {
+  console.error("Could not read .next/app-build-manifest.json — rule 8 is unverifiable.");
+  process.exit(1);
+}
+
+// Every chunk any route pulls in with its first load, mapped back to a route
+// so a violation can be named rather than merely counted.
+const staticChunks = new Map();
+let unresolved = 0;
+for (const [route, files] of Object.entries(manifest.pages ?? {})) {
+  for (const file of files) {
+    if (!file.endsWith(".js")) continue;
+    const path = join(".next", file);
+    if (!existsSync(path)) { unresolved++; continue; }
+    if (!staticChunks.has(path)) staticChunks.set(path, []);
+    staticChunks.get(path).push(route);
+  }
+}
 
 console.log();
+
+// A manifest whose paths do not resolve would make every check below vacuously
+// true. That is the failure mode of a test that guards a rule nobody can see
+// breaking, so it is checked before the rule itself.
+record(
+  staticChunks.size > 0 && unresolved === 0,
+  "the route manifest resolves to real chunks",
+  `${staticChunks.size} chunks mapped, ${unresolved} unresolved`,
+);
+
+const offenders = [...marked].filter((path) => staticChunks.has(path));
 record(
   offenders.length === 0,
-  "livekit-client absent from every client chunk (rule 8)",
-  offenders.length
-    ? offenders.join(", ")
-    : `${chunks.length} chunks scanned for ${LIVEKIT_MARKERS.length} library markers`,
+  "livekit-client is in no route's first load (rule 8)",
+  offenders
+    .map((path) => `${path} ← ${[...new Set(staticChunks.get(path))].join(", ")}`)
+    .join("; "),
+);
+
+// The mirror image, and the one that catches a dynamic import quietly reduced
+// to a static one — or deleted. Zero marked chunks would pass the check above
+// while meaning the room cannot connect at all.
+record(
+  marked.size === 1,
+  "and lives in exactly one chunk, loaded on demand",
+  marked.size === 0
+    ? "no chunk contains it — is the room's dynamic import still there?"
+    : `${marked.size} chunks: ${[...marked].join(", ")}`,
 );
 
 const failed = results.filter((r) => !r.pass);

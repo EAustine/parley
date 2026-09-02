@@ -1,11 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Lockup } from "@/components/brand/Lockup";
 import { recallJoin } from "@/lib/prejoin-handoff";
+
+/**
+ * Rule 8, enforced here.
+ *
+ * `livekit-client` is ~200 kB and belongs to exactly one screen. Everything
+ * above this line — the token request, every failure state — is ordinary React
+ * that ships in the route's first load. Everything below it arrives only once
+ * a token has actually been minted, which means a stranger who hits an ended
+ * meeting or a rate limit never downloads a media SDK to be told so.
+ *
+ * `ssr: false` because the SDK touches `navigator` and `RTCPeerConnection` on
+ * import. There is nothing to server-render here anyway: the token is fetched
+ * in the browser, so the server has nothing to say about this subtree.
+ */
+const RoomStage = dynamic(
+  () => import("@/components/room/RoomStage").then((m) => m.RoomStage),
+  { ssr: false, loading: () => <Joining /> },
+);
 
 /**
  * Requests a room token and reports what happened.
@@ -26,7 +45,7 @@ type Failure = {
 
 type Outcome =
   | { kind: "requesting" }
-  | { kind: "ready"; identity: string; displayName: string; role: string }
+  | { kind: "ready"; token: string; serverUrl: string }
   | ({ kind: "failed" } & Failure);
 
 /**
@@ -113,12 +132,8 @@ export function RoomEntry({ code }: { code: string }) {
           return;
         }
 
-        const data = (await response.json()) as {
-          identity: string;
-          displayName: string;
-          role: string;
-        };
-        setOutcome({ kind: "ready", ...data });
+        const data = (await response.json()) as { token: string; url: string };
+        setOutcome({ kind: "ready", token: data.token, serverUrl: data.url });
       } catch {
         setOutcome({
           kind: "failed",
@@ -130,15 +145,7 @@ export function RoomEntry({ code }: { code: string }) {
     })();
   }, [code]);
 
-  if (outcome.kind === "requesting") {
-    return (
-      <Centred>
-        <p className="type-body text-muted-foreground" role="status" aria-live="polite">
-          Getting you in…
-        </p>
-      </Centred>
-    );
-  }
+  if (outcome.kind === "requesting") return <Joining />;
 
   if (outcome.kind === "failed") {
     return (
@@ -160,28 +167,20 @@ export function RoomEntry({ code }: { code: string }) {
   }
 
   return (
+    <RoomStage
+      code={code}
+      token={outcome.token}
+      serverUrl={outcome.serverUrl}
+    />
+  );
+}
+
+function Joining() {
+  return (
     <Centred>
-      <div className="space-y-3">
-        <p className="type-caption text-muted-foreground">You&rsquo;re in</p>
-        <h1 className="type-h1">{outcome.displayName}</h1>
-        <p className="type-data text-muted-foreground">
-          {code} · {outcome.role}
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-tile-border p-6">
-        <p className="type-body">
-          Your token is minted and the room is open. The video grid, controls,
-          chat and reactions are the next thing being built.
-        </p>
-        <p className="type-small mt-2 text-muted-foreground">
-          Nothing connects to the media server yet — that arrives with the grid.
-        </p>
-      </div>
-
-      <Button asChild variant="outline">
-        <Link href="/dashboard">Back to meetings</Link>
-      </Button>
+      <p className="type-body text-muted-foreground" role="status" aria-live="polite">
+        Getting you in…
+      </p>
     </Centred>
   );
 }

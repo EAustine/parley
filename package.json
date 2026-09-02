@@ -16,7 +16,8 @@
     "check:meetings": "node --env-file=.env.local scripts/check-meetings.mjs",
     "seed:dev": "node --env-file=.env.local scripts/seed-dev.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
-    "check:permissions": "node scripts/check-permissions.mjs"
+    "check:permissions": "node scripts/check-permissions.mjs",
+    "check:room": "node scripts/check-room.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
