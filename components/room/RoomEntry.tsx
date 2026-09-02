@@ -115,13 +115,28 @@ export function RoomEntry({ code }: { code: string }) {
     asked.current = true;
 
     (async () => {
+      // Pre-join already minted one and checked it would be accepted. Asking
+      // again would spend a second rate-limit slot to be told the same thing.
+      const handed = recallJoin(code);
+      if (handed) {
+        setOutcome({
+          kind: "ready",
+          token: handed.token,
+          serverUrl: handed.serverUrl,
+        });
+        return;
+      }
+
       try {
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // A guest's name comes from pre-join; a host's comes from the
           // session and is not sent at all.
-          body: JSON.stringify({ code, displayName: recallJoin(code) ?? undefined }),
+          // Nothing was handed over — a link opened directly, a restored tab,
+          // or storage refused. There is no name to send, so this succeeds for
+          // a host and correctly asks a guest to go and give one.
+          body: JSON.stringify({ code }),
         });
 
         if (!response.ok) {

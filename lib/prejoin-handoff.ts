@@ -1,40 +1,71 @@
 /**
  * What pre-join hands to the room.
  *
- * A guest's display name is collected on `/j/[code]` and needed by
- * `/room/[code]`, which mints its own token. Without somewhere to put it the
- * room asks for a token with no name and the endpoint correctly refuses —
- * every guest would hit "a name is needed first" having just typed one.
+ * Two screens, one join. Pre-join collects the name, checks the meeting will
+ * actually admit this person, and mints the token that proves it; the room
+ * connects with it. Without somewhere to put that, the room has to ask for
+ * everything again — and it did, which cost more than it looked like:
  *
- * `sessionStorage`, not `localStorage`: a name is for this visit, not
- * remembered forever, and per-tab means two meetings open side by side don't
- * overwrite each other's. Device preferences are the opposite case and live in
- * `localStorage` on purpose.
+ *   The name. The room minted a token with no name, the endpoint correctly
+ *   refused, and every guest hit "a name is needed first" having just typed
+ *   one.
  *
- * Not the URL. A query parameter would put the name in browser history, in
- * referrer headers, and in any link the person pastes to someone else.
+ *   The token. Pre-join minted one only to validate, threw it away, and the
+ *   room minted a second. Two signed six-hour credentials per join, one of
+ *   them never used — and two slots against a rate limit of ten per minute per
+ *   IP. Behind one office NAT that is five people joining a meeting, not ten,
+ *   and the sixth is told to wait a minute for no reason they can see. Found by
+ *   the Phase 4 media tests, which exhausted it doing exactly what a small team
+ *   arriving at once would do.
+ *
+ * `sessionStorage`, not `localStorage`: this belongs to one visit in one tab,
+ * so two meetings open side by side do not overwrite each other and nothing
+ * outlives the tab. Device preferences are the opposite case and live in
+ * `localStorage` on purpose — see `lib/media/devices.ts`.
+ *
+ * Not the URL. A query parameter would put a name, and a signed credential, in
+ * browser history, in referrer headers, and in any link the person pastes to
+ * someone else. `sessionStorage` is same-origin and same-tab, which is the same
+ * reach the token already has as a variable in this page's memory.
+ *
+ * The room still mints for itself when there is nothing here — a link opened
+ * directly, a tab restored, a browser with storage disabled. Pre-join is the
+ * fast path, not the only one.
  */
 
 const KEY = "parley:join";
 
-export type JoinHandoff = { code: string; displayName: string };
+export type JoinHandoff = {
+  code: string;
+  displayName: string;
+  /** The token pre-join already minted. Reusing it keeps the same identity. */
+  token: string;
+  serverUrl: string;
+};
 
 export function rememberJoin(handoff: JoinHandoff) {
   try {
     sessionStorage.setItem(KEY, JSON.stringify(handoff));
   } catch {
-    // Private mode. The room falls back to asking, which is a worse experience
-    // but an honest one.
+    // Private mode. The room falls back to minting its own, which is a slower
+    // path but an honest one.
   }
 }
 
-/** Returns the name only if it was stored for *this* meeting. */
-export function recallJoin(code: string): string | null {
+/** Returns the handoff only if it was stored for *this* meeting. */
+export function recallJoin(code: string): JoinHandoff | null {
   try {
     const raw = sessionStorage.getItem(KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as JoinHandoff;
-    return parsed.code === code && parsed.displayName ? parsed.displayName : null;
+    const parsed = JSON.parse(raw) as Partial<JoinHandoff>;
+    if (parsed?.code !== code) return null;
+    if (!parsed.token || !parsed.serverUrl) return null;
+    return {
+      code,
+      displayName: parsed.displayName ?? "",
+      token: parsed.token,
+      serverUrl: parsed.serverUrl,
+    };
   } catch {
     return null;
   }

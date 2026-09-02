@@ -17,7 +17,9 @@
     "seed:dev": "node --env-file=.env.local scripts/seed-dev.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
-    "check:room": "node scripts/check-room.mjs"
+    "check:room": "node scripts/check-room.mjs",
+    "fixtures:media": "node scripts/make-media-fixtures.mjs",
+    "check:media": "npm run fixtures:media && node --env-file=.env.local node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -50,6 +52,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

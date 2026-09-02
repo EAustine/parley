@@ -83,9 +83,20 @@ export function PreJoin({
         return;
       }
 
-      // The room mints its own token and needs the name to do it. Handed over
-      // here rather than in the URL — see lib/prejoin-handoff.
-      if (isGuest) rememberJoin({ code: meeting.code, displayName: trimmedName });
+      // This token is the one the room connects with. Minting a second there
+      // would spend two of the ten requests a minute the endpoint allows per
+      // IP, for one join — see lib/prejoin-handoff.
+      const { token, url, displayName } = (await response.json()) as {
+        token: string;
+        url: string;
+        displayName: string;
+      };
+      rememberJoin({
+        code: meeting.code,
+        displayName: isGuest ? trimmedName : displayName,
+        token,
+        serverUrl: url,
+      });
 
       // The camera is released before navigating: the room re-acquires it, and
       // two claims on the same device is how you get a black tile on Windows.

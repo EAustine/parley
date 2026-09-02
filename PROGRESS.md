@@ -1168,3 +1168,119 @@ like a bug.
   §3.4's table; 1 and 2 were confirmed with real tabs. Three through seventeen
   need more tabs than were opened.
 - **The four permission states** from Phase 3's matrix are unchanged.
+
+---
+
+## Phase 4, revision — automating the media tests
+
+BUILD-PLAN gained a section approving Playwright under rule 9 and pointing at
+Chrome's synthetic capture devices. The argument is right: driving real Chrome
+with `--use-fake-device-for-media-stream` is not faking participant counts, it
+is automating the opening of tabs, which is what Phase 4's acceptance criterion
+actually asks for. Real Chrome, real WebRTC, real tracks through the real SFU.
+
+`npm run check:media` — **7 tests**, and every gap the hand-testing report left
+open except the ones automation genuinely cannot reach.
+
+### The audio fixture is the point
+
+The plan is specific: feed a real WAV, not the built-in tone, because "the
+built-in tone is a clean periodic beep and will make any speaking detector look
+perfect." That is exactly right — a continuous sine crosses any threshold
+instantly and never stops, so a ring wired to nothing at all would light up and
+stay lit.
+
+`npm run fixtures:media` builds one. The speech is real speech: macOS ships a
+synthesiser, so it has formants and prosody rather than a shaped tone. The
+timeline is 4s speech · 3s silence · a 200ms cough · 2.8s silence · 4s speech,
+looped by Chrome. Measured before being trusted — the cough peaks as loud as
+the speech and is gone within 150ms, which is what makes it a hysteresis probe
+rather than another syllable.
+
+On a machine without `say` it falls back to a synthesised approximation **and
+says so**, because a fixture that quietly degrades makes a test weaker without
+anyone noticing.
+
+The same reasoning put a hard stop in `playwright.config.ts`: Chrome does not
+complain about a missing `--use-file-for-fake-audio-capture` path, it silently
+substitutes its tone. The config now refuses to start without the fixture, and
+that refusal was verified by deleting the file.
+
+Result over 30 seconds, two full loops of the fixture: **117 samples lit, 30
+dark, 12 transitions.** Both states occur, the border is only ever 1px
+`--tile-border` or 2px `--foreground`, and the transition count is far below
+what a detector chattering on every pause between words would produce.
+
+### What the automation found
+
+**Joining minted two tokens.** Pre-join minted one to check the meeting would
+admit you, threw it away, and the room minted a second. Two signed six-hour
+credentials per join, one never used — and two slots against §7's limit of ten
+requests a minute per IP. Behind one office NAT that is **five people joining a
+meeting, not ten**, and the sixth is told to wait a minute for no reason they
+can see.
+
+Found the way it would be found in production: the suite exhausted the limit
+doing what a small team arriving at once would do, and a test failed with a
+join that never navigated. Pre-join now mints once and hands the token to the
+room through the handoff that already carried the name. A test asserts one join
+costs exactly one token request, so it cannot drift back.
+
+**Entering the room was gated on publishing.** `setStage("connected")` waited
+for `setMicrophoneEnabled` and `setCameraEnabled` to settle, so a device that
+stalled left someone on "Connecting you…" indefinitely with no explanation and
+no way out — precisely what §3.11 forbids. Connecting and publishing are
+different things: you are in the meeting once the connection is up, and you can
+see and hear everyone else whether or not your own camera ever comes on.
+Publishing now happens after the room is shown, and a failure surfaces through
+`lastCameraError` on the control bar, next to the control that fixes it.
+
+**A test that had to match the product, not the other way round.** Two tests
+failed clicking controls that had auto-hidden after 4s — Playwright clicks
+without moving the mouse, so the bar was correctly inert. The fix belonged in
+the test: `wakeControls` does deliberately what a hand does incidentally on the
+way to a button. Keeping controls inert while hidden is the right call, most of
+all for Leave, where a stray click in dead space would drop someone out of a
+meeting.
+
+### Every breakpoint, with real people in the room
+
+`e2e/grid.spec.ts` fills the room one participant at a time and reads the grid's
+computed style at each of §3.4's boundaries — **1, 2, 3, 4, 5, 6, 7, 9, 10, 16,
+17** — asserting columns, rows, rendered cells, the letterbox at one, and the
+"+2" overflow cell at seventeen. Nothing is stubbed.
+
+Two details worth keeping. The crowd joins with camera and microphone off:
+sixteen tiles across seventeen tabs is 272 video decoders on one machine, and
+this test is about layout. And joins are paced at 6.5s, because §7's rate limit
+is real — pacing is what the product does to a room filling from one office,
+which is worth seeing rather than working around.
+
+### An open question for the next session
+
+**§7's rate limit and §3.4's 17-person grid are in tension.** Ten token requests
+a minute per IP means a seventeen-person meeting cannot be joined from one
+office within a minute, even now that each join costs one request rather than
+two. The limit is the specified value and the grid is the specified size, so
+this is a design decision rather than a bug to quietly fix. Options: raise the
+limit, key it on something narrower than IP, or accept that a full room fills
+over two minutes.
+
+### What automation still cannot reach
+
+| Gap | Why |
+|---|---|
+| Cross-network media, TURN relay | Every context here shares one network path. The connections that need a relay are exactly the ones this never exercises. Two machines, one on a phone hotspot. |
+| Audio being audible | A subscribed track is not a working speaker path |
+| Speaking-ring *tuning* | Automation proves it fires and does not chatter; a real mic in a real room sets the threshold |
+| Device switching mid-call | Real hardware, real enumeration changes |
+| The four Phase 3 permission states | Unchanged |
+
+### Checks
+
+`check:env`, `check:contrast` 24, `check:codes` 6, `check:permissions` 39,
+`check:room` 65, `check:rls` 18, `typecheck`, `lint`, `check:meetings` 37/37,
+`check:bundle` 8/8, `check:media` **7/7** — all pass.
+
+`@playwright/test` is a dev dependency and does not ship. `e2e/fixtures/*.wav`
+is generated rather than committed, and `check:media` builds it first.

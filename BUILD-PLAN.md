@@ -186,6 +186,39 @@ Tasks:
 
 **Done when:** two browsers on different networks see and hear each other. Every grid breakpoint is correct — test by opening real tabs, not by faking participant counts. Toggling mic in one tab reflects in the other within a frame.
 
+#### Automating the media tests
+
+Most of this does not need a human with seventeen tabs. Chrome ships synthetic capture devices for precisely this case:
+
+```
+--use-fake-device-for-media-stream      # rolling test pattern + tone
+--use-fake-ui-for-media-stream          # auto-accepts the permission prompt
+--use-file-for-fake-video-capture=x.y4m # or feed a real file
+--use-file-for-fake-audio-capture=x.wav
+```
+
+This is real Chrome, real WebRTC, real tracks through the real SFU. It is not faking participant counts — it is automating the opening of tabs, which is what the criterion above actually asks for. Add Playwright as a dev dependency and drive it. **Approved under rule 9**; it does not ship.
+
+What this covers:
+
+- Tracks publish and subscribe between participants — the gap in this report
+- Video renders in a tile rather than a black rectangle
+- Every breakpoint from 2 to 17+, by spawning N contexts
+- Mute-state truth: toggle in one context, assert the track state in another
+- Grid reflow on join and leave, without thrash
+
+**Feed a real WAV to `--use-file-for-fake-audio-capture` rather than using the default tone.** The built-in tone is a clean periodic beep and will make any speaking detector look perfect. A recording containing speech, pauses, and a cough is what exercises the hysteresis requirement in §3.4 — that the ring does not flicker on every throat-clear.
+
+What automation cannot reach, and what therefore still needs a real machine:
+
+| Gap | Why |
+|---|---|
+| Cross-network media, TURN relay | Local contexts share a network path. The 10–20% of connections that need a relay are exactly the ones this never exercises. Two machines, one on a phone hotspot. |
+| Audio being audible | A subscribed track is not the same claim as a working speaker path |
+| Speaking-ring *tuning* | Automation proves it fires; a real mic in a real room is what sets the threshold |
+| Device switching mid-call | Real hardware, real enumeration changes |
+| The four Phase 3 permission states | Unchanged |
+
 ---
 
 ## Phase 5 — Chat and reactions

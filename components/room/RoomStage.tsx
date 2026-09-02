@@ -95,10 +95,25 @@ export function RoomStage({
           return;
         }
 
+        if (cancelled) return;
+        setRoom(next);
+        setStage({ kind: "connected" });
+
+        // Everything below is *not* awaited before showing the room, and that
+        // ordering is the point. Connecting and publishing are different
+        // things: you are in the meeting once the connection is up, and you can
+        // see and hear everyone else whether or not your own camera ever comes
+        // on. Gating entry on publishing means one stalled device leaves
+        // someone watching "Connecting you…" with no explanation and no way
+        // out — which §3.11 is explicit about never doing.
+        //
+        // A publish that fails surfaces through `lastCameraError` on the
+        // control bar, where it belongs: next to the control that fixes it.
+
         // Publish only what pre-join left switched on. `!== false` rather than
         // a truthiness test: an absent preference means the person never
         // touched the toggle, and the default is on.
-        await Promise.allSettled([
+        void Promise.allSettled([
           next.localParticipant.setMicrophoneEnabled(stored.micOn !== false),
           next.localParticipant.setCameraEnabled(stored.cameraOn !== false),
         ]);
@@ -106,17 +121,11 @@ export function RoomStage({
         // The speaker choice pre-join collected but could not apply — it needs
         // audio elements to apply to, and until now there were none.
         if (stored.speakerId) {
-          await next
-            .switchActiveDevice("audiooutput", stored.speakerId)
-            .catch(() => {
-              // Firefox has no setSinkId. The call fails, the default output
-              // is used, and that is a fine outcome to be quiet about.
-            });
+          void next.switchActiveDevice("audiooutput", stored.speakerId).catch(() => {
+            // Firefox has no setSinkId. The call fails, the default output is
+            // used, and that is a fine outcome to be quiet about.
+          });
         }
-
-        if (cancelled) return;
-        setRoom(next);
-        setStage({ kind: "connected" });
       } catch (error) {
         if (cancelled) return;
         setStage({
