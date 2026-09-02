@@ -301,6 +301,11 @@ Tasks:
 - Failed after retries: modal with "Rejoin" and "Leave"
 - iOS Safari `visibilitychange` handling with an explicit resume state
 - Autoplay fallback: an "Enable audio" prompt if playback is blocked
+- **`app/api/livekit/webhook/route.ts`** — signature-verified, mapping `room_started` and `room_finished` to `meetings.status`, `started_at`, and `ended_at`. This was named in `CLAUDE.md`'s file layout and `PRD.md` §7 and never appeared in a phase task list, which is how it went missing.
+
+  Not optional and not deferrable. Without it `status` is effectively write-once: a meeting that runs and empties stays `live` forever, the dashboard's past section never fills, and §3.2's "This meeting has ended" page — along with the enum work that separated ended from cancelled — is unreachable for every meeting that actually took place. An explicit host "End meeting" covers some of it, but not the host who shuts a laptop, and `beforeunload` does not fire reliably enough to substitute.
+
+- §3.2's 12h expiry for instant meetings that were never joined, driven by the same lifecycle data
 
 **Done when:** killing the network for 10 seconds and restoring it recovers the call without a page reload, and every degraded state is visually distinct.
 

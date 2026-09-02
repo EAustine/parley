@@ -70,3 +70,40 @@ export function recallJoin(code: string): JoinHandoff | null {
     return null;
   }
 }
+
+/**
+ * The display name on its own, outliving the token it was joined with.
+ *
+ * §3.11's rejoin routes back through pre-join rather than reconnecting in
+ * place, because a dropped connection may have been a device problem and
+ * pre-join is where devices get re-confirmed. The cost of that route is that a
+ * guest lands on a form they already filled in, having just been dropped from
+ * a meeting — the moment they are least inclined to retype anything.
+ *
+ * Kept under its own key rather than reusing the handoff above. The handoff is
+ * only returned when its token and server url are intact, which is exactly
+ * what a failed connection has invalidated; a name that survives only when the
+ * credential does would be useless in the one case it exists for.
+ *
+ * The identity does not survive, and that is worth knowing rather than hiding:
+ * pre-join mints a fresh token, so a returning guest is a new participant to
+ * LiveKit and to anyone watching the room. Only the typing is saved.
+ */
+const NAME_KEY = "parley:name";
+
+export function rememberName(displayName: string) {
+  try {
+    const trimmed = displayName.trim();
+    if (trimmed) sessionStorage.setItem(NAME_KEY, trimmed);
+  } catch {
+    // Private mode. The field starts empty, which is the old behaviour.
+  }
+}
+
+export function recallName(): string {
+  try {
+    return sessionStorage.getItem(NAME_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}

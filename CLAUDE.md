@@ -37,8 +37,14 @@ The same applies to `~/.supabase`, any `*.pem`, and anything under `.vercel/`.
 **3. Mute state comes from the track, not from React.**
 Derive mic and camera UI state from the LiveKit track's actual published state. Never keep a parallel boolean as the source of truth. If unmuting fails, the UI must show muted. This is a privacy requirement.
 
-**4. No text or icons directly on video.**
+**4. No text or icons directly on video — and hue needs more than a scrim.**
 Every label, badge, and control sits on `--scrim`. Contrast against arbitrary video content is otherwise undefined.
+
+The scrim is sufficient for neutral foreground and not for hue. Composited over white video it resolves to roughly `#515355`, where `--foreground` still clears 7.01:1 but `--state-warning` drops to 3.79:1 and `--state-critical` to 2.53:1 — both under their floor, and the critical one badly.
+
+**Hued state indicators therefore sit on an opaque chip at `--popover`, never on the scrim.** That restores the verified figures (warning 8.11:1, critical 5.42:1) because the background stops depending on what is on camera. Raising the scrim alpha would need roughly 0.90 to carry critical text, which is a near-solid panel over the video — worse than a chip, and it would darken every neutral label with it.
+
+Dropping hue instead is not the answer here: §4.2 spends the entire chroma budget on exactly two things, and connection state is one of them. This is the case where hue *is* the meaning.
 
 **5. No hue except where it is the meaning.**
 Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.

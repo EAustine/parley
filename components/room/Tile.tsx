@@ -2,11 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useIsSpeaking } from "@livekit/components-react";
+import {
+  useConnectionQualityIndicator,
+  useIsSpeaking,
+} from "@livekit/components-react";
 import type { Participant, Track } from "livekit-client";
 
 import { ICONS } from "@/lib/icons";
+import { TILE_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
 import { displayNameOf, initialOf } from "@/lib/room/participant";
+import { ConnectionPill } from "@/components/room/ConnectionPill";
 
 /**
  * One participant.
@@ -29,6 +34,10 @@ export function Tile({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const isSpeaking = useIsSpeaking(participant);
+  // Read here rather than threaded down from the grid: the participant is
+  // already in hand, and `useIsSpeaking` above sets the precedent.
+  const { quality } = useConnectionQualityIndicator({ participant });
+  const treatment = treatmentFor(quality as Quality);
 
   useEffect(() => {
     const element = videoRef.current;
@@ -50,6 +59,9 @@ export function Tile({
       // Reactions rise from a participant's tile and are drawn in an overlay
       // above the grid, so the overlay has to be able to find this element.
       data-participant={participant.identity}
+      // The e2e suite scopes by attribute and measures the rendered opacity of
+      // the layer below — "assert rendered geometry, never declared CSS".
+      data-connection={treatment}
       className="relative overflow-hidden rounded-xl bg-card"
       style={{
         // Rule 5, and §3.4: no hue. Idle is 1px --tile-border at 3.33:1 against
@@ -64,34 +76,70 @@ export function Tile({
         transition: "outline-color 120ms linear, outline-width 120ms linear",
       }}
       // The ring is not the only carrier: a screen reader gets it here.
-      aria-label={isSpeaking ? `${name}, speaking` : name}
+      //
+      // A remote participant's connection is carried here too rather than
+      // announced. §9 says connection changes are announced once per change,
+      // and read broadly that would mean a sixteen-person room narrating every
+      // remote flicker — the flooding §9 exists to prevent, on a channel with
+      // no throttle written for it. The local user's own connection is
+      // announced; everyone else's is discoverable, the way mute state already
+      // is on the indicator below.
+      aria-label={[
+        name,
+        isSpeaking ? "speaking" : null,
+        treatment === "none" ? null : TILE_COPY[treatment].replace(/…$/, ""),
+      ]
+        .filter(Boolean)
+        .join(", ")}
     >
-      {showVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          // Muted on the element, always. Remote audio is played by
-          // RoomAudioRenderer through its own elements; letting a video tile
-          // play audio too is how you get an echo of one person.
-          muted
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          {/* §3.4: the initial on --secondary, uniform. A per-identity hue
-              would be the only chroma in the room and would be decorative —
-              tile position is stable and the name is directly below. */}
-          <div
-            className="flex size-16 items-center justify-center rounded-full bg-secondary"
-            aria-hidden
-          >
-            <span className="type-h2 text-secondary-foreground">
-              {initialOf(name)}
-            </span>
+      {/*
+        §3.11: "Tile dims to 40%, last frame frozen."
+        **The media dims; the tile does not.** Putting `opacity: 0.4` on the
+        root takes `--tile-border` from 3.33:1 to 1.50:1 and the name label
+        from 12.01:1 to 3.56:1 — the dim would delete the boundary that makes
+        this a component at all, and fade the label explaining the frozen
+        frame, both below their WCAG floors. So the ring and the scrim row
+        below stay at full strength and only this layer recedes.
+
+        The frozen frame costs nothing to get: LiveKit keeps the publication
+        when a remote participant's quality drops to lost, so nothing detaches
+        and the element simply stops receiving. If the track really does go
+        away the avatar takes over, which is honest — there is no last frame to
+        hold in that case.
+      */}
+      <div
+        className="h-full w-full transition-opacity duration-200"
+        style={{ opacity: treatment === "lost" ? 0.4 : 1 }}
+      >
+        {showVideo ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            // Muted on the element, always. Remote audio is played by
+            // RoomAudioRenderer through its own elements; letting a video tile
+            // play audio too is how you get an echo of one person.
+            muted
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            {/* §3.4: the initial on --secondary, uniform. A per-identity hue
+                would be the only chroma in the room and would be decorative —
+                tile position is stable and the name is directly below. */}
+            <div
+              className="flex size-16 items-center justify-center rounded-full bg-secondary"
+              aria-hidden
+            >
+              <span className="type-h2 text-secondary-foreground">
+                {initialOf(name)}
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {treatment !== "none" && <ConnectionPill treatment={treatment} />}
 
       {/* Rule 4: nothing sits directly on video. */}
       <div

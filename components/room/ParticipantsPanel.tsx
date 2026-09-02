@@ -6,7 +6,9 @@ import {
   useConnectionQualityIndicator,
   useParticipants,
 } from "@livekit/components-react";
-import { ConnectionQuality, type Participant } from "livekit-client";
+import { type Participant } from "livekit-client";
+
+import { TILE_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
 
 import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
@@ -215,24 +217,33 @@ function ParticipantRow({
  */
 function ConnectionLabel({ participant }: { participant: Participant }) {
   const { quality } = useConnectionQualityIndicator({ participant });
+  const treatment = treatmentFor(quality as Quality);
 
-  if (quality === ConnectionQuality.Excellent || quality === ConnectionQuality.Good) {
-    return null;
-  }
+  // This shipped in Phase 7 testing quality negatively — returning null for
+  // excellent and good, and treating everything else as a problem. That is
+  // wrong at exactly one value, and it is the value every participant starts
+  // on: the SDK seeds `_connectionQuality` to `Unknown` in the `Participant`
+  // constructor, and resets to it after a full reconnect. So the panel
+  // labelled every participant "Unstable connection" from the moment they
+  // joined until the server's first quality update, and again after every
+  // recovery.
+  //
+  // `treatmentFor` is the positive form, shared with the tile so the two
+  // surfaces cannot drift, and `npm run check:connection` pins the `unknown`
+  // case directly.
+  if (treatment === "none") return null;
 
-  const text =
-    quality === ConnectionQuality.Lost ? "Reconnecting…" : "Unstable connection";
   return (
     <p
       className="type-caption"
       style={{
         color:
-          quality === ConnectionQuality.Lost
+          treatment === "lost"
             ? "var(--state-critical)"
             : "var(--state-warning)",
       }}
     >
-      {text}
+      {TILE_COPY[treatment]}
     </p>
   );
 }

@@ -318,9 +318,17 @@ LiveKit reports `excellent | good | poor | lost`.
 | Poor | Amber pill on the affected tile: "Unstable connection." Local user also sees a bar: "Your connection is unstable." |
 | Lost (remote) | Tile dims to 40%, last frame frozen, label "Reconnecting…" |
 | Lost (local) | Full-width bar, `--state-critical`. Video paused. Automatic retry with visible attempt count. |
-| Failed after retries | Modal on `--popover`: what happened, "Rejoin" and "Leave". `--state-critical` is permitted on `--popover` (5.42:1), so the modal can carry it. |
+| Failed after retries | **Overlay over the dimmed, frozen room — not a full-page unmount.** "Rejoin" and "Leave". `--state-critical` is permitted on `--popover` (5.42:1), so the overlay can carry it. |
 
 Never fail silently. A frozen video with no explanation is the worst outcome in this product.
+
+**The failed state is an overlay, not a teardown.** Unmounting the room on `RoomEvent.Disconnected` makes "Leave" meaningless — you already have. Keeping the dimmed, frozen grid behind an overlay is also consistent with the language already used for a lost remote participant, and it preserves the fact that you were in a meeting rather than dropping you somewhere that looks like you never joined.
+
+Rejoin routes back through pre-join rather than reconnecting in place. The failure may have been a device problem, and pre-join is where devices get re-confirmed. **Carry the display name through** — in `sessionStorage`, so a guest is not made to retype it. Their identity will regenerate, so they rejoin as a new participant; that is acceptable and worth knowing.
+
+**Retry policy.** LiveKit's `retryCount` is private, so observing it means supplying a `ReconnectPolicy` — which makes the schedule a choice. Wrap the default rather than inventing one: ten attempts over 45–90s is tuned by people who know that infrastructure, and it covers the real recovery cases, including wifi-to-wifi and mobile handoff, which resolve in five to fifteen seconds.
+
+The long window is only acceptable because it is escapable. **The user can abandon the retry at any point** — "Rejoin now" and "Leave" are live throughout, not revealed after the tenth attempt. Nobody should be made to watch a countdown they cannot interrupt.
 
 **Acceptance**
 - Killing the network for 10s and restoring it recovers the call without a page reload

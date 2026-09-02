@@ -2411,3 +2411,196 @@ using the shared baseline as an optimisation target.
 `check:deps` 4/4 → **5/5**. All others green: `check:room` 96, `check:chat` 73,
 `check:ics` 69, `check:meetings` 68, `check:permissions` 39, `check:contrast`
 24, `check:rls` 18, `check:bundle` 10/10, `check:media` 29/29.
+
+---
+
+## Phase 8 — connection states
+
+Nothing fails silently, in both directions: the room says when the connection
+goes, and it says when it comes back. The second half is not in §3.11 and is
+the reason it is here — someone who hears a drop and never hears a recovery is
+left assuming a working meeting is still broken.
+
+### The decision table is a pure module
+
+`lib/room/connection.ts` holds every choice §3.11 asks for as functions over
+plain strings, with no import from `livekit-client`. Both LiveKit enums are
+*string* enums, so their values are exactly the literals, nothing is lost, and
+`check:connection` can compile the module on its own.
+
+Two phases exist that §3.11's four-row table does not name, both of which the
+SDK produces anyway:
+
+- **`signal`** is `SignalReconnecting`: media keeps flowing while the data
+  channel is down, so video and audio look perfect while chat and reactions
+  stop. Rendering nothing here is exactly the failure this phase is named
+  after; rendering the critical bar would be a lie, because the meeting works.
+- **`lost`** is the server reporting our own quality as lost while the SDK
+  still considers itself connected — §3.11's "Lost (local)" before any retry
+  has started, so there is no attempt count to show yet.
+
+### A bug this phase would otherwise have copied onto every face
+
+`ParticipantsPanel` shipped in Phase 7 testing quality *negatively*: return
+nothing for excellent and good, treat everything else as a problem. That is
+wrong at exactly one value, and it is the value everyone starts on. The SDK
+seeds `_connectionQuality` to `Unknown` in the `Participant` constructor and
+resets to it after a reconnect, so the panel labelled every participant
+"Unstable connection" from the moment they joined until the server's first
+quality update, and again after every recovery.
+
+`treatmentFor` is the positive form, shared by the panel and the tile so the
+two cannot drift, and the `unknown` case is pinned directly — mutating the
+function back into its negative form fails that one check and nothing else.
+
+### Three gates on one assumption, and they are not interchangeable
+
+Everything rests on our string literals still equalling LiveKit's enum values,
+which would fail *open* — every reading falling through to "none", every
+degraded state rendering as healthy, no symptom at all. Measured by mutating
+each gate:
+
+1. **`tsc`** catches a one-sided drift: renaming a comparison but not the union
+   is TS2367 and the check exits before running.
+2. **The phase and treatment cases** catch a consistent rename, which compiles
+   cleanly. They feed the SDK's literal strings in and assert a specific
+   result.
+3. **The enum section** catches the SDK changing underneath us, which neither
+   of the others can see, because its expected list is hand-written here.
+
+### What LiveKit already does, and the one thing it will not tell us
+
+The retry loop is the SDK's and stays the SDK's. `DefaultReconnectPolicy` is
+public, so `createRetryCounter` wraps it and delegates every delay — supplying
+a policy is an act of observation, not of policy, because `retryCount` is the
+only place the attempt number is legible: `RTCEngine.reconnectAttempts` is
+private, `Room.engine` is `@internal`, and the `reconnecting` event carries no
+argument.
+
+The vendored copy of the schedule is checked against the SDK's own, and my
+first draft of it was wrong — I wrote the delays from the plan rather than from
+the source. They are `[0, 300, 1200, 2700, 4800, 7000 × 5]`: ten attempts,
+44 seconds before jitter. The ten-second acceptance window sits five attempts
+inside that, which is why recovery works and why the failure modal is not
+reachable in a ten-second test.
+
+The attempt count is the one value genuinely held rather than derived, and it
+is documented as such in both files so the next reader does not read it as a
+rule-3 violation and remove it.
+
+### Rule 4 met a case it could not cover, and the rule changed
+
+Hued text on the scrim does not clear its floor. Composited over white video
+the scrim resolves to about `#515355`, where `--state-warning` is 3.79:1 and
+`--state-critical` 2.53:1. `check:contrast` cannot see this — `ALL_SURFACES` is
+seven opaque tokens and `--scrim` is not among them, so the matrix passes 24/24
+today and would still pass with a 2.53:1 label shipped.
+
+Rule 4 now says hued state indicators sit on an opaque `--popover` chip, which
+restores 8.11:1 and 5.42:1 by making the background stop depending on what is
+on camera. `check:connection` scans for the violation rather than computing the
+colour — weaker than the contrast matrix, and named as weaker.
+
+### The failed state stopped being a page
+
+A drop used to unmount the entire room and render a screen with one "Join
+again" link, which made §3.11's "Leave" meaningless — you already had. Now the
+room stays mounted and dims behind an overlay, and both verbs are true.
+
+It is also **derived rather than mirrored**: `onDisconnected` no longer sets a
+failure state at all. `useRoomConnection` reads the room's own connection state
+and the phase falls out of it, which is rule 3's reasoning one surface along. A
+first connect that never succeeded is still a page, because never getting in
+and dropping out are different events with different remedies.
+
+The way out is live throughout the retry rather than revealed after the tenth
+attempt — §3.11: "Nobody should be made to watch a countdown they cannot
+interrupt." A rejoining guest carries their display name back to pre-join;
+their identity does not survive, and that is recorded rather than hidden.
+
+### The webhook that was missing for seven phases
+
+`app/api/livekit/webhook/route.ts` was named in `CLAUDE.md`'s file layout and
+§7 and never appeared in a phase task list. Nothing in the product wrote
+`status = 'live'` or `'ended'`, so a meeting that ran and emptied stayed
+whatever it was created as — the dashboard's past section could not fill, the
+"Live" badge could not render, and §3.2's ended page, with all the enum work
+that separated ended from cancelled, was unreachable for every meeting that
+actually took place.
+
+A `room_finished` update without its `neq` would silently rewrite a
+cancellation to "ended", undoing that separation for exactly the meeting
+someone cancelled and a straggler had already opened. That guard is pinned, and
+proved by mutation.
+
+§3.2's 12h expiry arrives with it, because `started_at` is what makes "never
+joined" answerable and nothing wrote it before. It is **derived at read time,
+not swept by a job** — a pure function of `created_at` and `started_at`, exact
+at every read, with no scheduler to be late or run twice. The first draft got
+the 30-day window wrong: filtering on the stored status left an expired meeting
+resolving forever while every genuinely ended meeting stopped at thirty days.
+The predicate is now computed once and used by both the projection and the
+filter.
+
+### One defect I found by reasoning rather than by running it
+
+`resumeNeeded` and `phase === "failed"` are the same underlying
+`disconnected` state, distinguished only by cause. Both surfaces would have
+rendered at once — and the dialog's copy, "Parley kept trying and the
+connection didn't come back", is simply false when the browser closed a hidden
+tab. Nothing was tried. The resume prompt now takes precedence, because the
+more specific explanation is the true one.
+
+Worth recording because no test would have caught it: iOS backgrounding is the
+phase's largest unreachable path, and the two states only collide there.
+
+### What is not honestly tested
+
+- **`ConnectionQuality.Poor` is unreachable by any local means.** Quality is
+  the server's verdict, delivered over the signalling socket, so killing the
+  network produces *no* quality updates rather than a bad one. The amber pill's
+  mapping is exercised in `check:connection` as a pure function and nowhere
+  else.
+- **`setOffline` is not a blackout.** It reaches Chromium's network service —
+  HTTP and the signalling socket — and not an established PeerConnection, whose
+  ICE/DTLS/SRTP run through the P2P path. The e2e exercises the signalling half
+  of an outage, which is what drives the bar, the count and the recovery. True
+  media-path loss, ICE restart and TURN relay need a real network.
+- **The once-per-change gate cannot be proved end to end.** Deleting it leaves
+  the e2e green: the effect is keyed on `[phase]` so it does not re-run while a
+  phase stands, and React bails out of a `setState` with an identical string
+  before the DOM is touched. Two layers of accidental protection sit between
+  the guard and anything observable. It is pinned in `check:connection`, where
+  removing it fails immediately, and the e2e assertion is documented as a
+  backstop rather than counted as coverage. The test was renamed to what it
+  actually proves.
+- **The webhook cannot be exercised from this repo at all.** It needs a public
+  URL and a signed request from LiveKit. Its shape is scanned; its behaviour is
+  manual.
+- **iOS Safari `visibilitychange` and track re-acquisition** are unreachable —
+  Chromium under Playwright is not WebKit and does not kill tracks on
+  background. This is the phase's largest untested path.
+- **The autoplay fallback** is untestable under the current config:
+  `--autoplay-policy=no-user-gesture-required` is the flag that makes every
+  other media test work and the flag that makes blocked playback unreachable.
+
+### A test that was wrong before the code was
+
+The announcement test first asserted the region's text never changed during an
+outage, and failed correctly: the phase really does move from
+`signalReconnecting` to a full reconnect, and those are two facts that each
+deserve saying. It had conflated "once per change" with "never changes" — a
+property that would also have passed if the room had gone silent after the
+first line.
+
+Its replacement also caught me scoping by visible text, which matched both the
+bar and the live region because they say nearly the same thing on purpose. The
+bar carries `data-connection-bar` now.
+
+### Checks
+
+`check:connection` **65/65** (new). All others green: `check:room` 96,
+`check:chat` 73, `check:ics` 69, `check:meetings` 68, `check:permissions` 39,
+`check:contrast` 24, `check:rls` 18, `check:deps` 5/5, `check:bundle` 10/10.
+`check:media` **32/32**, up from 29. Every route inside budget; rule 8 holds
+— `livekit-client` is in no route's first load.

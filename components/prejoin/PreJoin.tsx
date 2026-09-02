@@ -8,7 +8,7 @@ import { useMediaPreview } from "@/lib/hooks/useMediaPreview";
 import { ICONS } from "@/lib/icons";
 import { PermissionNotice } from "@/components/prejoin/PermissionState";
 import { MicMeter } from "@/components/prejoin/MicMeter";
-import { rememberJoin } from "@/lib/prejoin-handoff";
+import { recallName, rememberJoin } from "@/lib/prejoin-handoff";
 import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,10 @@ export function PreJoin({
   const media = useMediaPreview();
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const [name, setName] = useState("");
+  // §3.11: a guest who was dropped and is rejoining should not be made to
+  // retype the name they just entered. Lazy initialiser rather than an effect —
+  // the field is filled on first paint rather than flickering from empty.
+  const [name, setName] = useState(() => recallName());
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // §7: a busy meeting holds this screen and comes back by itself. `countdown`
