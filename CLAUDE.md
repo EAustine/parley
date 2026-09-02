@@ -291,7 +291,7 @@ All motion answers a user action. No ambient animation. `prefers-reduced-motion:
 
 ## Accessibility floor
 
-Non-negotiable, checked every phase:
+Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD.md` §9 owns the announcement policy and the reasoning behind its thresholds, and deliberately does not restate these mechanics. Where the two ever appear to disagree, this file wins and §9 is stale.
 
 - Every control keyboard reachable, `--ring` focus at 2px offset
 - Panels focus-trapped; Escape closes and returns focus to the trigger

@@ -665,27 +665,37 @@ Authenticated requests get their own bucket keyed on user id rather than IP, sin
 
 Target WCAG 2.1 AA. This is the part of the product that separates it from a weekend clone.
 
-**Keyboard**
-- Every control reachable, visible focus ring at `--ring`, 2px offset
-- Logical tab order; panels are focus-trapped while open, Escape closes and returns focus to the trigger
-- Shortcuts: `Cmd/Ctrl+D` mic, `Cmd/Ctrl+E` camera, `Cmd/Ctrl+Alt+C` chat, `Esc` close panel. All suppressed while focus is in a text input.
-- A "keyboard shortcuts" dialog on `?`
+**The enforceable per-control rules live in `CLAUDE.md`'s accessibility floor and are not repeated here.** Focus rings, tab order, `aria-expanded` on disclosure controls, action naming on state toggles, touch targets, axe coverage — that is implementation mechanics, and a second copy of it in this document has already drifted once. This section owns the product decisions and the reasoning behind the numbers; `CLAUDE.md` owns how they are built.
 
-**Screen readers**
-- Mic and camera buttons use `aria-pressed`, and the accessible name states the action, not the state: "Turn off microphone"
-- Join and leave events go into a `polite` live region, **batched**: more than three events in five seconds collapses to "3 people joined." In rooms over eight participants, individual announcements are suppressed entirely.
-- Chat announces sender plus "sent a message" when the panel is closed — never the body. Body content is available in the panel.
-- Reactions are throttled to one announcement per participant per two seconds, phrased "Ama reacted with applause"
-- Connection state changes announced once, not per retry attempt
-- The video grid has a heading and a participant count so the room is navigable without sight
+### Announcement policy
 
-**Visual**
-- Contrast verified above; all chrome sits on scrim, never on raw video
-- Touch targets 44px minimum
-- Nothing depends on hue alone: mute is an icon change, speaking is a border weight and value change, leave is a distinct shape
-- `prefers-reduced-motion` removes reaction travel and grid transitions
+The hard problem here is not making the room announce things. It is stopping it.
 
-**Captions** are out of scope for v1. Note it honestly in the docs rather than pretending otherwise — live captions need a transcription service and change the cost model.
+**Join and leave** go into a `polite` region, batched: more than three events in five seconds collapses to "3 people joined", and above eight participants individual announcements are suppressed entirely. The thresholds are a judgement about attention, not a technical limit — in a ten-person standup where everyone arrives at once, a screen reader user who hears ten separate arrivals has learned nothing and lost thirty seconds.
+
+**Chat** announces the sender and that a message arrived, never the body, and only while the panel is closed. Body content belongs in the panel, where it can be read at the user's pace rather than pushed at them mid-sentence.
+
+**Reactions** are throttled to one announcement per participant per two seconds, phrased as "Ama reacted with applause". Reactions are the highest-volume, lowest-information channel in the room; unthrottled they would drown everything that matters.
+
+**Connection state** is announced once per change, never per retry. A reconnection attempt loop that narrates itself is the failure mode §3.11 exists to prevent, transposed into audio.
+
+Everything here is `polite`. Next mounts its own `role="alert"` route announcer, which is assertive, and a second assertive region guarantees exactly the flooding these rules are written to avoid.
+
+### Keyboard shortcuts
+
+`Cmd/Ctrl+D` mic, `Cmd/Ctrl+E` camera, `Cmd/Ctrl+Alt+C` chat, `Esc` closes a panel. All suppressed while focus sits in a text input. `?` opens a shortcuts dialog.
+
+### Ownership
+
+Where a number is a design judgement — the batching thresholds above, the announcement phrasing — this document owns it and `CLAUDE.md` references it. Where it is an implementation mechanic — focus ring offsets, aria attributes, touch target sizes, axe coverage — `CLAUDE.md` owns it and this document does not restate it. The same split already applies to the contrast table. Both duplications drifted before the split existed; neither can now.
+
+### Navigability without sight
+
+The video grid carries a heading and a participant count, so the shape of the room is available without seeing it.
+
+### Out of scope
+
+**Captions.** Live captions need a transcription service and change the cost model, which is the same reason recording is out. Say so plainly in the product rather than leaving people to discover the absence.
 
 ---
 

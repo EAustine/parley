@@ -426,6 +426,91 @@ for (const file of usesRoomService) {
 }
 
 // ---------------------------------------------------------------------------
+// The accessibility floor's two control patterns
+// ---------------------------------------------------------------------------
+console.log("\nControl patterns\n");
+
+// CLAUDE.md is now the authoritative copy of these, and PRD §9 defers to it.
+// The split is stated in both files and says the two "cannot now" drift — so
+// it is checked rather than trusted. Prose is not the enforcement; this is.
+const interactive = [];
+const walkTsx = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkTsx(path);
+    else if (entry.name.endsWith(".tsx")) interactive.push(path);
+  }
+};
+walkTsx("components");
+walkTsx("app");
+
+// Comments stripped: the files that explain why `aria-pressed` is absent say
+// the words, and a scan that reads its own documentation as a violation finds
+// the rule wherever the rule is written down.
+const codeOf = (file) =>
+  readFileSync(file, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+check(interactive.length > 0, `there are components to scan  (${interactive.length})`,
+      "nothing found — this check would pass vacuously");
+
+// "State toggles… name the action and change with it… No `aria-pressed` —
+// carrying both an action name and a pressed state announces the same fact
+// twice, in a confusing order."
+const pressed = interactive.filter((f) => /aria-pressed/.test(codeOf(f)));
+check(
+  pressed.length === 0,
+  "no aria-pressed anywhere — state toggles carry the action in the name",
+  `found in: ${pressed.map((f) => f.replace(/^.*\//, "")).join(", ")}`,
+);
+
+// "Disclosure controls… a noun name plus `aria-expanded` and `aria-controls`."
+// Neither half alone is the pattern: expanded without controls leaves a screen
+// reader knowing something opened and not what.
+const disclosures = interactive.filter((f) => /aria-controls/.test(codeOf(f)));
+check(disclosures.length > 0, `something uses the disclosure pattern  (${disclosures.length} file)`,
+      "no aria-controls found — either the panels changed or this stopped applying");
+
+for (const file of disclosures) {
+  const code = codeOf(file);
+  const controls = (code.match(/aria-controls/g) ?? []).length;
+  const expanded = (code.match(/aria-expanded/g) ?? []).length;
+  check(
+    expanded >= controls,
+    `${file.replace(/^.*\//, "")} pairs every aria-controls with aria-expanded`,
+    `${controls} controls, ${expanded} expanded`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The ownership split itself
+// ---------------------------------------------------------------------------
+console.log("\nWho owns which rule\n");
+
+// Two documents describing the same thing drifted once already — PRD §9 said
+// mic and camera use `aria-pressed` while CLAUDE.md said they must not. The
+// split is the fix, and these markers are what make it findable by the next
+// person rather than a convention someone has to already know.
+const claude = readFileSync("CLAUDE.md", "utf8");
+const prd = readFileSync("PRD.md", "utf8");
+check(
+  /authoritative copy/.test(claude),
+  "CLAUDE.md's floor declares itself authoritative",
+  "the marker is gone — the split is no longer stated anywhere",
+);
+check(
+  // Matched on the sentences rather than on a formatted token: the file
+  // writes the filename in backticks, and a regex that assumes otherwise
+  // reports a missing deferral that is right there.
+  /not repeated here/.test(prd) &&
+    /owns it and this document does not restate it/.test(prd),
+  "PRD §9 defers the mechanics and says who owns them",
+  "the deferral is gone — §9 may have started restating mechanics again",
+);
+
+// ---------------------------------------------------------------------------
 // Hiding, owned rather than inherited
 // ---------------------------------------------------------------------------
 console.log("\nWhat hides a panel\n");
@@ -451,6 +536,7 @@ check(
 
 const total =
   desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3 + 2
-  + 3 + 7 + 2 + 5 + 1 + usesRoomService.length * 2;
+  + 3 + 7 + 2 + 5 + 1 + usesRoomService.length * 2
+  + 3 + disclosures.length + 2;
 console.log(`\n${total - failed}/${total} room checks passed.`);
 if (failed) process.exit(1);

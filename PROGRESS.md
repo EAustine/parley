@@ -2156,3 +2156,67 @@ Two new e2e tests cover the replacement in both directions: that Cancel leaves
 everything as it was, that Continue hands over and tells the replaced person,
 that the notice is not a dialog, and that sharing when nobody else is presenting
 asks nothing at all.
+
+---
+
+## The accessibility conflict, resolved by ownership rather than by picking
+
+The flagged contradiction is settled the better way: not by deciding which
+document was right, but by giving each one a domain and saying so in both.
+
+- **CLAUDE.md's floor** is now marked the authoritative copy of the per-control
+  mechanics. "Where the two ever appear to disagree, this file wins and §9 is
+  stale."
+- **PRD §9** was rewritten to own what it is actually good at — the announcement
+  policy and the reasoning behind its thresholds. It defers the mechanics
+  explicitly and says who owns them.
+
+The reasoning is the same one that took the contrast table out of the PRD
+several phases ago: two copies of a fact drift, and the second copy is a
+liability rather than a convenience. This is the second time that lesson has
+been applied to the same pair of documents, which is what makes it a pattern
+rather than a fix.
+
+No code changed. I had already followed CLAUDE.md and said so; the resolution
+confirms that reading.
+
+### But a stated invariant is not an enforced one
+
+Both files now claim the two "cannot now" drift. Nothing made that true, so
+three checks do — this project's habit of turning a rule into something that
+fails:
+
+```
+✔ no aria-pressed anywhere — state toggles carry the action in the name
+✔ RoomControls.tsx pairs every aria-controls with aria-expanded
+✔ CLAUDE.md's floor declares itself authoritative
+✔ PRD §9 defers the mechanics and says who owns them
+```
+
+The first two are the floor's two patterns, read out of the source with comments
+stripped — a scan that reads its own documentation finds the rule wherever the
+rule is written down, which is a mistake this suite has made before.
+
+The last two check the *markers*, not the prose. Policing wording would be
+fragile and would false-positive on the very sentence that names what is being
+deferred; checking that the split is still declared is cheap, and if someone
+deletes the marker the check fails and they have to think about why it was
+there. Both were proved by removing them.
+
+`aria-expanded` is asserted as a pair with `aria-controls` rather than alone:
+either half by itself leaves a screen reader knowing something opened and not
+what.
+
+### Still outstanding, twice now
+
+§10 still explains the two scheduling budgets as carrying `react-day-picker`.
+Neither route imports it and shadcn's `Calendar` is unused anywhere — the form
+is native `<input type="date">`, which §10 itself asked for. The numbers are
+right; the reason attached to them is not. Reported after Phase 6 and unchanged,
+so flagging once more rather than letting it settle into the record as true.
+
+### Checks
+
+`check:room` 90 → **96**. All pass, with `check:chat` 73, `check:ics` 69,
+`check:meetings` 68, `check:permissions` 39, `check:contrast` 24, `check:rls`
+18, `check:bundle` 10/10, `check:media` 29/29.
