@@ -652,10 +652,22 @@ Target WCAG 2.1 AA. This is the part of the product that separates it from a wee
 | Join click → first remote video | < 2.5s |
 | Grid reflow on join/leave | < 16ms, no thrash |
 | Chat message end to end | < 500ms |
-| Dashboard route JS | < 180KB gzipped |
-| `livekit-client` | Dynamically imported on the room route only |
 
-The LiveKit client is large. It must not appear in the dashboard or marketing bundles.
+### Bundle budgets
+
+All figures are **First Load JS, gzipped** — the units Next reports. Verify that assumption once per major Next upgrade rather than trusting it.
+
+| Route | Budget | Why this number |
+|---|---|---|
+| Shared baseline | ≤ 180 kB | Paid by every route. Framework floor is around 105 kB, so this is the real headroom. |
+| `/` marketing | ≤ 130 kB above nothing | Cold load, first impression, no session needed |
+| `/j/[code]` pre-join | ≤ 200 kB | **The tightest budget that matters.** Highest-traffic flow, always a cold load, frequently on mobile data. |
+| `/room/[code]` | ≤ 220 kB before the dynamic import | `livekit-client` loads after the join gesture, not with the route |
+| `/dashboard` | ≤ 260 kB | Authenticated, returning users, warm cache. Deliberately loose. |
+
+The original spec put a single 180 kB budget on the dashboard, which was the wrong route to defend. The dashboard is behind auth and revisited by the same people; its bundle is amortised across sessions. `/j/[code]` is where a stranger on a phone meets the product for the first time with an empty cache, and §3.3 already names it the highest-traffic flow. That is where a byte costs something.
+
+`livekit-client` is dynamically imported on the room route only and must not appear in any other bundle. Pre-join uses `navigator.mediaDevices` directly for preview and device enumeration — it needs no LiveKit code at all.
 
 ---
 

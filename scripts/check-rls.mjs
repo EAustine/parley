@@ -15,23 +15,28 @@
  * and zero of Bob's.
  *
  * Run with: npm run check:rls
+ *
+ * Credentials arrive through `node --env-file=.env.local`, not by reading the
+ * file. Nothing here ever holds the file's contents as a string, so there is
+ * nothing to accidentally log. `scripts/check-env.mjs` is the only script that
+ * opens it, because reporting on it is its whole job — and it prints variable
+ * names and verdicts, never values.
  */
-import { readFileSync } from "node:fs";
 
-const env = Object.fromEntries(
-  readFileSync(".env.local", "utf8")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#"))
-    .map((l) => {
-      const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    }),
-);
+function required(name) {
+  const value = process.env[name];
+  if (!value) {
+    console.error(
+      `${name} is not set. Run this through npm run check:rls, which supplies --env-file.`,
+    );
+    process.exit(1);
+  }
+  return value;
+}
 
-const URL_ = env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "");
-const ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const SERVICE = env.SUPABASE_SERVICE_ROLE_KEY;
+const URL_ = required("NEXT_PUBLIC_SUPABASE_URL").replace(/\/$/, "");
+const ANON = required("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+const SERVICE = required("SUPABASE_SERVICE_ROLE_KEY");
 
 const results = [];
 const record = (pass, name, detail = "") => {

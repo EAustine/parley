@@ -106,7 +106,21 @@ function parse<T extends z.ZodTypeAny>(
   return result.data;
 }
 
-assertNoSecretsInPublicVars();
+/**
+ * Server only, and deliberately so.
+ *
+ * `Object.entries(process.env)` returns an empty object in the browser and
+ * `Buffer` does not exist there — running this on the client would pull in a
+ * polyfill to scan an object that is empty by construction. It could never
+ * catch anything either: by the time a client bundle executes, the leak it
+ * would be looking for has already been compiled into it.
+ *
+ * `npm run check:env` is what actually stops a leaked key, because it runs
+ * before the build rather than after.
+ */
+if (typeof window === "undefined") {
+  assertNoSecretsInPublicVars();
+}
 
 export const publicEnv = parse(publicSchema, "public", publicValues);
 

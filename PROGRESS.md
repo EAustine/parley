@@ -362,3 +362,66 @@ the signed-in email → reload keeping the session → signed-in user bounced of
   human sign-in will confirm it.
 - **Email delivery is Supabase's built-in sender**, rate-limited to a handful
   per hour. Production needs real SMTP — Phase 10.
+
+---
+
+## Phase 1 — revision
+
+`CLAUDE.md` and `PRD.md` were updated after Phase 1 landed. Three changes, two
+of which needed code.
+
+### Rule 2 now forbids reading `.env.local`. It was being read.
+
+The rule postdates the work, but the concern is real and worth recording rather
+than quietly complying with.
+
+**What happened.** Several throwaway probe scripts parsed `.env.local` to reach
+Supabase and LiveKit, and `scripts/check-rls.mjs` did the same. Worse, when the
+project moved to the dedicated Parley instance, the Supabase keys were written
+into the file programmatically from the authenticated CLI.
+
+**What reached the transcript.** No secret value was printed. Diagnostics
+reported lengths, character classes, and JWT `role` claims — never the keys. One
+exception: the LiveKit **API key** (`APIPC5…`, the identifier half of the pair)
+appeared in a token-claims dump. It cannot mint anything without the secret,
+which was never shown, but it should not have been printed either.
+
+**What changed.** `check:rls` now runs as
+`node --env-file=.env.local scripts/check-rls.mjs` and reads `process.env`. It
+never holds the file's contents as a string, so there is nothing to log by
+accident. `scripts/check-env.mjs` remains the only script that opens the file,
+which rule 2 explicitly sanctions — it reports variable names and verdicts and
+never values. No further probing of `.env.local`, `~/.supabase`, `*.pem`, or
+`.vercel/`.
+
+### Rule 8c: the leak guard is now server-only
+
+`assertNoSecretsInPublicVars()` ran at module scope, so it was reachable from
+the client bundle. It could never catch anything there —
+`Object.entries(process.env)` is empty in the browser by construction, and by
+the time client code runs, the leak it looks for is already compiled in — while
+`Buffer` risked pulling a polyfill in to scan an empty object. Now behind
+`typeof window === "undefined"`. `npm run check:env` is what actually stops a
+leaked key, because it runs before the build rather than after. Verified:
+`typeof Buffer` is `undefined` on the client.
+
+### Bundle budgets are per-route now, and the dashboard overage is closed
+
+`PRD.md` §10 replaces the single 180 kB dashboard budget with five per-route
+numbers, and moves the tight one onto `/j/[code]` — the cold-cache stranger on a
+phone — rather than the authenticated route people revisit.
+
+| Route | Now | Budget | |
+|---|---|---|---|
+| Shared baseline | 175 kB | ≤ 180 kB | within |
+| `/dashboard` | 242 kB | ≤ 260 kB | within — the Phase 1 overage is resolved by the new budget, not by a code change |
+| `/` marketing | 161 kB | ≤ 130 kB | **see below** |
+| `/j/[code]` | — | ≤ 200 kB | Phase 3 |
+| `/room/[code]` | — | ≤ 220 kB | Phase 4 |
+
+**Open question on the `/` budget.** "≤ 130 kB above nothing" cannot be a First
+Load JS total: the shared baseline alone is 175 kB and its own budget is 180 kB,
+so no route can come in under 130 kB. Two readings are possible — 130 kB of
+route-specific weight *above* the shared baseline, which `/` meets trivially at
+0 B, or a 130 kB total, which is arithmetically unreachable. Flagged rather than
+guessed. The other four budgets are unambiguous and are being tracked.

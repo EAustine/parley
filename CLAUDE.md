@@ -30,6 +30,10 @@ Do not use `VideoConference`, `ControlBar`, `GridLayout`, `ParticipantTile`, `Pr
 
 `lib/env.ts` implements this and is imported for side effects at the top of the root layout; `scripts/check-env.mjs` does the same standalone for pre-dev and CI. Both are in `scaffold/` and are already verified against the five failure modes. Do not weaken either into a warning — a leaked key produces no runtime symptom, which is exactly why it needs a hard stop. Account setup is in `ACCOUNTS.md`.
 
+**Never read, `cat`, `echo`, `grep`, or print `.env.local`, and never write values into it.** Austine fills it in his own editor. Anything you read enters your context and can end up quoted back into the conversation or a commit message. To confirm it is correct, run `npm run check:env` — it reports variable *names* and pass/fail, never values. If a variable looks wrong, say which name is wrong and let him fix it.
+
+The same applies to `~/.supabase`, any `*.pem`, and anything under `.vercel/`.
+
 **3. Mute state comes from the track, not from React.**
 Derive mic and camera UI state from the LiveKit track's actual published state. Never keep a parallel boolean as the source of truth. If unmuting fails, the UI must show muted. This is a privacy requirement.
 
@@ -54,7 +58,12 @@ A standalone favicon has no inherited colour context, so `currentColor` resolves
 Files delivered into `brand/` may arrive with a C2PA `<metadata>` block that dwarfs the artwork — 7.7KB of provenance around 410 bytes of geometry, on an asset served with every page load. Strip it when copying into `app/` and `public/`. Leave the originals in `brand/` untouched as the record. If a stripped file looks wrong, retype it from the source in `BRAND.md`, which is authoritative.
 
 **8. `livekit-client` is dynamically imported on the room route only.**
-It must not appear in the dashboard or landing bundles.
+It must not appear in any other bundle. Pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code.
+
+Bundle budgets are per-route and live in `PRD.md` §10. The one that matters is `/j/[code]` at ≤ 200 kB — cold load, stranger on a phone, empty cache. The dashboard is deliberately loose.
+
+**8c. Never pass `process.env` as an object to a function.**
+Next replaces `process.env.NEXT_PUBLIC_FOO` textually at build time and cannot replace anything when the whole object is handed off, so the client bundle sees every public variable as undefined. Reference each one as a literal. `Buffer` and `Object.entries(process.env)` are server-only — the leak guard must stay behind a `typeof window === "undefined"` check, and `npm run check:env` in CI is what actually catches a leaked key, since by server boot the bundle is already built.
 
 **8a. shadcn base is Radix, not Base UI.** Settled in Phase 0 — Radix is what the registry is built on and what "shadcn primitives" means throughout these docs. Do not revisit.
 
