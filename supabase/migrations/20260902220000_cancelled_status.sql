@@ -1,0 +1,12 @@
+-- A fourth meeting status: cancelled.
+--
+-- §3.2 settles what was previously folded into `ended`, and the reasoning is
+-- about a factual error rather than a nicety: someone holding a link for
+-- Thursday at 3, cancelled on Wednesday, arrives on time and reads that the
+-- meeting has ended. They didn't miss it — it never happened. Collapsing the
+-- two makes the product lie in the commonest case.
+--
+-- Its own migration because Postgres will not let a new enum value be *used*
+-- in the same transaction that adds it. The function that reads it is the next
+-- file.
+alter type meeting_status add value if not exists 'cancelled';

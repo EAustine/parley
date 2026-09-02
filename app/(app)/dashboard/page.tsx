@@ -23,7 +23,9 @@ export const metadata: Metadata = {
  * concern, driven by the LiveKit webhook.
  */
 function isPast(m: { status: string; scheduled_start: string | null }) {
-  if (m.status === "ended") return true;
+  // §3.2: "cancelled meetings leave the upcoming list and appear under past".
+  // A meeting that is not going to happen is not something to be at.
+  if (m.status === "ended" || m.status === "cancelled") return true;
   if (!m.scheduled_start) return false;
   return new Date(m.scheduled_start).getTime() < Date.now();
 }

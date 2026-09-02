@@ -1868,3 +1868,87 @@ existing assertion depends on. The scheduling section now creates its own.
 - **A real timezone change**, which BUILD-PLAN asks for by name. The
   arithmetic is checked across Accra, Berlin, Kolkata and two DST transitions;
   changing the machine's own zone is a different test.
+
+---
+
+## `cancelled` as a fourth status, and the timezone tests automated
+
+### The flag was overruled, correctly
+
+Phase 6 folded cancellation into `ended` and flagged it. §3.2 now settles it the
+other way, and the argument is better than the one I made:
+
+> Someone holding a link for Thursday at 3, cancelled on Wednesday, arrives on
+> time and reads that they missed it. They didn't; it never happened. That is a
+> factual error in user-facing copy, which is a worse cost than the migration.
+
+I had weighed the migration against a wording difference. It is not a wording
+difference — it is the product being wrong about whether someone was late.
+
+Two migrations, because Postgres will not let a new enum value be *used* in the
+transaction that adds it. The 30-day resolution window now covers cancelled as
+well as ended, so a link already in an inbox keeps reaching a designed state
+rather than falling through to the unknown-code page.
+
+Through the read paths:
+
+- **Join page**: "This meeting was cancelled — was called off. Whoever sent the
+  link will know more." Never "you missed it".
+- **Token endpoint**: unjoinable, by the same 410 an ended meeting uses. The
+  contract has one answer for "resolved but not joinable"; the join page draws
+  the distinction, because that is where it changes what someone reads.
+- **Dashboard**: leaves upcoming, appears under past with a "Cancelled" badge,
+  and the participant count is suppressed — there were none.
+- **The calendar file**: `STATUS:CANCELLED` only for a cancellation. A meeting
+  that ran to its end happened, and telling a calendar otherwise would remove
+  it from the record of a day that did take place.
+
+`check:meetings` 63 → **68**, including that the cancelled page never contains
+"has ended", that a cancelled meeting cannot be joined or edited back into
+existence, and that cancelling twice is a no-op.
+
+### The timezone half no longer needs a human
+
+BUILD-PLAN is right that Playwright's `timezoneId` sets the *real* browser
+timezone, and that this exercises the whole rendering path because the code
+never sees the OS. `check:ics` proves the arithmetic; these prove the arithmetic
+is what reaches the screen, which is a different claim — a formatter called with
+the wrong zone produces a number that is internally consistent and wrong.
+
+Three tests, in real browsers set to real zones:
+
+```
+made in Accra at 14:30  →  Accra   Tue 15 Sep, 14:30 GMT
+                        →  Berlin  Tue 15 Sep, 16:30 GMT+2   (+ "14:30 GMT where it was scheduled")
+                        →  LA      Tue 15 Sep, 07:30 PDT
+```
+
+…the same wall clock in December reading 15:30 GMT+1 in Berlin rather than
+16:30, which a fixed offset would get wrong for half the year; and the `.ics`
+being byte-identical from both browsers, because it describes the instant.
+
+Proved able to fail: rendering in a fixed zone rather than the viewer's breaks
+two of the three, and dropping the zone label breaks all three.
+
+**My expected label was wrong, not the code.** Los Angeles renders `PDT`, not
+`GMT-7` — `zzz` prefers a named abbreviation wherever a zone has one. The
+dashboard assertion had the same bug and passed only because the browser was
+Berlin. §3.9 requires *a* label, not a spelling, so both now accept any of the
+forms zones actually use, and `check:ics` pins the four shapes directly.
+
+### One correction to the documents
+
+§10 explains the two scheduling budgets as carrying `react-day-picker`. They do
+not — neither route imports it, and shadcn's `Calendar` is not used anywhere.
+The form is native `<input type="date">` and `<input type="time">`, which was a
+§10 instruction in the first place. The numbers are right; the reason given for
+them is not, and the weight is `date-fns-tz` plus Radix `Select` plus `sonner`.
+
+### Checks
+
+`check:ics` 64 → **69**, `check:meetings` 63 → **68**, `check:media` 18 → **21**.
+All pass, with `check:room` 70, `check:chat` 67, `check:permissions` 39,
+`check:contrast` 24, `check:codes` 6, `check:rls` 18, `check:bundle` 10/10.
+
+Importing the `.ics` into Google, Apple and Outlook remains the one manual item
+from Phase 6 — and stays manual by BUILD-PLAN's own reasoning.

@@ -64,6 +64,7 @@ export default async function ScheduledMeetingPage({
         startISO={start.toISOString()}
         endISO={end.toISOString()}
         joinUrl={`${base}/j/${meeting.code}`}
+        cancelled={meeting.status === "cancelled"}
         ended={meeting.status === "ended"}
         wall={toWallClock(start, meeting.timezone)}
         durationMinutes={Math.round((end.getTime() - start.getTime()) / 60_000)}

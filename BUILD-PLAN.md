@@ -253,7 +253,11 @@ Tasks:
 - Outlook Web prefill URL
 - Edit and cancel for scheduled meetings
 
-**Done when:** the `.ics` imports cleanly into Google Calendar, Apple Calendar, and Outlook, and a meeting created in Accra shows the correct local time with the right zone label to a viewer in Berlin. Test with a real timezone change, not a mocked one.
+**Done when:** the `.ics` imports cleanly into Google Calendar, Apple Calendar, and Outlook, and a meeting created in Accra shows the correct local time with the right zone label to a viewer in Berlin.
+
+The timezone half of that no longer needs a human. Playwright takes `timezoneId` on a browser context, which sets the real browser timezone — `Intl.DateTimeFormat().resolvedOptions().timeZone` returns it and every format call follows. That exercises the whole rendering path, because the code never sees the OS, only the browser. Create in `Africa/Accra`, read in `Europe/Berlin` and `America/Los_Angeles`, assert both the time and the printed zone label.
+
+Importing the file into three real calendar clients stays manual. "Valid against RFC 5545" and "imports cleanly" are genuinely different claims, and only the second one matters.
 
 ---
 

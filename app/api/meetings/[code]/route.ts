@@ -79,7 +79,9 @@ export async function PATCH(
     .maybeSingle();
   if (!existing) return fail("not_found", 404);
   if (!existing.scheduled_start) return fail("not_scheduled", 400);
-  if (existing.status === "ended") return fail("already_ended", 409);
+  if (existing.status === "ended" || existing.status === "cancelled") {
+    return fail("already_ended", 409);
+  }
 
   const patch: MeetingUpdate = {};
   if (input.title !== undefined) patch.title = input.title;
@@ -128,24 +130,26 @@ export async function DELETE(
     .maybeSingle();
   if (!existing) return fail("not_found", 404);
 
-  // Cancelling ends the meeting rather than deleting the row. §3.9 requires
-  // past meetings to move to a section rather than disappear, and a link
-  // already sent has to keep resolving — §3.2's "This meeting has ended" is a
-  // designed state, where a 404 would tell someone holding a real invite that
-  // it was never real.
+  // Cancelling sets `cancelled`, never deletes the row. §3.2 is explicit that
+  // this is a different event from a meeting running to its end: someone
+  // holding a link for Thursday at 3, cancelled on Wednesday, arrives on time
+  // and would otherwise read that they missed it. They didn't — it never
+  // happened, and that is a factual error in user-facing copy.
   //
-  // `ended` rather than a new `cancelled` status: the enum has three values and
-  // adding a fourth means a migration, a change to `get_meeting_by_code`, and a
-  // new join-page state to design. Worth doing if cancelled should read
-  // differently from ended — flagged rather than decided here.
-  if (existing.status === "ended") {
-    return NextResponse.json({ code, status: "ended" });
+  // The row stays so a link already in an inbox keeps resolving to that
+  // designed state rather than to the unknown-code page.
+  if (existing.status === "cancelled" || existing.status === "ended") {
+    return NextResponse.json({ code, status: existing.status });
   }
 
   const { data, error } = await supabase
     .from("meetings")
     .update({
-      status: "ended",
+      status: "cancelled",
+      // `ended_at` is what the 30-day resolution window measures from, so a
+      // cancelled meeting needs one too — otherwise the window would run from
+      // `created_at` and a long-scheduled meeting could stop resolving sooner
+      // than one cancelled today.
       ended_at: new Date().toISOString(),
       // The cancellation is itself a revision, so a calendar already holding
       // the event can tell this file supersedes the one it has. An unchanged

@@ -69,7 +69,10 @@ export async function GET(
     stamp: new Date(),
     sequence: row.sequence,
     url: `${base}/j/${code}`,
-    cancelled: meeting.status === "ended",
+    // Only a cancellation is STATUS:CANCELLED. A meeting that ran to its end
+    // happened, and telling a calendar otherwise would have it removed from
+    // the record of a day that did take place.
+    cancelled: meeting.status === "cancelled",
   });
 
   return new NextResponse(body, {

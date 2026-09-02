@@ -19,7 +19,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     title: meeting
       ? meeting.status === "ended"
         ? `${meeting.title} — ended`
-        : meeting.title
+        : meeting.status === "cancelled"
+          ? `${meeting.title} — cancelled`
+          : meeting.title
       : "Meeting not found",
     // A meeting link is not something to index. The per-meeting OG card for
     // sharing arrives in Phase 10.
@@ -61,6 +63,9 @@ export default async function JoinPage({ params }: Params) {
 
   if (!meeting) return <MeetingNotFound code={code} />;
   if (meeting.status === "ended") return <MeetingEnded meeting={meeting} />;
+  // §3.2: a distinct state, never folded into "ended". Someone arriving on
+  // time for a meeting called off yesterday must not be told they missed it.
+  if (meeting.status === "cancelled") return <MeetingCancelled meeting={meeting} />;
 
   // The *meeting* is resolved anonymously; the viewer's session is read
   // separately and only to decide whether to ask for a name. Auth is never
@@ -95,6 +100,30 @@ export default async function JoinPage({ params }: Params) {
  * to sign-in by the middleware and returned there afterwards, so the link is
  * honest for both: it goes where a new meeting is started.
  */
+function MeetingCancelled({ meeting }: { meeting: PublicMeeting }) {
+  return (
+    <Centred>
+      <div className="flex flex-col items-center gap-6 text-center">
+        <Lockup variant="stacked" markSize={40} />
+        <div className="space-y-2">
+          <h1 className="type-h1">This meeting was cancelled</h1>
+          {/* Not "you missed it". The meeting never happened, and the person
+              reading this may well be on time. */}
+          <p className="type-body text-muted-foreground">
+            <span className="text-foreground">{meeting.title}</span> was called
+            off. Whoever sent the link will know more.
+          </p>
+          <p className="type-data text-muted-foreground">{meeting.code}</p>
+        </div>
+      </div>
+
+      <Button asChild className="w-full">
+        <Link href="/dashboard">Start a new meeting</Link>
+      </Button>
+    </Centred>
+  );
+}
+
 function MeetingEnded({ meeting }: { meeting: PublicMeeting }) {
   return (
     <Centred>

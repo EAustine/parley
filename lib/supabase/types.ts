@@ -9,7 +9,12 @@
  * access to the project.
  */
 
-export type MeetingStatus = "scheduled" | "live" | "ended";
+/**
+ * §3.2 and §6. `cancelled` is a fourth value rather than a flavour of `ended`,
+ * because the two are different events and collapsing them makes the join page
+ * tell someone they missed a meeting that never happened.
+ */
+export type MeetingStatus = "scheduled" | "live" | "ended" | "cancelled";
 
 export type MeetingSettings = {
   guests_allowed: boolean;

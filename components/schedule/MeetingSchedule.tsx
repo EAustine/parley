@@ -42,6 +42,7 @@ export function MeetingSchedule({
   startISO,
   endISO,
   joinUrl,
+  cancelled,
   ended,
   wall,
   durationMinutes,
@@ -52,6 +53,7 @@ export function MeetingSchedule({
   startISO: string;
   endISO: string;
   joinUrl: string;
+  cancelled: boolean;
   ended: boolean;
   wall: WallClock;
   durationMinutes: number;
@@ -109,10 +111,13 @@ export function MeetingSchedule({
         <p className="type-small text-muted-foreground">
           {durationMinutes} minutes
         </p>
-        {ended && (
+        {cancelled && (
           <p className="type-small text-[var(--state-critical)]">
-            This meeting has been cancelled.
+            This meeting was cancelled. The link still resolves, and says so.
           </p>
+        )}
+        {ended && !cancelled && (
+          <p className="type-small text-muted-foreground">This meeting has ended.</p>
         )}
       </section>
 
@@ -193,7 +198,7 @@ export function MeetingSchedule({
         </p>
       </section>
 
-      {!ended && (
+      {!ended && !cancelled && (
         <section className="flex flex-wrap gap-2 border-t pt-6">
           <Button variant="outline" onClick={() => setEditing(true)}>
             Edit

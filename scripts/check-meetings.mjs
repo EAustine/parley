@@ -755,11 +755,60 @@ try {
     "with a further SEQUENCE, or the cancellation would be ignored",
     `${sequenceOf(afterEdit)} → ${sequenceOf(afterCancel)}`,
   );
+  // §3.2: cancelled is its own state, and the copy is the whole reason for it.
+  // Someone holding a link for a meeting called off yesterday arrives on time;
+  // telling them it "has ended" is a factual error about their own punctuality.
   const cancelledJoin = await fetch(`${APP}/j/${plan.code}`);
+  const cancelledHtml = await cancelledJoin.text();
   check(
-    cancelledJoin.status === 200 && (await cancelledJoin.text()).includes("has ended"),
-    "and the link still resolves, to the designed ended state",
+    cancelledJoin.status === 200 && cancelledHtml.includes("was cancelled"),
+    "the link still resolves, to a state that says cancelled",
     `HTTP ${cancelledJoin.status}`,
+  );
+  check(
+    !cancelledHtml.includes("has ended"),
+    "and never says the meeting ended, which would be untrue",
+  );
+  check(
+    // The title the edit above set, not the one it was created with — this
+    // meeting has been renamed since, and asserting the stale value tests the
+    // fixture rather than the page.
+    cancelledHtml.includes("Roadmap planning, revised"),
+    "carrying the current title, so a link-holder knows which meeting this was",
+  );
+
+  // Unjoinable, by the same code an ended meeting uses — the contract has one
+  // answer for "resolved but not joinable"; the join page draws the
+  // distinction, because that is where it changes what someone reads.
+  const cancelledToken = await fetch(`${APP}/api/livekit/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-real-ip": `10.4.4.${Date.now() % 250}` },
+    body: JSON.stringify({ code: plan.code, displayName: "Ama" }),
+  });
+  check(
+    cancelledToken.status === 410,
+    "and a cancelled meeting cannot be joined",
+    `HTTP ${cancelledToken.status}`,
+  );
+
+  // Cancelling twice is not an error to shout about, but it is not a second
+  // cancellation either.
+  const twice = await app(`/api/meetings/${plan.code}`, { method: "DELETE" });
+  check(
+    twice.status === 200 && (await twice.json()).status === "cancelled",
+    "cancelling an already-cancelled meeting is a no-op",
+    `HTTP ${twice.status}`,
+  );
+
+  const editCancelled = await app(`/api/meetings/${plan.code}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Back on" }),
+  });
+  check(
+    editCancelled.status === 409,
+    "and it cannot be edited back into existence",
+    `HTTP ${editCancelled.status}`,
   );
 
 

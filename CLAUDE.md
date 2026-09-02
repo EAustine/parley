@@ -326,6 +326,8 @@ Earned the hard way; each one comes from a check that passed while exercising th
 
 **Scope queries by role or test id, not by visible text.** `getByText("Ama Serwaa")` was precise until Phase 5 added join and leave messages carrying the same name. The product grows; text-based queries silently widen.
 
+**A test owns its fixtures.** Two scheduling tests were wrong before the code was, because they leaned on rows other sections deliberately mutate — one ages the instant meeting past the 30-day window, another renames the scheduled one. Shared mutable fixtures make a test's result depend on what else ran.
+
 **Assert room composition, never assume it.** Two tests passed alone and failed in a full run for exactly this reason.
 
 **A test runner that can reuse a stale build is worse than no runner.** `reuseExistingServer: false`. It failed a fix that worked, and the same defect would have passed a break just as quietly.

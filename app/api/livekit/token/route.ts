@@ -115,7 +115,10 @@ export async function POST(request: NextRequest) {
   // Counted here and nowhere else — after the lookup, and only on a miss. This
   // is the tier that actually defends the code space, and putting it before
   // the lookup would make it a limit on joining, which is what §7 removed.
-  if (!meeting || meeting.status === "ended") {
+  // A cancelled meeting is as unjoinable as an ended one. The contract has a
+  // single code for "resolved but not joinable"; the join page is what draws
+  // the distinction, because that is where it changes what someone reads.
+  if (!meeting || meeting.status === "ended" || meeting.status === "cancelled") {
     const misses = await consumeRateLimit({
       key: `livekit-miss:${subject}`,
       ...MISSES,

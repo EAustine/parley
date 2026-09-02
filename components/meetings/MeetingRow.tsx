@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { formatMeetingTime } from "@/lib/meetings/format";
+import type { MeetingStatus } from "@/lib/supabase/types";
 import { CopyLinkButton } from "@/components/meetings/CopyLinkButton";
 import { Badge } from "@/components/ui/badge";
 
@@ -11,7 +12,7 @@ export type MeetingRowData = {
   code: string;
   title: string;
   scheduled_start: string | null;
-  status: "scheduled" | "live" | "ended";
+  status: MeetingStatus;
   created_at: string;
   participantCount: number;
 };
@@ -43,6 +44,13 @@ export function MeetingRow({
             <Badge variant="secondary" className="type-caption">
               Live
             </Badge>
+          ) : meeting.status === "cancelled" ? (
+            /* §3.2: cancelled meetings appear under past "labelled as
+               cancelled rather than silently mixed in with meetings that took
+               place". The label is the only thing distinguishing them. */
+            <Badge variant="outline" className="type-caption">
+              Cancelled
+            </Badge>
           ) : meeting.scheduled_start === null && !past ? (
             <Badge variant="outline" className="type-caption">
               Instant
@@ -56,7 +64,7 @@ export function MeetingRow({
           <code className="type-data select-all tracking-[0.08em]">
             {meeting.code}
           </code>
-          {past && (
+          {past && meeting.status !== "cancelled" && (
             <span>
               {meeting.participantCount}{" "}
               {meeting.participantCount === 1 ? "participant" : "participants"}

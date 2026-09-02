@@ -316,5 +316,25 @@ const sample = {
     "and the same on the Outlook link");
 }
 
+// §3.9: "Always print the zone label next to a time." Checked across zones
+// that label themselves differently, because a formatter that drops the label
+// produces a number that looks perfectly reasonable and cannot be checked.
+console.log("\nZone labels\n");
+for (const [zone, expected] of [
+  ["Africa/Accra", "GMT"],
+  ["Europe/Berlin", "GMT+2"],
+  ["America/Los_Angeles", "PDT"],
+  ["Asia/Kolkata", "GMT+5:30"],
+]) {
+  const rendered = formatInTimeZone(
+    new Date("2026-09-15T14:30:00Z"), zone, "HH:mm zzz",
+  );
+  t(rendered.endsWith(expected), `${zone.padEnd(20)} → ${rendered}`, `expected …${expected}`);
+}
+// Named abbreviations where a zone has one, offsets where it does not. Worth
+// pinning: an assertion written against one spelling fails in half the world.
+t(formatInTimeZone(new Date("2026-09-15T14:30:00Z"), "America/Los_Angeles", "zzz") === "PDT",
+  "a zone with a common abbreviation uses it rather than an offset");
+
 console.log(`\n${count - failed}/${count} calendar checks passed.`);
 if (failed) process.exit(1);

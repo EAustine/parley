@@ -95,6 +95,11 @@ Collision handling: generate, insert, retry on unique-constraint violation. Do n
 - Copy link puts the full URL on the clipboard and confirms with a toast that says "Link copied"
 - Unknown code shows a dedicated page: what happened, and a field to try another code. Not a 404.
 - Ended meeting shows "This meeting has ended", the meeting **title**, and the option to start a new one — distinct from the unknown-code page, never conflated with it
+- **Cancelled meeting shows "This meeting was cancelled"** — a fourth enum value, not folded into `ended`
+
+  Cancelling a scheduled meeting and a meeting running to its end are different events, and collapsing them makes the product lie in the commonest case. Someone holding a link for Thursday at 3, cancelled on Wednesday, arrives on time and reads that they missed it. They didn't; it never happened. That is a factual error in user-facing copy, which is a worse cost than the migration, the `get_meeting_by_code` change, and one more join-page state.
+
+  Cancelling never deletes the row — a link already in someone's inbox must keep resolving to a designed state rather than the unknown-code page. On the dashboard, cancelled meetings leave the upcoming list and appear under past, labelled as cancelled rather than silently mixed in with meetings that took place.
 
   Not the host's name. The original spec asked for it and contradicted §6, where `get_meeting_by_code` deliberately returns no host identity. The title does the same job — it tells someone holding several links which one this was — without exposing a person's name to anyone who has the code. The title is already disclosed to link-holders while the meeting is live, so surfacing it afterwards is no new class of disclosure; a host's identity would be.
 
@@ -504,7 +509,7 @@ Browser (Next.js App Router, React 19)
 ## 6. Data model
 
 ```sql
-create type meeting_status as enum ('scheduled', 'live', 'ended');
+create type meeting_status as enum ('scheduled', 'live', 'ended', 'cancelled');
 
 create table meetings (
   id                uuid primary key default gen_random_uuid(),
@@ -566,7 +571,7 @@ as $$
   from meetings m
   where m.code = p_code
     and (
-      m.status <> 'ended'
+      m.status not in ('ended', 'cancelled')
       or coalesce(m.ended_at, m.created_at) > now() - interval '30 days'
     )
 $$;
@@ -696,6 +701,10 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 | `/j/[code]` pre-join | ≤ 230 kB | ~55 kB |
 | `/room/[code]` | ≤ 250 kB before the dynamic import | ~75 kB |
 | `/dashboard` | ≤ 280 kB | ~105 kB |
+| `/schedule` | ≤ 290 kB | ~115 kB |
+| `/schedule/[code]` | ≤ 290 kB | ~115 kB |
+
+The two scheduling routes sit slightly above the dashboard despite mattering less, because they carry `react-day-picker` and the dashboard does not. Same category otherwise: authenticated, low-traffic, returning users. Moving the edit form behind `next/dynamic` was the right instinct — most visits to `/schedule/[code]` copy a link and never open it.
 
 `/j/[code]` is the one that matters. It is a cold load for a stranger on a phone with an empty cache, and §3.3 names it the highest-traffic flow in the product. The dashboard is deliberately loose: it sits behind auth, the same people revisit it, and its bundle amortises across sessions.
 
