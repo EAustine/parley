@@ -308,10 +308,19 @@ Radius `0.5rem`. Tiles `0.75rem`. Call controls are circles: 48px for mic, camer
 | Speaking ring | 120ms | linear |
 | Panel open | 180ms | `cubic-bezier(0.2, 0, 0, 1)` |
 | Panel close | instant, by design | — |
-| Grid reflow | 200ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Grid reflow on join/leave | 200ms, FLIP | `cubic-bezier(0.2, 0, 0, 1)` |
+| Share region enter | 240ms | `cubic-bezier(0.2, 0, 0, 1)` |
 | Reaction lifespan | 2400ms | ease-out |
 
 All motion answers a user action. No ambient animation. `prefers-reduced-motion: reduce` removes travel, keeps opacity.
+
+**Grid reflow uses FLIP, and transforms are exempt from the container-only rule.** `grid-template-columns` interpolates only between track lists of equal length, so a declared transition on the grid can never fire on a join — the count changes every time. Measure each tile before and after, apply the inverse transform, animate to identity.
+
+The earlier rule — animate the container, not each tile — was aimed at layout-triggering properties, where sixteen simultaneous transitions would thrash. `transform` and `opacity` never touch layout and run on the compositor, so sixteen of them are cheap. **Per-tile animation is permitted when and only when it is transform or opacity.**
+
+Constraints: one batched layout read per reflow (measure every tile, then write every transform — never interleave); transform the tile wrapper, never the `<video>` element, or the video texture repaints; tiles arriving have no previous position, so they fade and scale in rather than FLIP; departing tiles are not animated. Under `prefers-reduced-motion`, skip the whole cycle and snap.
+
+Measure the frame timing at sixteen tiles rather than assuming it. Cheap is a claim until it is a number.
 
 **Panels animate in and snap out, deliberately.** The closed state is the `hidden` attribute, and our own base layer makes that `display: none !important` — declared there precisely so the guarantee does not rest on a third-party reset. Nothing transitions out of `display: none`, and that is an acceptable trade rather than a limitation to engineer around.
 

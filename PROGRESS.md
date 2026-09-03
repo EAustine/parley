@@ -3972,3 +3972,66 @@ grid reflow, as the same kind of question.
 
 `check:media` **63/63** — 44 app parallel, 19 media serial. All 375 static
 checks green.
+
+### The documents answered both open questions, and overruled both answers
+
+I had asked, and been told, to accept the grid snap and drop the share-switch
+row. `BUILD-PLAN-v1.2.md` and `CLAUDE.md` then settled both the other way, and
+both are better than what I proposed.
+
+**Grid reflow: FLIP, and the container-only rule is amended rather than
+obeyed.** CLAUDE.md now states the exemption directly — "Per-tile animation is
+permitted when and only when it is transform or opacity" — which resolves the
+tension I had raised as a dilemma. The rule was aimed at layout-triggering
+properties, where sixteen simultaneous transitions thrash; `transform` and
+`opacity` never touch layout.
+
+And the reason it earns its keep, which I had not articulated: "A panel close is
+initiated by the person watching it, so instant is fine. **A join is initiated by
+someone else, and the reflow is the only signal it happened**" — the motion says
+the grid rearranged and lets you follow where people went. It carries
+information rather than polish, which is why it is not the same question as the
+panel close at all.
+
+`lib/hooks/useGridFlip.ts` implements it to the constraints as stated: one
+batched read then one batched write (interleaving would reintroduce the thrash
+through the loop rather than the property); the tile element and never the
+`<video>` inside it; arriving tiles fade and scale rather than flying from
+nowhere, having no previous position to invert; departing tiles unanimated;
+reduced motion skips the cycle entirely.
+
+**"Measure the frame timing at sixteen tiles rather than assuming it. Cheap is a
+claim until it is a number."** The number, from `grid.spec.ts` with seventeen
+real contexts on one machine:
+
+> reflow at 16 tiles → 72 frames, **0 over 32ms**, worst 17ms
+
+**Share region enter, not "share layout switch".** A directed entrance — the
+incoming share region fades and scales in, 240ms, opacity and scale only — and
+nothing that was already on screen is dipped. The reasoning is sharper than my
+"drop it": a whole-stage dip reads as a glitch in a live call, and a full
+cross-fade claims a continuity between two layouts that does not exist. The
+filmstrip tiles snap, which is accepted, because making them FLIP across the
+switch needs the same DOM nodes to survive a subtree swap — a structural
+question rather than a motion one.
+
+### Two mutations, and one that failed for the wrong reason
+
+The FLIP test asserts a tile already on screen actually animates when someone
+joins, and that what it animates is compositor-only. Both matter: the first
+because the old declared transition never ran, the second because a layout
+property there is the thrash the rule exists to prevent.
+
+The first mutation attempt broke the *syntax* rather than the behaviour, and the
+second (`if (false)`) made TypeScript narrow the block away and fail the build —
+neither tested anything. Only the third, forcing `reduce` to true with a wide
+type, actually exercised the guard: "the existing tile did not animate when
+someone joined". Worth recording because two of the three mutations looked like
+they had disproved the test and had not.
+
+That mutation is also the reduced-motion path, so one check covers both.
+
+### Checks
+
+`check:media` **65/65** — 45 app parallel, 20 media serial. All 375 static
+checks green.

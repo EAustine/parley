@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParticipants, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
@@ -10,6 +10,7 @@ import {
   visibleOrder,
   type Viewport,
 } from "@/lib/room/layout";
+import { useGridFlip } from "@/lib/hooks/useGridFlip";
 import { OverflowTile, Tile } from "@/components/room/Tile";
 import { Button } from "@/components/ui/button";
 
@@ -57,6 +58,27 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
       participant: p,
     })),
     filmstrip ? strip : layout,
+  );
+
+  /*
+   * FLIP the grid on a join or leave — CLAUDE.md's "Grid reflow on join/leave |
+   * 200ms, FLIP".
+   *
+   * The signature is who is shown and in what arrangement, because those are
+   * the two things that move a tile: the set changing, and the same set being
+   * laid out differently. The overflow count is in it because "+3" becoming
+   * "+4" changes nothing geometric but "+0" becoming "+1" adds a cell.
+   */
+  const grid = useRef<HTMLDivElement>(null);
+  useGridFlip(
+    grid,
+    [
+      shown.map((s) => s.identity).join(","),
+      layout.columns,
+      layout.rows,
+      layout.overflow,
+      layout.letterbox,
+    ].join("|"),
   );
 
   const cameraFor = (identity: string) => {
@@ -138,6 +160,7 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
       >
         {/* v1.2 B3: an 8px gutter, the same as the filmstrip's. */}
         <div
+          ref={grid}
           className="grid h-full w-full gap-2"
           style={{
             gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`,
@@ -160,10 +183,13 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
                   aspectRatio: "16 / 9",
                 }
               : null),
-            // 200ms cubic-bezier(0.2, 0, 0, 1) is the grid-reflow step in
-            // CLAUDE.md. Only the template transitions — tiles themselves must
-            // not animate size, which is what produces reflow thrash.
-            transition: "grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1)",
+            /*
+             * No transition here. This declared
+             * `grid-template-columns 200ms` and it never once ran:
+             * `grid-template-columns` interpolates only between track lists of
+             * equal length, and a join changes the count every time. The
+             * reflow is done by FLIP in `useGridFlip` instead — see there.
+             */
           }}
         >
           {shown.map(({ participant }) => (

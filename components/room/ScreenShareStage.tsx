@@ -45,7 +45,9 @@ export function ScreenShareStage({
 
   return (
     <div
-      className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-card"
+      // v1.2 E2's "Share region enter": this is the thing that arrived, so it
+      // is the thing that animates — see `app/globals.css`.
+      className="parley-share-enter relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-card"
       style={{ outline: "1px solid var(--tile-border)", outlineOffset: "-1px" }}
     >
       <video

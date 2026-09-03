@@ -100,3 +100,93 @@ test("every breakpoint from 1 to 17, with real participants", async ({ browser, 
     for (const p of everyone) await p.context.close().catch(() => {});
   }
 });
+
+/**
+ * CLAUDE.md, on the FLIP reflow: "Measure the frame timing at sixteen tiles
+ * rather than assuming it. Cheap is a claim until it is a number."
+ *
+ * So this is the number. Sixteen real participants, then one more joins — the
+ * worst reflow the product can produce — and the long-frame count during the
+ * 200ms animation is recorded and asserted against a ceiling.
+ *
+ * The claim being tested is not "FLIP is fast" in the abstract. It is that
+ * animating sixteen tiles on the compositor does not cost what animating
+ * sixteen *layouts* would, which is the reason CLAUDE.md permits per-tile
+ * animation here at all.
+ */
+test("sixteen tiles reflow without dropping frames", async ({ browser, meetingCode }) => {
+  test.setTimeout(600_000);
+
+  const everyone: Participant[] = [];
+  try {
+    const observer = await joinAs(browser, "Ama Serwaa", {
+      code: meetingCode,
+      withMedia: false,
+    });
+    everyone.push(observer);
+
+    while (everyone.length < 16) {
+      everyone.push(
+        await joinAs(browser, `Guest ${everyone.length + 1}`, {
+          code: meetingCode,
+          withMedia: false,
+        }),
+      );
+    }
+    await expect
+      .poll(async () => (await gridShape(observer.page)).cells, { timeout: 60_000 })
+      .toBe(16);
+
+    // Watch frame deltas across the next reflow.
+    const frames = observer.page.evaluate(() => {
+      return new Promise<{ frames: number; longFrames: number; worst: number }>((resolve) => {
+        const deltas: number[] = [];
+        let last = performance.now();
+        const started = last;
+        const tick = (now: number) => {
+          deltas.push(now - last);
+          last = now;
+          if (now - started < 600) requestAnimationFrame(tick);
+          else {
+            // Ignore the first delta: it spans the gap before we started.
+            const real = deltas.slice(1);
+            resolve({
+              frames: real.length,
+              // 32ms is two frames at 60Hz — a dropped frame, not a slow one.
+              longFrames: real.filter((d) => d > 32).length,
+              worst: Math.round(Math.max(...real)),
+            });
+          }
+        };
+        requestAnimationFrame(tick);
+      });
+    });
+
+    everyone.push(
+      await joinAs(browser, "Guest 17", { code: meetingCode, withMedia: false }),
+    );
+    const timing = await frames;
+    await expect
+      .poll(async () => (await gridShape(observer.page)).cells, { timeout: 60_000 })
+      .toBe(16);
+
+    console.log(
+      `  reflow at 16 tiles → ${timing.frames} frames, ` +
+        `${timing.longFrames} over 32ms, worst ${timing.worst}ms`,
+    );
+
+    /*
+     * A ceiling rather than a target. Real browsers under a real SFU with
+     * seventeen contexts on one machine will drop the occasional frame for
+     * reasons that have nothing to do with this animation; what would show a
+     * problem is a *run* of them, which is what sixteen simultaneous layout
+     * animations would produce.
+     */
+    expect(
+      timing.longFrames,
+      `${timing.longFrames} long frames during the reflow (worst ${timing.worst}ms)`,
+    ).toBeLessThanOrEqual(6);
+  } finally {
+    for (const p of everyone) await p.context.close().catch(() => {});
+  }
+});

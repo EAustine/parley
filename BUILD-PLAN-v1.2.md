@@ -146,12 +146,20 @@ Under reduced motion: appear and fade in place, no travel, no drift.
 | Control toggle | 120ms | `cubic-bezier(0.2, 0, 0, 1)` |
 | Control hover / press | 120 / 80ms | same |
 | Panel open / close | 180ms | same |
-| Grid reflow on join or leave | 200ms | same |
-| Share layout switch | 240ms | same |
+| Grid reflow on join or leave | 200ms, FLIP | same |
+| Share region enter | 240ms | same |
 | Tile speaking ring | 120ms | linear |
 | Toast | 150 in / 100 out | same |
 
-The grid reflow is the one worth care: when someone joins, tiles should resize into place rather than snapping. Animate the container, not each tile, or 16 tiles will each run their own transition and the frame budget goes.
+**The grid reflow is the one worth care, and the first draft's mechanism could not produce its outcome.** `grid-template-columns` interpolates only between track lists of the same length, and a join changes the count every time — so the declared transition never fires. Use FLIP: measure, invert, animate to identity, transform only. The container-only advice was about layout-triggering properties and does not apply to compositor transforms; see `CLAUDE.md`.
+
+This is the highest-value motion in the product, and for a reason that is not aesthetic. A panel close is initiated by the person watching it, so instant is fine. **A join is initiated by someone else, and the reflow is the only signal it happened** — motion there tells you the grid rearranged and lets you track where people went. It carries information, not just polish.
+
+**Share region enter, not "share layout switch."** The 240ms row had no home in any governing document and described a subtree swap that cannot cross-fade without a remount, which would detach live video tracks. Replace it with a directed transition: when someone else starts sharing, the incoming **share region** fades and scales in — opacity 0→1, scale 0.98→1, 240ms, compositor only, no remount.
+
+Draw the eye to the new thing rather than dipping everything that was already there. A whole-stage opacity dip reads as a glitch in a live call; a full cross-fade claims a continuity between the two layouts that does not exist.
+
+The filmstrip tiles snap into their new positions, and that is accepted. Making them FLIP across the switch requires the same DOM nodes to survive a subtree swap, which is a Track B structural question rather than a motion one. **If the stage already renders one tile list and only the container differs, the FLIP mechanism above handles them for free** — worth checking, not worth restructuring for.
 
 ---
 

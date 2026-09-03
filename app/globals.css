@@ -331,6 +331,35 @@ summary:focus-visible,
 }
 
 /*
+ * v1.2 E2: "Share region enter | 240ms".
+ *
+ * The row used to read "share layout switch", and it described something that
+ * cannot be built: the two layouts are different subtrees, so cross-fading them
+ * needs either a remount — which detaches live video tracks, visibly worse than
+ * snapping — or both mounted at once.
+ *
+ * A directed entrance instead. The incoming share region fades and scales in;
+ * nothing that was already on screen is dipped. A whole-stage opacity dip reads
+ * as a glitch in a live call, and a full cross-fade claims a continuity between
+ * the two layouts that does not exist.
+ *
+ * Opacity and scale only — compositor properties, no layout, and no remount
+ * beyond the one React already does when the branch flips.
+ *
+ * The filmstrip tiles snap into place beside it, and that is accepted: making
+ * them FLIP across the switch needs the same DOM nodes to survive a subtree
+ * swap, which is a structural question rather than a motion one.
+ */
+.parley-share-enter {
+  animation: parley-share-in 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes parley-share-in {
+  from { opacity: 0; scale: 0.98; }
+  to   { opacity: 1; scale: 1; }
+}
+
+/*
  * v1.2 C1/C3: the panels slide in over 180ms on the standard easing.
  *
  * An animation on the *open* state rather than a transition between states,

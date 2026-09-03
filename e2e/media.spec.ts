@@ -283,6 +283,77 @@ test.describe("the grid", () => {
     await kwabena.context.close();
     await ama.context.close();
   });
+
+  /**
+   * v1.2 E2 and CLAUDE.md: "Grid reflow on join/leave | 200ms, FLIP".
+   *
+   * The grid used to declare `transition: grid-template-columns 200ms` and it
+   * never once ran — `grid-template-columns` interpolates only between track
+   * lists of equal length, and a join changes the count every time. The test
+   * above could not see that, because it asserts the end-state shape and the
+   * end state was always right.
+   *
+   * So this asserts the *motion*: that a tile already on screen is actually
+   * animated when someone else arrives. Installed before the join, because a
+   * 200ms animation is long gone by the time a round trip notices it.
+   */
+  test("a join FLIPs the tiles that were already there", async ({ browser, meetingCode }) => {
+    const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(1);
+
+    // Catch the first animation the existing tile runs, and record what it
+    // animated — a FLIP is `translate`/`scale`, never a layout property.
+    const captured = ama.page.evaluate(() => {
+      return new Promise<{ props: string[]; duration: number | null } | null>((resolve) => {
+        const grid = document.querySelector(".grid");
+        if (!grid) return resolve(null);
+        const seen = new Set<string>();
+        const timer = setTimeout(() => resolve(null), 20_000);
+        const check = () => {
+          const tile = grid.querySelector<HTMLElement>("[data-participant]");
+          const running = tile?.getAnimations().find((a) => a.playState === "running");
+          if (running) {
+            clearTimeout(timer);
+            const frames = (running.effect as KeyframeEffect).getKeyframes();
+            for (const frame of frames) {
+              for (const key of Object.keys(frame)) {
+                // `offset`, `computedOffset`, `easing` and `composite` are
+                // keyframe metadata that `getKeyframes()` always returns —
+                // they are not properties being animated.
+                if (!["offset", "computedOffset", "easing", "composite"].includes(key)) {
+                  seen.add(key);
+                }
+              }
+            }
+            resolve({
+              props: [...seen],
+              duration: Number(running.effect?.getComputedTiming().duration ?? null),
+            });
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      });
+    });
+
+    const kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
+    const result = await captured;
+
+    expect(result, "the existing tile did not animate when someone joined").not.toBeNull();
+    // Transform only — CLAUDE.md permits per-tile animation "when and only when
+    // it is transform or opacity", and a layout property here would be the
+    // thrash the container-only rule exists to prevent.
+    for (const prop of result!.props) {
+      expect(
+        ["translate", "scale", "opacity", "transform"],
+        `the reflow animated ${prop}, which is not a compositor property`,
+      ).toContain(prop);
+    }
+
+    await kwabena.context.close();
+    await ama.context.close();
+  });
 });
 
 /**
