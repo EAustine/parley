@@ -189,6 +189,20 @@ Not a 2-up grid consuming the top third. A **horizontally scrollable strip, 96px
 
 ---
 
+## Test suite capacity
+
+Fifty serial tests is a ceiling worth attacking rather than accepting, and the ceiling is a symptom rather than a size. Serial execution is forced by tests sharing rooms; `CLAUDE.md` already says a test owns its fixtures, and a room is a fixture.
+
+**Give each test its own meeting code and the suite parallelises.** Turn on `fullyParallel` with workers. Tests that need several participants in one room create several contexts inside one test — that test still owns its room, and different tests own different rooms.
+
+Check LiveKit's concurrent-participant ceiling before setting the worker count. Workers times participants is the number that matters, and a free-tier limit will surface as flakes that look like race conditions.
+
+**Track B's tests mostly do not need a room at all.** Layout is a function of participant count and container size; it is not a function of media. Grid breakpoints, tile geometry, filmstrip arrangement, and the share-region switch can be asserted at component level with synthetic participant data, real rendering, and measured boxes.
+
+That does not contradict the Phase 4 rule about testing with real tabs rather than faked participant counts. That rule exists to keep WebRTC subscription and track behaviour honest, and those tests stay exactly as they are. Faking participant *data* to test layout maths is a different claim from faking media *state* to test behaviour. The geometry assertion still measures a rendered box, which is the part that was load-bearing.
+
+---
+
 ## Guardrails
 
 Everything in `CLAUDE.md` still binds. Specifically:

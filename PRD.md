@@ -196,7 +196,7 @@ The leave button is distinguished by shape as well as colour, so it is unmistaka
 **Acceptance**
 - Grid reflows without layout thrash when someone joins or leaves
 - Toggling mic updates the icon within one frame of the track state changing
-- Controls remain reachable when both panels are open
+- Controls remain reachable while a panel is open. Only one panel opens at a time — opening chat closes participants and vice versa.
 - Tab order: controls → chat panel → participant panel → back to controls
 - `Cmd/Ctrl + D` toggles mic, `Cmd/Ctrl + E` toggles camera — suppressed while focus is in a text input
 
