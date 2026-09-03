@@ -3415,3 +3415,132 @@ weaken the limit. Recorded because the next person to raise `workers` needs it.
 ### Checks
 
 `check:media` **51/51** in 2.9 minutes, twice. All 375 static checks green.
+
+---
+
+## v1.2 Track B — the room canvas
+
+### B1 — the sharer keeps the grid
+
+`RoomStage` branched on *any* presenter, so the sharer took the same layout as
+everyone watching: a 1fr stage with nothing in it beside a 200px rail. The stage
+was filled by one centred sentence explaining that it was empty.
+
+It now branches on a **remote** presenter. Sharing takes the same path as not
+sharing — the ordinary grid at full size — and the only thing that changes is
+the bar above it. §3.7's "the sharer's own view of the shared content is
+suppressed" is satisfied more completely by not rendering the region than by
+rendering it around an apology for being blank.
+
+`SharingBar` was already exactly the bar B1 describes: icon, "You're sharing
+your screen", Stop sharing inside it, persistent rather than tied to the
+auto-hiding control bar. Nothing to build there.
+
+That deletes two of A5's three simultaneous statements of the sharing state —
+the centred paragraph and the bottom-left "You are sharing" label, both of which
+lived in the branch that no longer exists. The bar is the one that remains.
+
+**Overlay versus in flow was a real choice**, and the plan does not make it.
+The bar is `absolute top-0`, which cost nothing over an empty stage and covers
+the top of the first tile row over a full grid. The stage now reserves `pt-16`
+while sharing, the same way it already reserves `pb-24` for the control bar —
+reserving is the established pattern in this room, and a floating bar over faces
+is not the same thing as a floating bar over dead space.
+
+The test that pinned the old behaviour asserted the paragraph was visible.
+Asserting its absence would prove very little on its own — a region rendered
+empty would pass too — so it now asserts no contain-fitted video on the sharer's
+page **and** that their grid spans more than 80% of the stage.
+
+### B2 — the filmstrip
+
+220px, and scrolling rather than clipping. `overflow-hidden` was the defect: the
+capacity cap decides who is shown and the "+N" cell carries the rest, but on a
+short viewport the last tile — sometimes the "+N" itself — was simply absent
+with nothing to say so. The 8px gutter and the bottom-anchored overflow cell
+were already right.
+
+`object-fit: contain` on shared content was already right too, and already
+tested.
+
+### B3 — tiles
+
+The avatar was a fixed 64px: a coin adrift in a full-area tile, and nearly the
+whole cell in a filmstrip. It is now `min(28cqmin, 128px)` against the tile as a
+size container, so one rule covers every breakpoint. The ceiling matters at one
+participant, where 28% of a letterboxed tile would be a 200px disc that reads as
+a placeholder graphic rather than as someone's absence.
+
+The label scrim was sized by its own content, so it was a thin band on a large
+tile and most of the cell on a small one. Now `max(30cqh, 2.75rem)` — the
+proportion B3 asks for, with a floor, because 30% of a 96px strip tile is less
+than the label's own line box and the gradient would start inside the text.
+
+**The grid gutter was 12px against the filmstrip's 8px**, and the tile radius
+computed to 0.7rem rather than the 0.75rem `CLAUDE.md` names — `--radius-xl` was
+`calc(var(--radius) * 1.4)`. Both are the spec being *nearly* met: close enough
+that nobody sees it, wrong enough that the written number and the built number
+disagree. This is what "assert rendered geometry, never declared CSS" is for; a
+class-name check would have read `rounded-xl` and reported success.
+
+**Making the tile a size container exposed a latent bug.** Size containment
+means the contents no longer contribute to the box, so a tile whose height came
+from its own content collapses to nothing. In the grid that never showed,
+because grid items stretch. In the filmstrip the tile sat inside an
+`aspect-video` wrapper and was sized by the video inside it — approximately
+right, by accident, until containment removed the accident. `h-full w-full` on
+the tile is the fix, and the filmstrip has never been correctly sized until now.
+
+### B4 — the control bar
+
+The three tiers were already the right sizes: 48px devices, 44px secondary, the
+leave pill. A panel toggle already read as filled while its panel was open.
+What was missing was the grouping, the ghost resting state, and the motion.
+
+Grouped by spacing rhythm — `[mic camera]` · gap · `[share reactions chat
+participants]` · larger gap · `[leave]`. Secondary controls are ghost at rest
+with a transparent border rather than none, so the box does not resize when it
+returns. Hover 1.04 and a background lift over 120ms; press 0.96 over 80ms;
+`motion-reduce` drops the travel and keeps the fill, because a control that
+gives no feedback at all on press is worse for everyone and a fill is not
+travel.
+
+**The bar was shrinking its controls below the 44px floor.** Six circles and a
+leave pill need about 442px; the bar is capped at the viewport; flex items
+shrink by default. On a 375pt phone that took every control under §9's floor on
+the one surface where that floor is not negotiable — and `check:targets` could
+not see it, because it measures declared CSS and nothing declared was wrong.
+
+Grouping is what made it visible: a group's `min-width: auto` stops it shrinking
+below its contents, so the overflow became a measured 442px instead of a silent
+squeeze. The bar now wraps, which keeps both the floor and the rhythm — the
+groups stay whole and the break falls between them. `mobile.spec` now measures
+every control's rendered box against 44px, so the floor is guarded where it was
+previously only declared.
+
+### Two defects the mapping pass found
+
+**The room lost its heading while anyone shared.** `RoomGrid`'s filmstrip branch
+renders the strip's own `Participants, N` label *instead of* the room's
+`Meeting, N participants` heading — so for the duration of a share, §9's "the
+video grid carries a heading and a participant count, so the shape of the room
+is available without seeing it" stopped holding for every viewer. The share
+layout now carries the heading itself.
+
+**A connection warning was invisible during a share.** `SharingBar` is
+`absolute top-0 z-30` and `ConnectionBar` is `absolute top-0 z-20`, so the
+sharing bar painted over it — while `RoomStage` carried a comment saying the
+connection bar "sits below §3.7's sharing bar rather than displacing it". True
+of the intent, not of the boxes. The connection bar now offsets below it. A
+warning that disappears exactly when it is most likely to matter is the silent
+failure §3.11 exists to prevent.
+
+### Checks
+
+`check:media` **56/56**. All 375 static checks green.
+
+One flake worth recording: `media.spec`'s video test failed once under four
+workers with "tile 1 is a frozen frame", and passed 7/7 in isolation seconds
+later. Real media contending with `grid.spec`'s seventeen participants is the
+load ceiling the parallelisation note already flagged, and it is the first time
+it has actually bitten.

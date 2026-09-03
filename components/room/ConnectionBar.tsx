@@ -36,11 +36,14 @@ export function ConnectionBar({
   attempts,
   code,
   displayName,
+  sharing,
 }: {
   phase: Exclude<RoomPhase, "healthy" | "failed">;
   attempts: number;
   code: string;
   displayName: string;
+  /** Whether the sharing bar is above us, which occupies the same edge. */
+  sharing: boolean;
 }) {
   const critical = barTone(phase) === "critical";
   /**
@@ -70,6 +73,17 @@ export function ConnectionBar({
       // "scope queries by role or test id" rule is about, found the usual way.
       data-connection-bar={phase}
       className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-3 pt-3"
+      /**
+       * Below the sharing bar when there is one.
+       *
+       * Both are `absolute inset-x-0 top-0` and the sharing bar is `z-30`, so
+       * this was painted underneath it whenever someone was sharing — and
+       * `RoomStage` carried a comment saying the two stacked, which was true of
+       * the intent and not of the boxes. A connection warning that disappears
+       * exactly when it is most likely to matter is the silent failure §3.11
+       * exists to prevent.
+       */
+      style={{ top: sharing ? "3.5rem" : 0 }}
     >
       <div
         className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-lg px-3 py-2"

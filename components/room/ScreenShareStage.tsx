@@ -8,6 +8,18 @@ import { displayNameOf } from "@/lib/room/participant";
 /**
  * The shared content, in the main area — §3.4's share layout.
  *
+ * **Only ever rendered for someone watching, never for the sharer.** §3.7 asks
+ * for the sharer's own view to be suppressed, and this used to do that by
+ * rendering the region with a paragraph in it explaining the absence. That is a
+ * suppression that still costs the sharer the whole main area: v1.2 B1 recorded
+ * roughly 85% empty black with one line of text floating in it, and the
+ * participants squeezed into a narrow column beside nothing.
+ *
+ * `RoomStage` now takes the branch instead, and the sharer keeps the ordinary
+ * grid at full size. Not rendering the region at all is the stronger reading of
+ * "suppressed", and it removes two of the three places the sharing state was
+ * being announced at once — v1.2 A5.
+ *
  * `object-fit: contain`, not `cover`. A tile crops because a face off-centre is
  * still a face; a shared screen cropped is a shared screen with the thing
  * someone is pointing at cut off. This is the one surface in the room where
@@ -16,12 +28,9 @@ import { displayNameOf } from "@/lib/room/participant";
 export function ScreenShareStage({
   presenter,
   track,
-  isLocal,
 }: {
   presenter: Participant;
-  /** Null when we are the presenter — §3.7 suppresses the infinite mirror. */
   track: Track | null;
-  isLocal: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -39,23 +48,13 @@ export function ScreenShareStage({
       className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl bg-card"
       style={{ outline: "1px solid var(--tile-border)", outlineOffset: "-1px" }}
     >
-      {isLocal ? (
-        // §3.7: "The sharer's own view of the shared content is suppressed to
-        // avoid the infinite mirror." Showing them their own screen inside
-        // their own screen is both useless and hypnotic.
-        <p className="type-body px-8 text-center text-muted-foreground">
-          You&rsquo;re sharing your screen. Everyone else can see it — your own
-          view is hidden so it doesn&rsquo;t mirror itself.
-        </p>
-      ) : (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="h-full w-full object-contain"
-        />
-      )}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="h-full w-full object-contain"
+      />
 
       {/* Rule 4: on a scrim, never on the content. */}
       <div
@@ -63,7 +62,7 @@ export function ScreenShareStage({
         style={{ background: "linear-gradient(to top, var(--scrim), transparent)" }}
       >
         <span className="type-caption text-foreground">
-          {isLocal ? "You are" : `${displayNameOf(presenter)} is`} sharing
+          {displayNameOf(presenter)} is sharing
         </span>
       </div>
     </div>

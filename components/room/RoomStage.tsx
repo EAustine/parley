@@ -377,9 +377,17 @@ function RoomSurface({
       <ShortcutsDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <div
-        className={
-          chatOpen || participantsOpen ? "h-full md:pr-[360px]" : "h-full"
-        }
+        className={[
+          "h-full",
+          chatOpen || participantsOpen ? "md:pr-[360px]" : "",
+          // The sharing bar is `absolute top-0`, so the stage has to make room
+          // for it the way `pb-24` already makes room for the control bar.
+          // Overlaying it would cover the top of the grid, which B1 exists to
+          // give back.
+          share.sharing ? "pt-16" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         style={{
           // §3.11: "Overlay over the dimmed, frozen room — not a full-page
           // unmount." The grid keeps its last frame because nothing detached;
@@ -390,20 +398,41 @@ function RoomSurface({
           transition: "opacity 200ms cubic-bezier(0.2, 0, 0, 1)",
         }}
       >
-        {share.presenter ? (
+        {share.presenter && !share.presenter.isLocal ? (
           // §3.4: shared content takes the main area, participants collapse to
           // a filmstrip — right edge on desktop, a top strip on mobile.
           <div className="flex h-full flex-col gap-3 md:flex-row">
+            {/*
+              §9: "The video grid carries a heading and a participant count, so
+              the shape of the room is available without seeing it." `RoomGrid`
+              renders that heading, and its filmstrip branch renders the strip's
+              own label *instead of* it — so while anyone shared, every viewer's
+              room lost its heading entirely. It is carried here instead, where
+              it survives the layout switch.
+            */}
+            <h1 className="sr-only">
+              Meeting, {participants.length}{" "}
+              {participants.length === 1 ? "participant" : "participants"}
+            </h1>
             <div className="min-h-0 flex-1 order-last md:order-first">
               <ScreenShareStage
                 presenter={share.presenter}
                 track={share.remoteTrack}
-                isLocal={share.presenter.isLocal}
               />
             </div>
             <RoomGrid filmstrip />
           </div>
         ) : (
+          /*
+           * v1.2 B1: **the sharer does not need to see their own screen; they
+           * need to see the people.** So sharing takes the same branch as not
+           * sharing — the ordinary grid at full size — and the only thing that
+           * changes is the persistent bar above it.
+           *
+           * §3.7's "the sharer's own view of the shared content is suppressed"
+           * is satisfied more completely by this than by the region that used
+           * to render in its place carrying a sentence about being empty.
+           */
           <RoomGrid />
         )}
       </div>
@@ -420,6 +449,7 @@ function RoomSurface({
           attempts={connection.attempts}
           code={code}
           displayName={displayNameOf(localParticipant)}
+          sharing={share.sharing}
         />
       )}
 

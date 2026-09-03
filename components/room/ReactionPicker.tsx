@@ -31,9 +31,10 @@ export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void
             <button
               type="button"
               aria-label="Send a reaction"
-              className="flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+              // v1.2 B4: secondary tier — ghost at rest, lifting on hover.
+              className="flex size-11 items-center justify-center rounded-full border transition-[transform,background-color,border-color] duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:scale-[1.04] hover:bg-[var(--secondary)] active:scale-[0.96] active:duration-[80ms] motion-reduce:transform-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
               style={{
-                borderColor: "var(--tile-border)",
+                borderColor: "transparent",
                 color: "var(--foreground)",
               }}
             >

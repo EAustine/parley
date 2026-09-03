@@ -47,6 +47,26 @@ test.describe("the room on a phone", () => {
     expect(box!.x, "the mic control is clipped off the left edge")
       .toBeGreaterThanOrEqual(0);
 
+    /**
+     * And every control keeps §9's floor.
+     *
+     * The bar used to fit this viewport by shrinking its controls — flex items
+     * shrink by default — which put them under 44px on the surface the floor
+     * exists for. `check:targets` reads declared CSS and saw nothing wrong.
+     * This measures what was rendered, which is the only way that shows.
+     */
+    const undersized = await page.evaluate(() => {
+      const bar = document.querySelector('[aria-label="Leave"], button');
+      void bar;
+      return [...document.querySelectorAll<HTMLElement>("button")]
+        .map((b) => ({ label: b.getAttribute("aria-label") ?? b.textContent?.trim() ?? "", box: b.getBoundingClientRect() }))
+        .filter((b) => b.box.width > 0 && b.box.height > 0)
+        .filter((b) => /microphone|camera|share|reaction|^Chat$|^Participants$|^Leave$/i.test(b.label))
+        .filter((b) => b.box.width < 44 || b.box.height < 44)
+        .map((b) => `${b.label} ${Math.round(b.box.width)}x${Math.round(b.box.height)}`);
+    });
+    expect(undersized, "controls shrank below the 44px floor to fit").toEqual([]);
+
     const leaveBox = await page.getByRole("button", { name: "Leave" }).boundingBox();
     expect(leaveBox, "the leave control did not render").not.toBeNull();
     expect(

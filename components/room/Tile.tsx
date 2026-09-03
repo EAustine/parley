@@ -62,8 +62,20 @@ export function Tile({
       // The e2e suite scopes by attribute and measures the rendered opacity of
       // the layer below — "assert rendered geometry, never declared CSS".
       data-connection={treatment}
-      className="relative overflow-hidden rounded-xl bg-card"
+      className="relative h-full w-full overflow-hidden rounded-xl bg-card"
       style={{
+        // A size container, so the avatar and the label scrim below can be a
+        // proportion of *this tile* rather than a fixed number that is right at
+        // one grid breakpoint and wrong at the rest — v1.2 B3.
+        //
+        // `h-full w-full` above is what makes that safe. Size containment means
+        // the contents no longer contribute to the box, so a tile whose height
+        // came from its own content collapses to nothing. In the grid that
+        // never showed, because grid items stretch; in the filmstrip the tile
+        // sits inside an `aspect-video` wrapper and was sized by the video
+        // inside it — approximately right, by accident, until containment
+        // removed the accident.
+        containerType: "size",
         // Rule 5, and §3.4: no hue. Idle is 1px --tile-border at 3.33:1 against
         // the ground, speaking is 2px --foreground at 17.29:1 — a change in
         // both weight and value, so it survives greyscale and any video behind
@@ -127,11 +139,29 @@ export function Tile({
             {/* §3.4: the initial on --secondary, uniform. A per-identity hue
                 would be the only chroma in the room and would be decorative —
                 tile position is stable and the name is directly below. */}
+            {/*
+              v1.2 B3: roughly 28% of the tile's shorter side, with a ceiling.
+              It was a fixed 64px, which is a coin marooned in the middle of a
+              full-area tile at one participant and nearly the whole cell at
+              sixteen. `cqmin` is the shorter side of the tile, so one rule
+              covers every breakpoint.
+
+              The cap matters at one participant, where 28% of a letterboxed
+              720px-tall tile would be a 200px disc — a scale that reads as a
+              placeholder graphic rather than as a person's absence.
+            */}
             <div
-              className="flex size-16 items-center justify-center rounded-full bg-secondary"
+              className="flex items-center justify-center rounded-full bg-secondary"
+              style={{
+                width: "min(28cqmin, 128px)",
+                height: "min(28cqmin, 128px)",
+              }}
               aria-hidden
             >
-              <span className="type-h2 text-secondary-foreground">
+              <span
+                className="text-secondary-foreground"
+                style={{ fontSize: "min(12cqmin, 56px)", fontWeight: 600, lineHeight: 1 }}
+              >
                 {initialOf(name)}
               </span>
             </div>
@@ -145,6 +175,18 @@ export function Tile({
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 px-3 py-2"
         style={{
+          /*
+           * v1.2 B3: a bottom-only gradient about 30% of the tile's height —
+           * "enough to guarantee contrast, little enough to leave the video
+           * alone". It used to be sized by its own content, so on a large tile
+           * the label sat on a thin band that ran out immediately above the
+           * text; on a filmstrip tile it covered most of the cell.
+           *
+           * A floor as well as a proportion: 30% of a 96px mobile strip tile is
+           * 29px, which is less than the label's own line box, and the gradient
+           * would then start inside the text.
+           */
+          height: "max(30cqh, 2.75rem)",
           background: "linear-gradient(to top, var(--scrim), transparent)",
         }}
       >

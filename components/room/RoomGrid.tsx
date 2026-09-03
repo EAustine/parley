@@ -73,10 +73,20 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
   if (filmstrip) {
     return (
       <div
+        /*
+         * v1.2 B2: a fixed 220px column, tiles stacked from the top at 16:9
+         * with an 8px gutter, scrolling when they do not fit.
+         *
+         * `overflow-hidden` was the defect. The capacity cap (five on desktop)
+         * decides who is shown and the "+N" cell carries the rest, but on a
+         * short viewport five tiles plus their gutters are taller than the
+         * column — and clipping them meant the last tile and sometimes the
+         * "+N" itself simply were not there, with nothing to say so.
+         */
         className={
           strip.orientation === "vertical"
-            ? "flex h-full w-[200px] shrink-0 flex-col gap-2 overflow-hidden"
-            : "flex h-[110px] w-full shrink-0 gap-2 overflow-hidden"
+            ? "flex h-full w-[220px] shrink-0 flex-col gap-2 overflow-y-auto"
+            : "flex h-[110px] w-full shrink-0 gap-2 overflow-x-auto"
         }
       >
         <h2 className="sr-only">
@@ -85,7 +95,11 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
         {shown.map(({ participant }) => (
           <div
             key={participant.identity}
-            className={strip.orientation === "vertical" ? "aspect-video w-full" : "aspect-video h-full"}
+            className={
+              strip.orientation === "vertical"
+                ? "aspect-video w-full shrink-0"
+                : "aspect-video h-full shrink-0"
+            }
           >
             <Tile
               participant={participant}
@@ -95,7 +109,13 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
           </div>
         ))}
         {strip.overflow > 0 && (
-          <div className={strip.orientation === "vertical" ? "aspect-video w-full" : "aspect-video h-full"}>
+          <div
+            className={
+              strip.orientation === "vertical"
+                ? "aspect-video w-full shrink-0"
+                : "aspect-video h-full shrink-0"
+            }
+          >
             <OverflowTile count={strip.overflow} />
           </div>
         )}
@@ -116,8 +136,9 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
         className="flex min-h-0 flex-1 items-center justify-center"
         style={{ containerType: "size" }}
       >
+        {/* v1.2 B3: an 8px gutter, the same as the filmstrip's. */}
         <div
-          className="grid h-full w-full gap-3"
+          className="grid h-full w-full gap-2"
           style={{
             gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))`,

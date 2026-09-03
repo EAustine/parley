@@ -120,7 +120,22 @@ export function RoomControls({
          * gap and padding come down rather than the controls, which have their
          * own floor in §9's touch targets.
          */
-        className="flex max-w-[calc(100vw-1rem)] items-center gap-1.5 rounded-full px-2 py-2 sm:gap-3 sm:px-3"
+        /**
+         * Wraps rather than shrinks.
+         *
+         * Six circles and a leave pill need about 442px, and the bar is capped
+         * at the viewport. It used to fit a 375pt phone by *shrinking* the
+         * controls — flex items shrink by default — which took them under §9's
+         * 44px floor on the one surface where that floor is not negotiable.
+         * `check:targets` could not see it: it measures declared CSS, and
+         * nothing declared was wrong.
+         *
+         * Grouping made it visible, because a group's `min-width: auto` stops
+         * it shrinking below its contents. Wrapping is the fix that keeps both
+         * the floor and the rhythm — the groups stay whole and the break falls
+         * between them.
+         */
+        className="flex max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-x-2 gap-y-2 rounded-full px-2 py-2 sm:gap-x-4 sm:px-3"
         style={{
           background: "var(--scrim)",
           // Invisible and clickable is a trap. Keyboard focus is unaffected by
@@ -129,156 +144,173 @@ export function RoomControls({
           pointerEvents: visible ? "auto" : "none",
         }}
       >
-        <CircleToggle
-          on={isMicrophoneEnabled}
-          onIcon="micOn"
-          offIcon="micOff"
-          label={isMicrophoneEnabled ? "Turn off microphone" : "Turn on microphone"}
-          shortcut={chordFor("mic", platform)}
-          onToggle={() =>
-            localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
-          }
-        />
-        <CircleToggle
-          on={isCameraEnabled}
-          onIcon="cameraOn"
-          offIcon="cameraOff"
-          label={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
-          shortcut={chordFor("camera", platform)}
-          onToggle={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
-        />
+        {/*
+          v1.2 B4: grouped by spacing rhythm rather than dividers —
+          [mic camera] · gap · [share reactions chat participants] · larger gap
+          · [leave]. Every control sat at one spacing, so the bar read as seven
+          equal things and the two reached for in a hurry were not a pair.
+        */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <CircleToggle
+            on={isMicrophoneEnabled}
+            onIcon="micOn"
+            offIcon="micOff"
+            label={isMicrophoneEnabled ? "Turn off microphone" : "Turn on microphone"}
+            shortcut={chordFor("mic", platform)}
+            onToggle={() =>
+              localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+            }
+          />
+          <CircleToggle
+            on={isCameraEnabled}
+            onIcon="cameraOn"
+            offIcon="cameraOff"
+            label={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
+            shortcut={chordFor("camera", platform)}
+            onToggle={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
+          />
+        </div>
 
-        {/* §3.7: desktop only. Hidden rather than disabled — a control that
-            can never work on this device is not a control, and a tooltip
-            explaining why is worse than the space it takes. */}
-        {share.supported && (
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* §3.7: desktop only. Hidden rather than disabled — a control that
+              can never work on this device is not a control, and a tooltip
+              explaining why is worse than the space it takes. */}
+          {share.supported && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={share.toggle}
+                  // A state toggle: the name is the action and changes with
+                  // it. No `aria-pressed` — an action name plus a pressed state
+                  // announces the same fact twice, in a confusing order.
+                  aria-label={share.sharing ? "Stop sharing your screen" : "Share your screen"}
+                  className={`flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
+                  style={{
+                    // §3.4: "Active = filled --primary". The only control that
+                    // fills with primary, because it is the only one whose "on"
+                    // state changes what everyone else is looking at.
+                    backgroundColor: share.sharing ? "var(--primary)" : "transparent",
+                    // v1.2 B4: ghost at rest. Transparent rather than absent,
+                    // so the box does not resize when the border returns.
+                    borderColor: share.sharing ? "var(--primary)" : "transparent",
+                    color: share.sharing ? "var(--primary-foreground)" : "var(--foreground)",
+                  }}
+                >
+                  <HugeiconsIcon
+                    icon={ICONS[share.sharing ? "stopShare" : "screenShare"].icon}
+                    size={20}
+                    strokeWidth={1.5}
+                    color="currentColor"
+                    aria-hidden
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="dark">
+                {share.sharing ? "Stop sharing your screen" : "Share your screen"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          <ReactionPicker onReact={onReact} />
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={share.toggle}
-                // A state toggle: the name is the action and changes with
-                // it. No `aria-pressed` — an action name plus a pressed state
-                // announces the same fact twice, in a confusing order.
-                aria-label={share.sharing ? "Stop sharing your screen" : "Share your screen"}
-                className="flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+                onClick={onToggleChat}
+                // A disclosure, not a state toggle: a noun name, with
+                // `aria-expanded` carrying open or closed. Naming it for the
+                // action gave it the same name as the panel's own close button,
+                // heard twice in one tab cycle.
+                aria-label="Chat"
+                aria-expanded={chatOpen}
+                aria-controls="chat-panel"
+                className={`relative flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
                 style={{
-                  // §3.4: "Active = filled --primary". The only control that
-                  // fills with primary, because it is the only one whose "on"
-                  // state changes what everyone else is looking at.
-                  backgroundColor: share.sharing ? "var(--primary)" : "transparent",
-                  borderColor: share.sharing ? "var(--primary)" : "var(--tile-border)",
-                  color: share.sharing ? "var(--primary-foreground)" : "var(--foreground)",
+                  // v1.2 B4: filled while its panel is open, ghost otherwise.
+                  backgroundColor: chatOpen ? "var(--secondary)" : "transparent",
+                  borderColor: chatOpen ? "var(--secondary)" : "transparent",
+                  color: "var(--foreground)",
                 }}
               >
                 <HugeiconsIcon
-                  icon={ICONS[share.sharing ? "stopShare" : "screenShare"].icon}
+                  icon={ICONS.chat.icon}
                   size={20}
                   strokeWidth={1.5}
                   color="currentColor"
                   aria-hidden
                 />
+                {/* §3.5: a dot, not a count. The number of unread messages is not
+                    a decision anyone makes — whether to open the panel is. And a
+                    dot needs no hue to read as "something is there". */}
+                {unread > 0 && !chatOpen && (
+                  <span
+                    aria-hidden
+                    className="absolute right-1 top-1 size-2 rounded-full"
+                    style={{ background: "var(--foreground)" }}
+                  />
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent className="dark">
-              {share.sharing ? "Stop sharing your screen" : "Share your screen"}
+              {chatOpen ? "Close chat" : "Open chat"}{" "}
+              <span className="text-background/70">{chordFor("chat", platform)}</span>
+              {unread > 0 && !chatOpen && (
+                <span className="sr-only">
+                  , {unread} unread {unread === 1 ? "message" : "messages"}
+                </span>
+              )}
             </TooltipContent>
           </Tooltip>
-        )}
 
-        <ReactionPicker onReact={onReact} />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onToggleChat}
-              // A disclosure, not a state toggle: a noun name, with
-              // `aria-expanded` carrying open or closed. Naming it for the
-              // action gave it the same name as the panel's own close button,
-              // heard twice in one tab cycle.
-              aria-label="Chat"
-              aria-expanded={chatOpen}
-              aria-controls="chat-panel"
-              className="relative flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
-              style={{
-                backgroundColor: chatOpen ? "var(--secondary)" : "transparent",
-                borderColor: chatOpen ? "var(--secondary)" : "var(--tile-border)",
-                color: "var(--foreground)",
-              }}
-            >
-              <HugeiconsIcon
-                icon={ICONS.chat.icon}
-                size={20}
-                strokeWidth={1.5}
-                color="currentColor"
-                aria-hidden
-              />
-              {/* §3.5: a dot, not a count. The number of unread messages is not
-                  a decision anyone makes — whether to open the panel is. And a
-                  dot needs no hue to read as "something is there". */}
-              {unread > 0 && !chatOpen && (
-                <span
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onToggleParticipants}
+                aria-label="Participants"
+                aria-expanded={participantsOpen}
+                aria-controls="participants-panel"
+                className={`relative flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
+                style={{
+                  // v1.2 B4: filled while its panel is open, ghost otherwise.
+                  backgroundColor: participantsOpen ? "var(--secondary)" : "transparent",
+                  borderColor: participantsOpen ? "var(--secondary)" : "transparent",
+                  color: "var(--foreground)",
+                }}
+              >
+                <HugeiconsIcon
+                  icon={ICONS.participants.icon}
+                  size={20}
+                  strokeWidth={1.5}
+                  color="currentColor"
                   aria-hidden
-                  className="absolute right-1 top-1 size-2 rounded-full"
-                  style={{ background: "var(--foreground)" }}
                 />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="dark">
-            {chatOpen ? "Close chat" : "Open chat"}{" "}
-            <span className="text-background/70">{chordFor("chat", platform)}</span>
-            {unread > 0 && !chatOpen && (
-              <span className="sr-only">
-                , {unread} unread {unread === 1 ? "message" : "messages"}
+                {/* §3.4: "shows count". Tabular so it does not shift width as
+                    people arrive. */}
+                <span className="type-caption tabular-nums absolute -right-0.5 -top-0.5 rounded-full bg-secondary px-1">
+                  {participantCount}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="dark">
+              {participantsOpen ? "Close participants" : "Show participants"}{" "}
+              <span className="text-background/70">
+                {participantCount} in the meeting
               </span>
-            )}
-          </TooltipContent>
-        </Tooltip>
+            </TooltipContent>
+          </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onToggleParticipants}
-              aria-label="Participants"
-              aria-expanded={participantsOpen}
-              aria-controls="participants-panel"
-              className="relative flex size-11 items-center justify-center rounded-full border transition-colors duration-[120ms]"
-              style={{
-                backgroundColor: participantsOpen ? "var(--secondary)" : "transparent",
-                borderColor: participantsOpen ? "var(--secondary)" : "var(--tile-border)",
-                color: "var(--foreground)",
-              }}
-            >
-              <HugeiconsIcon
-                icon={ICONS.participants.icon}
-                size={20}
-                strokeWidth={1.5}
-                color="currentColor"
-                aria-hidden
-              />
-              {/* §3.4: "shows count". Tabular so it does not shift width as
-                  people arrive. */}
-              <span className="type-caption tabular-nums absolute -right-0.5 -top-0.5 rounded-full bg-secondary px-1">
-                {participantCount}
-              </span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="dark">
-            {participantsOpen ? "Close participants" : "Show participants"}{" "}
-            <span className="text-background/70">
-              {participantCount} in the meeting
-            </span>
-          </TooltipContent>
-        </Tooltip>
+        </div>
 
         {/* The one non-circular control. §3.4: shape distinguishes it as well
-            as colour, so it is unmistakable without relying on hue. */}
+            as colour, so it is unmistakable without relying on hue. The extra
+            margin is B4's larger gap — leaving is not one of the things you do
+            to a meeting, it is the thing that ends being in one. */}
         <Button
           size="touch" onClick={onLeave}
-          className="h-12 rounded-full px-6 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          className={`ml-1 h-12 rounded-full px-6 bg-destructive text-destructive-foreground hover:bg-destructive/90 sm:ml-2 ${CONTROL_MOTION}`}
         >
           <HugeiconsIcon
             icon={ICONS.leave.icon}
@@ -293,6 +325,24 @@ export function RoomControls({
     </div>
   );
 }
+
+/**
+ * v1.2 B4's hover and press, shared by every control in the bar.
+ *
+ * 1.04 on hover with a background lift over 120ms, 0.96 on press over 80ms.
+ * The two durations differ on purpose: a press should land immediately and a
+ * hover should ease in, and `active:duration` is what lets one element carry
+ * both.
+ *
+ * `motion-reduce` drops the travel and keeps the colour change — CLAUDE.md's
+ * rule is "removes travel, keeps opacity", and a control that gives no
+ * feedback at all on press is worse for everyone. The fill is not travel.
+ */
+const CONTROL_MOTION =
+  "transition-[transform,background-color,border-color,color] duration-[120ms] " +
+  "ease-[cubic-bezier(0.2,0,0,1)] hover:scale-[1.04] active:scale-[0.96] " +
+  "active:duration-[80ms] motion-reduce:transform-none motion-reduce:hover:scale-100 " +
+  "motion-reduce:active:scale-100";
 
 function CircleToggle({
   on,
@@ -320,7 +370,7 @@ function CircleToggle({
           // `aria-pressed`: an action name plus a pressed state announces the
           // same fact twice, and in an order that reads as a contradiction.
           aria-label={label}
-          className="flex size-12 items-center justify-center rounded-full border transition-colors duration-[120ms]"
+          className={`flex size-12 items-center justify-center rounded-full border ${CONTROL_MOTION}`}
           style={{
             // Off is a fill and an icon change, never a hue change — rule 5.
             backgroundColor: on ? "transparent" : "var(--secondary)",

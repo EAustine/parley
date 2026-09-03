@@ -40,7 +40,11 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  /* Tiles are 0.75rem — CLAUDE.md's shape section names it separately from
+     the 0.5rem base. At 1.4 this computed to 0.7rem, which is the spec
+     being *nearly* met: close enough that nobody sees it, wrong enough
+     that the documented number and the built number disagree. v1.2 B3. */
+  --radius-xl: calc(var(--radius) * 1.5);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);

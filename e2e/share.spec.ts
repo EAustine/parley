@@ -56,8 +56,42 @@ test.describe("screen share", () => {
       ama.page.getByRole("button", { name: "Stop sharing your screen" }),
     ).toBeVisible();
 
-    // §3.7: "The sharer's own view of the shared content is suppressed."
-    await expect(ama.page.getByText(/your own view is hidden/i)).toBeVisible();
+    /**
+     * §3.7: "The sharer's own view of the shared content is suppressed."
+     *
+     * v1.2 B1 made that literal. The sharer used to get the share region with a
+     * paragraph in it explaining that it was empty — a suppression that still
+     * cost them the whole main area. Now the region is not rendered for them at
+     * all, and they keep the ordinary grid.
+     *
+     * Asserted as **no share surface and a full-size grid**, because the
+     * absence of a sentence proves very little on its own: a region rendered
+     * with nothing in it would also pass a text check.
+     */
+    await expect(ama.page.getByText(/your own view is hidden/i)).toHaveCount(0);
+    const amaShareSurface = await ama.page.evaluate(() =>
+      [...document.querySelectorAll("video")].filter(
+        (v) => getComputedStyle(v).objectFit === "contain",
+      ).length,
+    );
+    expect(amaShareSurface, "the sharer is still rendering a share region").toBe(0);
+
+    // The grid, not a column beside dead space. One tile per participant, and
+    // the grid spanning the stage rather than a filmstrip's fixed width.
+    const amaGrid = await ama.page.evaluate(() => {
+      const grid = document.querySelector<HTMLElement>(".grid");
+      const stage = document.querySelector<HTMLElement>(".relative.h-dvh");
+      if (!grid || !stage) return null;
+      return {
+        width: grid.getBoundingClientRect().width,
+        stageWidth: stage.getBoundingClientRect().width,
+      };
+    });
+    expect(amaGrid, "the sharer has no grid at all").not.toBeNull();
+    expect(
+      amaGrid!.width / amaGrid!.stageWidth,
+      "the sharer's grid is still squeezed beside a share region",
+    ).toBeGreaterThan(0.8);
 
     // At the other end it is real video, in the main area.
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
