@@ -62,7 +62,21 @@ export function ParticipantsPanel({
    * that does the same thing keeps the two consistent.
    */
   useEffect(() => {
-    if (open) close.current?.focus();
+    /*
+     * `preventScroll` because the panel is mid-entrance when this runs.
+     *
+     * v1.2 C1 animates the sheet up from `translate: 0 100%`, so for the first
+     * frames the focus target sits below the room's `overflow-hidden` box. The
+     * browser then scrolls that container to reveal it — measured at
+     * `scrollTop: 487`, exactly the sheet's height — and everything inside,
+     * including the absolutely positioned control bar, jumped 487px up until
+     * the animation unwound. On a phone that reads as the whole room lurching
+     * every time you open chat.
+     *
+     * The panel is on screen by design; the scroll was an artefact of being
+     * measured before it arrived. Nothing here needs revealing.
+     */
+    if (open) close.current?.focus({ preventScroll: true });
   }, [open]);
 
   return (

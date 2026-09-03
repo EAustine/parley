@@ -4071,3 +4071,44 @@ evenly ... does it tell the user something they do not already know?" That is
 the third duplication this project has resolved the same way, after the contrast
 table and §9's mechanics — and the reason is recorded as the same one: a second
 copy had drifted twice already.
+
+---
+
+## v1.2 Track F — mobile
+
+### Correction: the "dvh layout jump" was neither dvh nor pre-existing
+
+Track D recorded a defect where the mobile control bar lands 200–450px too high
+for a frame when a panel opens, attributed it to Chromium recomputing the
+dynamic viewport height, and handed it to Track F. **Both halves of that were
+wrong, and the second one matters more: it was mine.**
+
+Measured properly this time. A live `100dvh` probe, `innerHeight`,
+`visualViewport.height` and the room's own height are **constant at 812
+throughout** — nothing recomputes. What moves is the room's `scrollTop`:
+
+> 487 → 88 → 3 → 0, with `document.activeElement` = the chat composer at every
+> sample, and the bar's displacement tracking the panel's `translate` exactly.
+
+487px is precisely the sheet's height at `60dvh` on a 375×812 phone. The cause
+is **C1's sheet entrance meeting the panel's focus-on-open**: the sheet animates
+up from `translate: 0 100%`, so for the first frames the focus target sits below
+the room's `overflow-hidden` box; the browser scrolls that container to reveal
+it, and everything inside — including the absolutely positioned control bar —
+comes up with it, unwinding as the animation completes.
+
+So it was introduced by Track C, not inherited from anywhere. My Track D
+bisection *did* show it failing at Track C's own commit and I read that as
+"pre-existing" — it was evidence of exactly the opposite, that Track C
+introduced it. The bisect was right and I drew the wrong conclusion from it.
+
+`focus({ preventScroll: true })` on both panels is the fix: the panel is on
+screen by design, and the scroll was an artefact of the focus target being
+measured before it arrived.
+
+**And the test was tolerating it.** Track D changed `mobile.spec` to poll until
+the bar's position settled — waiting the jump out. That is the thing the plan's
+own capacity note warns about: "it must be made deterministic rather than
+tolerated". It now asserts the bar does not move at all, and a mutation confirms
+it: with `preventScroll` removed, "the control bar moved 477px while the panel
+opened".

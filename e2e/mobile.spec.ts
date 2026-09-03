@@ -101,46 +101,32 @@ test.describe("the room on a phone", () => {
     await expect(mic).toBeVisible();
 
     /**
-     * Wait for the bar to stop moving before measuring it.
+     * The control bar does not move when a panel opens.
      *
-     * The **first** time any `h-[60dvh]` panel becomes visible on a page —
-     * chat or participants, either one — Chromium recomputes the dynamic
-     * viewport height it uses to resolve `dvh`, and that recomputation
-     * measurably repositions everything else sized against `h-dvh`, including
-     * this control bar. Confirmed by polling the mic button's Y position every
-     * 100ms after opening each panel: it lands roughly 200-450px too high for
-     * one frame, then settles within about 200ms and never moves again —
-     * reproducible with panels alone, with no camera or microphone involved,
-     * and independent of anything Track D touches.
+     * It used to, by exactly 487px on a 375x812 phone — the sheet's own height
+     * — for about 200ms. Not a `dvh` recomputation, which is what I first
+     * recorded: a live `100dvh` probe, `innerHeight`, `visualViewport.height`
+     * and the room's own height are all constant throughout. The room's
+     * `scrollTop` is what moved, 487 → 88 → 3 → 0.
      *
-     * That is a real, one-time layout event, not a flaky test. `check:targets`
-     * cannot see it — it reads declared CSS, and nothing declared is wrong,
-     * since `h-dvh` is exactly what `CLAUDE.md`'s "use dvh throughout" already
-     * asks for. It belongs to Track F, which explicitly owns `dvh` correctness
-     * on mobile; recorded there rather than fixed here. What this test can and
-     * must do is measure the **settled** position — a finger reaches the bar
-     * where it ends up, not where it flickered through — so it polls until two
-     * consecutive reads agree before treating a box as real.
+     * The cause was C1's sheet entrance meeting the panel's focus-on-open. The
+     * sheet animates up from `translate: 0 100%`, so for the first frames the
+     * focus target sat below the room's `overflow-hidden` box; the browser
+     * scrolled that container to reveal it, and everything inside — including
+     * this absolutely positioned bar — came up with it. `preventScroll` on the
+     * focus call fixes it.
+     *
+     * This was a `settledBox()` poll that waited the jump out. Waiting out a
+     * defect is not the same as not having one, so it asserts stillness now.
      */
-    const settledBox = async () => {
-      let previous: { x: number; y: number; width: number; height: number } | null = null;
-      for (let attempt = 0; attempt < 20; attempt++) {
-        const current = await mic.boundingBox();
-        if (
-          previous &&
-          current &&
-          previous.x === current.x &&
-          previous.y === current.y
-        ) {
-          return current;
-        }
-        previous = current;
-        await page.waitForTimeout(50);
-      }
-      return previous;
-    };
-
-    const box = await settledBox();
+    const before = await mic.boundingBox();
+    expect(before, "the mic control did not render with the panel open").not.toBeNull();
+    await page.waitForTimeout(300);
+    const box = await mic.boundingBox();
+    expect(
+      box!.y,
+      `the control bar moved ${Math.round(Math.abs(box!.y - before!.y))}px while the panel opened`,
+    ).toBeCloseTo(before!.y, 0);
     expect(box, "the mic control did not render with the panel open").not.toBeNull();
 
     /*
