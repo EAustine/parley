@@ -42,7 +42,18 @@ const { isTyping } = require(join(out, "typing.js"));
 rmSync(out, { recursive: true, force: true });
 
 let failed = 0;
+/**
+ * Counted here rather than summed by hand at the bottom.
+ *
+ * The total used to be an expression adding up every section's length, which
+ * meant adding a check and forgetting the sum reported one fewer than ran —
+ * silently, and in the direction that looks like nothing happened. That is
+ * exactly what happened when the BUILD-PLAN ownership check was added.
+ * `check-chat.mjs` has always self-counted; this now does too.
+ */
+let count = 0;
 const check = (pass, label, detail = "") => {
+  count++;
   if (!pass) failed++;
   console.log(`${pass ? "✔" : "✘"} ${label}${pass ? "" : `  — ${detail}`}`);
 };
@@ -506,6 +517,7 @@ console.log("\nWho owns which rule\n");
 // person rather than a convention someone has to already know.
 const claude = readFileSync("CLAUDE.md", "utf8");
 const prd = readFileSync("PRD.md", "utf8");
+const buildPlan = readFileSync("BUILD-PLAN.md", "utf8");
 check(
   /authoritative copy/.test(claude),
   "CLAUDE.md's floor declares itself authoritative",
@@ -519,6 +531,25 @@ check(
     /owns it and this document does not restate it/.test(prd),
   "PRD §9 defers the mechanics and says who owns them",
   "the deferral is gone — §9 may have started restating mechanics again",
+);
+
+/**
+ * The third document, which the split forgot.
+ *
+ * The Phase 7 ownership split reconciled `CLAUDE.md` and `PRD.md` §9 and left
+ * `BUILD-PLAN.md` out — so its Phase 9 task list went on asking for
+ * `aria-pressed` for two more phases while both gates above stayed green. A
+ * split between two of three documents is not a split; it is a smaller
+ * contradiction.
+ *
+ * Asserted as an absence rather than a marker, because that is the failure
+ * that actually happened: the task list quietly restating a mechanic the floor
+ * owns.
+ */
+check(
+  !/aria-pressed/.test(buildPlan.replace(/\*\*`aria-pressed` struck\.\*\*[\s\S]*?\n\n/g, "")),
+  "BUILD-PLAN asks for no aria-pressed of its own",
+  "its task list is restating a mechanic CLAUDE.md's floor owns, which is how it drifted before",
 );
 
 // ---------------------------------------------------------------------------
@@ -545,9 +576,5 @@ check(
   "and excludes hidden=\"until-found\", which find-in-page needs",
 );
 
-const total =
-  desktop.length + 4 + 4 + 2 + mobile.length + 2 + 2 + 1 + 6 + 3 + 1 + typing.length + 3 + 2
-  + 3 + 7 + 2 + 5 + 1 + usesRoomService.length * 2
-  + 3 + disclosures.length + 2;
-console.log(`\n${total - failed}/${total} room checks passed.`);
+console.log(`\n${count - failed}/${count} room checks passed.`);
 if (failed) process.exit(1);

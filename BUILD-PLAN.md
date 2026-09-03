@@ -317,7 +317,11 @@ Work the full list in `CLAUDE.md`. Specifically:
 
 - Full keyboard traverse of every route with visible focus
 - Focus trapping and restoration on both panels
-- `aria-pressed` on toggles; accessible names phrased as the action
+- Accessible names phrased as the action, changing with it: "Turn off microphone" → "Turn on microphone"
+
+  **`aria-pressed` struck.** This line asked for it and `CLAUDE.md`'s floor forbids it — carrying both an action name and a pressed state announces the same fact twice, in a confusing order. The floor is the authoritative copy of the per-control mechanics, `scripts/check-room.mjs` asserts there is no `aria-pressed` anywhere, and `e2e/media.spec.ts` asserts it on the mic button by name. Following this line would have broken two passing gates to undo a decision `CLAUDE.md` explains.
+
+  It survived the Phase 7 ownership split because that split reconciled `CLAUDE.md` and `PRD.md` §9 and never brought this document into it. `check:room` now reads all three.
 - Batched join/leave announcements — 3+ events in 5s collapse; suppressed above 8 participants
 - Chat announces sender only when the panel is closed
 - Reaction announcements throttled per participant
