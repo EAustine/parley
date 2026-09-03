@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
-import { emptyRoom } from "./livekit-admin";
-import { LIVE_CODE, gridShape, joinAs, type Participant } from "./room.helpers";
+import {
+  gridShape, joinAs, type Participant } from "./room.helpers";
 
 /**
  * §3.4's breakpoint table, with real participants in the room.
@@ -44,12 +44,11 @@ const EXPECTED: [number, number, number, number, number][] = [
   [17, 4, 4, 15, 2],
 ];
 
-test("every breakpoint from 1 to 17, with real participants", async ({ browser }) => {
+test("every breakpoint from 1 to 17, with real participants", async ({ browser, meetingCode }) => {
   test.setTimeout(600_000);
-  await emptyRoom(LIVE_CODE);
 
   const everyone: Participant[] = [];
-  const observer = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+  const observer = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
   everyone.push(observer);
 
   try {
@@ -57,7 +56,7 @@ test("every breakpoint from 1 to 17, with real participants", async ({ browser }
       while (everyone.length < count) {
         if (JOIN_INTERVAL_MS) await observer.page.waitForTimeout(JOIN_INTERVAL_MS);
         everyone.push(
-          await joinAs(browser, `Guest ${everyone.length + 1}`, { withMedia: false }),
+          await joinAs(browser, `Guest ${everyone.length + 1}`, { code: meetingCode, withMedia: false }),
         );
       }
 

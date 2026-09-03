@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
-import { LIVE_CODE, videoLiveness } from "./room.helpers";
+import {
+  videoLiveness } from "./room.helpers";
 
 /**
  * §3.3's camera preview, measured as pixels rather than as markup.
@@ -20,8 +21,8 @@ import { LIVE_CODE, videoLiveness } from "./room.helpers";
  * `srcObject !== null` would have passed against an element that never painted.
  */
 test.describe("the pre-join preview", () => {
-  test("paints live camera frames on first load", async ({ page }) => {
-    await page.goto(`/j/${LIVE_CODE}`);
+  test("paints live camera frames on first load", async ({ page, meetingCode }) => {
+    await page.goto(`/j/${meetingCode}`);
 
     // §3.3 asks before it grabs: the screen opens on an explanation and a
     // button, not on a permission prompt. This is the visitor's first click.
@@ -50,8 +51,8 @@ test.describe("the pre-join preview", () => {
    * that unmounts and remounts around a toggle never sees the dependency
    * change either.
    */
-  test("paints again after the camera is turned off and back on", async ({ page }) => {
-    await page.goto(`/j/${LIVE_CODE}`);
+  test("paints again after the camera is turned off and back on", async ({ page, meetingCode }) => {
+    await page.goto(`/j/${meetingCode}`);
     await page.getByRole("button", { name: "Allow camera and microphone" }).click();
     await expect(page.locator("video")).toBeVisible({ timeout: 20_000 });
 

@@ -1,8 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
-import { emptyRoom } from "./livekit-admin";
 import {
-  LIVE_CODE,
   expectParticipants,
   joinAs,
   wakeControls,
@@ -16,10 +14,6 @@ import {
  * claim about a round trip through the SFU, and nothing measured in one tab
  * can tell you whether it holds.
  */
-
-test.beforeEach(async () => {
-  await emptyRoom(LIVE_CODE);
-});
 
 async function openChat(p: Participant) {
   await wakeControls(p.page);
@@ -68,9 +62,9 @@ test.describe("chat", () => {
     for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
   });
 
-  test("crosses between clients well inside 500ms", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("crosses between clients well inside 500ms", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
 
     await openChat(ama);
     await openChat(kwabena);
@@ -99,9 +93,9 @@ test.describe("chat", () => {
     await expect(kwabenaPanel.getByText("Ama Serwaa", { exact: true })).toBeVisible();
   });
 
-  test("renders a message as text, never as markup", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("renders a message as text, never as markup", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await openChat(ama);
     await openChat(kwabena);
 
@@ -121,9 +115,9 @@ test.describe("chat", () => {
     ).toBe(0);
   });
 
-  test("autolinks http(s) and leaves javascript: as text", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("autolinks http(s) and leaves javascript: as text", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await openChat(ama);
     await openChat(kwabena);
 
@@ -140,9 +134,9 @@ test.describe("chat", () => {
     await expect(kwabena.page.getByText("javascript:alert(1)")).toBeVisible();
   });
 
-  test("unread dot appears only while the panel is closed", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("unread dot appears only while the panel is closed", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await openChat(ama);
 
     // Kwabena's panel is shut.
@@ -164,9 +158,9 @@ test.describe("chat", () => {
     ).toHaveCount(0);
   });
 
-  test("groups a run of messages under one header, and breaks on a new sender", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("groups a run of messages under one header, and breaks on a new sender", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await openChat(ama);
     await openChat(kwabena);
 
@@ -191,8 +185,8 @@ test.describe("chat", () => {
     ).toHaveCount(1);
   });
 
-  test("opening the panel reflows the grid instead of covering it", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+  test("opening the panel reflows the grid instead of covering it", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     // The letterbox only applies at one participant, so the count is the
     // premise of every measurement below rather than an incidental detail.
     await expectParticipants(ama.page, 1);
@@ -248,9 +242,9 @@ test.describe("chat", () => {
    * instead, including that a refusal does not extend the window and that one
    * flooder cannot silence anyone else.
    */
-  test("a flood disables the sender's input and reaches nobody as a flood", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("a flood disables the sender's input and reaches nobody as a flood", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
     await expectParticipants(kwabena.page, 2);
     await openChat(ama);
@@ -281,8 +275,8 @@ test.describe("chat", () => {
     await expect(composer).toBeEnabled({ timeout: 15_000 });
   });
 
-  test("Escape closes the panel and returns focus to the control", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+  test("Escape closes the panel and returns focus to the control", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     await openChat(ama);
 
     await ama.page.keyboard.press("Escape");
@@ -311,9 +305,9 @@ test.describe("reactions", () => {
     for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
   });
 
-  test("cross between clients, and rapid pressing yields one a second", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("cross between clients, and rapid pressing yields one a second", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
     await expectParticipants(kwabena.page, 2);
     await countReactions(kwabena);
@@ -323,9 +317,38 @@ test.describe("reactions", () => {
     const applause = ama.page.getByRole("button", { name: "React with applause" });
     await expect(applause).toBeVisible();
 
-    // It arrives at the other end at all.
+    /**
+     * It arrives at the other end at all — allowing for the fact that it may
+     * not, once.
+     *
+     * Reactions are published with `reliable: false` (`useRoomMessages.ts`), so
+     * delivery is explicitly not guaranteed: this is a lossy data channel by
+     * design, matching §3.6's view of reactions as the highest-volume,
+     * lowest-information channel in the room. A single send asserted with
+     * `toBe(1)` was therefore claiming a property the product does not offer,
+     * and it held only while the suite ran serially on a quiet local network.
+     * Parallel workers made the drop likely enough to see.
+     *
+     * Pressing again is what a person does when nothing happens, and §3.6's
+     * one-per-second limit is what bounds it. The retry is not papering over a
+     * bug; the bug would be a reaction that never arrives however many times
+     * you press.
+     */
     await applause.click();
-    await expect.poll(() => reactionsSeen(kwabena)).toBe(1);
+    await expect
+      .poll(
+        async () => {
+          const seen = await reactionsSeen(kwabena);
+          if (seen === 0) {
+            // Clear of the 1000ms rate limit, or the press is dropped on send.
+            await ama.page.waitForTimeout(1100);
+            await applause.click();
+          }
+          return seen;
+        },
+        { timeout: 20_000, message: "no reaction ever arrived, across repeated presses" },
+      )
+      .toBeGreaterThanOrEqual(1);
     // §9: named, not read as an emoji.
     await expect(
       kwabena.page.locator('[role="status"][aria-live="polite"]'),
@@ -352,9 +375,9 @@ test.describe("reactions", () => {
     await expect(kwabena.page.locator(".parley-reaction")).toHaveCount(0);
   });
 
-  test("never occlude the name label, and disappear on their own", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("never occlude the name label, and disappear on their own", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
 
     // Both ends have to know about each other before one can react at the
     // other; a reaction sent into a room the receiver has not joined yet is
@@ -364,10 +387,25 @@ test.describe("reactions", () => {
 
     await wakeControls(ama.page);
     await ama.page.getByRole("button", { name: "Send a reaction" }).click();
-    await ama.page.getByRole("button", { name: "React with a heart" }).click();
-
+    const heart = ama.page.getByRole("button", { name: "React with a heart" });
     const reaction = kwabena.page.locator(".parley-reaction").first();
-    await expect(reaction).toBeVisible();
+
+    /**
+     * Press until one lands. The comment above already knew delivery is lossy;
+     * what it guarded was the ordering case — reacting before the receiver has
+     * joined — and not the case where the receiver has joined and the packet is
+     * simply dropped. A single send with `toBeVisible` asserted reliable
+     * delivery on a channel published `reliable: false`.
+     *
+     * The gap between presses clears §3.6's one-per-second limit, so each
+     * attempt is a real send rather than one the sender drops itself.
+     */
+    for (let attempt = 0; attempt < 8 && (await reaction.count()) === 0; attempt++) {
+      if (attempt > 0) await ama.page.waitForTimeout(1100);
+      await heart.click();
+      await reaction.waitFor({ state: "visible", timeout: 2_000 }).catch(() => {});
+    }
+    await expect(reaction, "no reaction arrived across repeated presses").toBeVisible();
 
     // §3.6 acceptance: reactions never occlude the name label. Measured, not
     // assumed — the reaction starts above the label strip and only rises.

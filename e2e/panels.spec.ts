@@ -1,7 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
-import { emptyRoom } from "./livekit-admin";
-import { LIVE_CODE, joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
 
 /**
  * §3.4's side panels, and the one-at-a-time rule from BUILD-PLAN v1.2 A3.
@@ -12,16 +11,13 @@ import { LIVE_CODE, joinAs, leave, wakeControls, type Participant } from "./room
  * nothing on screen distinguished "participants open" from "participants open
  * over a chat panel you forgot about".
  *
- * This owns its own participants and empties the room first, because it
- * asserts panel visibility rather than counts and a straggler from another
- * spec would still change what the participants panel renders.
+ * Each test takes its own meeting from the `meetingCode` fixture, so no
+ * straggler from another spec can appear in the participants panel — there is
+ * no other spec in this room.
  */
 test.describe("the side panels", () => {
   let participant: Participant;
 
-  test.beforeAll(async () => {
-    await emptyRoom(LIVE_CODE);
-  });
 
   test.afterEach(async () => {
     if (!participant) return;
@@ -34,8 +30,8 @@ test.describe("the side panels", () => {
   const people = (p: Participant) =>
     p.page.getByRole("complementary", { name: "Participants" });
 
-  test("opening one panel closes the other", async ({ browser }) => {
-    participant = await joinAs(browser, "Abena Poku");
+  test("opening one panel closes the other", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Abena Poku", { code: meetingCode });
     const { page } = participant;
 
     await wakeControls(page);
@@ -65,8 +61,8 @@ test.describe("the side panels", () => {
    * the control bar to stay reachable while a panel is open, and mute is a
    * privacy control. Swapping panels must not cost that.
    */
-  test("the control bar still works after swapping panels", async ({ browser }) => {
-    participant = await joinAs(browser, "Kwame Nkrumah");
+  test("the control bar still works after swapping panels", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Kwame Nkrumah", { code: meetingCode });
     const { page } = participant;
 
     await wakeControls(page);
@@ -100,8 +96,8 @@ test.describe("the side panels", () => {
    * Colours are resolved from the room's own custom properties, so this does
    * not go stale if the palette moves; it asserts the relationship.
    */
-  test("the panel paints as a surface with a readable edge", async ({ browser }) => {
-    participant = await joinAs(browser, "Nana Adjoa");
+  test("the panel paints as a surface with a readable edge", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Nana Adjoa", { code: meetingCode });
     const { page } = participant;
 
     await wakeControls(page);
@@ -180,8 +176,8 @@ test.describe("the side panels", () => {
    * a non-modal panel. Worth pinning here because A3 moved that logic from two
    * per-panel closures onto one shared `closePanel`.
    */
-  test("Escape closes the panel and returns focus to its trigger", async ({ browser }) => {
-    participant = await joinAs(browser, "Efua Sutherland");
+  test("Escape closes the panel and returns focus to its trigger", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Efua Sutherland", { code: meetingCode });
     const { page } = participant;
 
     await wakeControls(page);

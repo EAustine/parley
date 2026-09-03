@@ -3318,3 +3318,100 @@ added tests are not the cause. It is at its practical limit, and Track B will
 add to it.
 
 All 375 static checks unchanged and green.
+
+---
+
+## v1.2 — parallelising the suite
+
+19.7 minutes to **2.9**, and 51/51 where the serial run had been dropping three
+to timeouts.
+
+### The change
+
+Tests no longer share a room. A `meetingCode` fixture inserts a live meeting
+per test and tears it down afterwards; `joinAs` takes the code rather than
+importing a constant, so a test that does not own a room cannot join one by
+accident. Global setup creates one fixture host for the run and global teardown
+deletes it — `meetings.host_id` is `on delete cascade`, so that one delete
+also collects rows from tests that crashed before their own cleanup.
+
+`fullyParallel: true`, `workers: 4`. The binding constraint is not CPU but
+`grid.spec.ts`, whose breakpoint sweep puts seventeen contexts in one room
+while every other test uses at most two — so four workers peak around 23.
+
+The old comment said the suite was serial because "these tests share one
+meeting room, and participants from a parallel worker would show up in another
+worker's grid". True, and the right response at the time. But **the sharing was
+the defect and the serialism was the symptom**, which is what BUILD-PLAN v1.2's
+capacity section says and what `CLAUDE.md` had already implied: a test owns its
+fixtures, and a room is a fixture.
+
+The suite also no longer depends on `npm run seed:dev` having been run — or on
+it *not* being run mid-suite, which was the sharper risk, since that script
+deletes every meeting belonging to its target before inserting.
+
+### What parallelism found
+
+Five defects, and none of them were caused by running in parallel. Every one was
+a test asserting something the product does not promise, or depending on state
+it did not own. Serial execution had been supplying the missing state by
+accident.
+
+**Reactions are published `reliable: false`, and two tests asserted they always
+arrive.** `useRoomMessages.ts` sends them lossy on purpose — §3.6 treats
+reactions as the highest-volume, lowest-information channel in the room. A
+single send asserted with `toBe(1)` was claiming a guarantee the product
+declines to make, and it held only on a quiet local network. One of the two
+tests already carried a comment acknowledging lossy delivery; it guarded the
+ordering case and not the drop. Both now press again, at a spacing that clears
+§3.6's one-per-second limit, which is also what a person does when nothing
+happens.
+
+*Whether reactions should be reliable at all is a design question and is not
+being decided here — rule 10. The rate limit already bounds volume, so
+reliability would be affordable; a dropped reaction is a click that did nothing,
+against a spec that spends 200ms on a "pop" to make the click feel registered.*
+
+**`usePresence` discards joins for `PRESENCE_SETTLE_MS` after the connection
+goes healthy**, because a LiveKit reconnect unwinds and re-adds every remote
+participant and that burst lands after the phase flips back. Correct, and
+invisible while the suite shared a room: the second participant always arrived
+long after the first had settled. In a room of its own the two joins are seconds
+apart, and the announcement the live-region guard measures was being dropped by
+design. The test now waits the window out, importing the constant rather than
+retyping it.
+
+**The scheduling tests shared one account** and signed in by minting a magic
+link for it. Supabase invalidates the previous token when a new one is
+generated, so two tests at once raced and the loser never reached the dashboard.
+They also defaulted to the developer's own email address, writing test meetings
+onto a real dashboard. Each test now gets its own account from a `hostEmail`
+fixture.
+
+**"The dashboard prints the zone label too" asserted on rows it did not
+create** — really on `seed:dev`'s fixtures, or on whatever another test had left
+behind. `CLAUDE.md` names this file by name: "Two scheduling tests were wrong
+before the code was, because they leaned on rows other sections deliberately
+mutate." This was the third. It now schedules the two rows it reads.
+
+**The live-region guard refused to measure an empty region**, which is what it
+was written to do, and that is how the presence-settle behaviour above surfaced
+at all. It was also racing a ~1s announcement with a round trip; it now installs
+the observer before the join and measures inside the page at the moment text
+appears, so there is no window to miss.
+
+### A ceiling that is still there
+
+`/api/livekit/token`'s rate limit is keyed on `ip:${clientIp(request)}`, and
+behind `next start` on localhost with no proxy headers `clientIp` resolves to
+the literal `"unknown"`. **Every join from every worker therefore shares one
+bucket** — 60 requests/min overall, 5/min for unresolvable codes. The suite
+performs roughly eighty joins in under three minutes, so it is not close yet,
+but the headroom is smaller than the worker count suggests and it would surface
+as joins holding on the pre-join screen rather than as an error. This is a
+localhost artefact rather than production behaviour, and it is not a reason to
+weaken the limit. Recorded because the next person to raise `workers` needs it.
+
+### Checks
+
+`check:media` **51/51** in 2.9 minutes, twice. All 375 static checks green.

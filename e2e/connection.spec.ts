@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 import { announcementFor, type RoomPhase } from "../lib/room/connection";
 import { joinAs, leave, type Participant } from "./room.helpers";
@@ -60,10 +60,8 @@ test.describe("connection", () => {
     await participant.context.close().catch(() => {});
   });
 
-  test("a ten-second outage recovers without reloading the page", async ({
-    browser,
-  }) => {
-    participant = await joinAs(browser, "Ama Serwaa");
+  test("a ten-second outage recovers without reloading the page", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
     const { page, context } = participant;
 
     // The proof that no reload happened. A value on `window` does not survive
@@ -106,10 +104,8 @@ test.describe("connection", () => {
     expect(survived, "the page reloaded rather than recovering").toBe(1);
   });
 
-  test("the room stays mounted through an outage rather than being replaced", async ({
-    browser,
-  }) => {
-    participant = await joinAs(browser, "Kofi Mensah");
+  test("the room stays mounted through an outage rather than being replaced", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Kofi Mensah", { code: meetingCode });
     const { page, context } = participant;
 
     await context.setOffline(true);
@@ -128,10 +124,8 @@ test.describe("connection", () => {
     await context.setOffline(false);
   });
 
-  test("the outage and the recovery are both announced", async ({
-    browser,
-  }) => {
-    participant = await joinAs(browser, "Nana Adjei");
+  test("the outage and the recovery are both announced", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Nana Adjei", { code: meetingCode });
     const { page, context } = participant;
 
     /**

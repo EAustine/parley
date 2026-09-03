@@ -38,11 +38,34 @@ const PORT = 3210;
 
 export default defineConfig({
   testDir: "e2e",
-  // Serial. These tests share one meeting room, and participants from a
-  // parallel worker would show up in another worker's grid and break its
-  // count — which is a real property of the product, not a flake.
-  workers: 1,
-  fullyParallel: false,
+  /**
+   * Parallel, because tests no longer share a room.
+   *
+   * This was `workers: 1` with the note that "these tests share one meeting
+   * room, and participants from a parallel worker would show up in another
+   * worker's grid and break its count". That was true and the serialism was the
+   * right response to it — but the sharing was the defect, not the parallelism.
+   * `CLAUDE.md` says a test owns its fixtures, and a room is a fixture. Each
+   * test now takes its own meeting from the `meetingCode` fixture, so a
+   * participant from another worker cannot appear in this one's grid: it is not
+   * a different likelihood, it is a different room.
+   *
+   * Four workers rather than the default seven (half of fourteen cores). The
+   * binding constraint is not CPU, it is `grid.spec.ts`, whose breakpoint sweep
+   * puts **seventeen** simultaneous contexts in one room; every other test uses
+   * at most two. Four workers therefore peaks around 17 + 3x2 = 23 contexts.
+   * Most of the seventeen join with `withMedia: false`, which is why that test
+   * is affordable at all.
+   *
+   * Workers x participants is also the number that has to stay under LiveKit
+   * Cloud's concurrent-participant ceiling. At ~23 there is generous headroom
+   * against any current plan, but the figure is per-project and not readable
+   * from the SDK — check it on the LiveKit Cloud dashboard under the project's
+   * limits before raising this. Exceeding it surfaces as joins timing out,
+   * which looks exactly like a race condition and is not one.
+   */
+  workers: 4,
+  fullyParallel: true,
   timeout: 120_000,
   expect: { timeout: 20_000 },
   reporter: [["list"]],
@@ -70,6 +93,9 @@ export default defineConfig({
   },
 
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
 
   webServer: {
     // The production build, not `next dev`. Bundle behaviour is what rule 8 is

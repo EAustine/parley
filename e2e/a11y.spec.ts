@@ -1,5 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { endedCode, expect, scheduledCode, test } from "./fixtures";
+import { generateMeetingCode } from "@/lib/meetings/code";
+import { PRESENCE_SETTLE_MS } from "@/lib/hooks/usePresence";
 
 import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
 
@@ -23,10 +26,15 @@ import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
  * file.
  */
 
-const ENDED_CODE = "mzn-3fhw-dpy";
-const SCHEDULED_CODE = "tgr-6xkv-bqs";
-/** Well-formed and not in the database — the unknown-code state, not a 404. */
-const UNKNOWN_CODE = "zzz-9wxy-qrs";
+/**
+ * Well-formed and not in the database — the unknown-code state, not a 404.
+ *
+ * Generated rather than typed. A hand-written code is one keystroke away from
+ * containing a character outside the alphabet, which `/j/[code]` rejects as
+ * malformed *before* any lookup — so the test would render a different state
+ * than the one it names and still pass. Conventions, `CLAUDE.md`.
+ */
+const UNKNOWN_CODE = generateMeetingCode();
 
 /**
  * Let every animation finish before measuring.
@@ -78,16 +86,22 @@ function expectClean(results: Awaited<ReturnType<typeof scan>>, state: string) {
 }
 
 test.describe("axe, by state", () => {
-  for (const [state, path] of [
-    ["the marketing page", "/"],
-    ["pre-join", "/j/wcz-4npm-hjd"],
-    ["a meeting that has ended", `/j/${ENDED_CODE}`],
-    ["a meeting not yet started", `/j/${SCHEDULED_CODE}`],
-    ["an unknown code", `/j/${UNKNOWN_CODE}`],
-    ["sign-in", "/sign-in"],
+  /**
+   * The path is a function of the fixtures rather than a literal, because two
+   * of these codes are created per run now and one is created per test. The
+   * pre-join scan is the only entry that needs a live meeting, and it takes the
+   * test's own — the others are read-only states nothing joins.
+   */
+  for (const [state, pathFor] of [
+    ["the marketing page", () => "/"],
+    ["pre-join", (live: string) => `/j/${live}`],
+    ["a meeting that has ended", () => `/j/${endedCode()}`],
+    ["a meeting not yet started", () => `/j/${scheduledCode()}`],
+    ["an unknown code", () => `/j/${UNKNOWN_CODE}`],
+    ["sign-in", () => "/sign-in"],
   ] as const) {
-    test(`${state} is clean`, async ({ page }) => {
-      await page.goto(path);
+    test(`${state} is clean`, async ({ page, meetingCode }) => {
+      await page.goto(pathFor(meetingCode));
       // Pre-join asks for devices on mount; let the state settle before
       // scanning, or axe reads a skeleton rather than the screen.
       await page.waitForLoadState("networkidle");
@@ -110,9 +124,9 @@ test.describe("axe, in the room", () => {
     await participant.context.close().catch(() => {});
   });
 
-  test("every in-room state is clean", async ({ browser }) => {
+  test("every in-room state is clean", async ({ browser, meetingCode }) => {
     test.setTimeout(180_000);
-    participant = await joinAs(browser, "Ama Serwaa");
+    participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
     const { page } = participant;
 
     expectClean(await scan(page), "the room, nothing open");
@@ -162,10 +176,8 @@ test.describe("keyboard", () => {
    * while focus sat on the trigger. `ChatPanel` focuses its composer on open,
    * which is why only one of the two was broken and why it went unnoticed.
    */
-  test("a panel opened from the keyboard can be closed from the keyboard", async ({
-    browser,
-  }) => {
-    participant = await joinAs(browser, "Kofi Mensah");
+  test("a panel opened from the keyboard can be closed from the keyboard", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Kofi Mensah", { code: meetingCode });
     const { page } = participant;
 
     await wakeControls(page);
@@ -195,10 +207,8 @@ test.describe("keyboard", () => {
    * §9's discoverability hint: first focusable thing in the room, invisible
    * until it takes focus.
    */
-  test("the shortcuts hint appears on the first Tab and opens the dialog", async ({
-    browser,
-  }) => {
-    participant = await joinAs(browser, "Nana Adjei");
+  test("the shortcuts hint appears on the first Tab and opens the dialog", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Nana Adjei", { code: meetingCode });
     const { page } = participant;
 
     await page.evaluate(() => document.body.focus());
@@ -221,8 +231,8 @@ test.describe("keyboard", () => {
    * a literal focus trap would have broken, and the reason the floor now
    * distinguishes modal surfaces from live side panels.
    */
-  test("the control bar stays reachable with a panel open", async ({ browser }) => {
-    participant = await joinAs(browser, "Yaa Asantewaa");
+  test("the control bar stays reachable with a panel open", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Yaa Asantewaa", { code: meetingCode });
     const { page } = participant;
 
     await wakeControls(page);
@@ -263,43 +273,74 @@ test.describe("live regions", () => {
     }
   });
 
-  test("the room announcer never paints", async ({ browser }) => {
-    const ama = await joinAs(browser, "Ama Serwaa");
+  test("the room announcer never paints", async ({ browser, meetingCode }) => {
+    const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
     open.push(ama);
-    const kofi = await joinAs(browser, "Kofi Mensah");
-    open.push(kofi);
     const { page } = ama;
 
+    // A1 reported the leak with a panel open, so measure with one open.
     await wakeControls(page);
     await page.getByRole("button", { name: "Chat", exact: true }).click();
-    await page.getByRole("textbox", { name: /message/i }).fill("kasa kasa");
-    await page.keyboard.press("Enter");
-    await expect(page.getByText("kasa kasa")).toBeVisible();
-
-    const region = page.locator("[data-live-region]");
-    await expect(region).toBeAttached();
+    await expect(page.getByRole("textbox", { name: /message/i })).toBeVisible();
 
     /**
-     * The region has to be carrying something, or the size assertion below
-     * passes for the wrong reason — an empty box is small however it is
-     * styled. Kofi's arrival is what puts text in it.
+     * Catch the region *while* it is carrying text, and measure it in the same
+     * evaluation.
+     *
+     * The first version polled from the test side after a second participant
+     * had joined, and could not be made reliable: an announcement is visible
+     * for `ANNOUNCE_GAP_MS` and dropped after `ANNOUNCE_MAX_AGE_MS`, so by the
+     * time `joinAs` returned and a round trip started the region was empty
+     * again. It failed as "never carried an announcement to measure" — the
+     * guard refusing to measure an empty box, which is what it is for.
+     *
+     * Installing the observer before the join removes the race rather than
+     * widening the window: the page reports the box at the moment text appears,
+     * with no round trip in between.
      */
-    await expect
-      .poll(async () => (await region.textContent())?.trim().length ?? 0, {
-        timeout: 15_000,
-        message: "the live region never carried an announcement to measure",
-      })
-      .toBeGreaterThan(0);
+    const measured = page.waitForFunction(
+      () => {
+        const region = document.querySelector("[data-live-region]");
+        const text = region?.textContent?.trim() ?? "";
+        if (!region || !text) return null;
+        const box = region.getBoundingClientRect();
+        return { text, width: box.width, height: box.height };
+      },
+      undefined,
+      { timeout: 30_000, polling: 50 },
+    );
 
+    /**
+     * Wait out the presence settle window before the second join.
+     *
+     * `usePresence` discards everything for `PRESENCE_SETTLE_MS` after the
+     * connection goes healthy, because a LiveKit reconnect unwinds and re-adds
+     * every remote participant and that burst arrives *after* the phase flips
+     * back. A join inside that window is dropped on purpose.
+     *
+     * This test never noticed while the suite shared one room: Ama had been
+     * connected for a while by the time anything else happened. In a room of
+     * its own the two joins are seconds apart, and the announcement this
+     * measures was being discarded exactly as designed.
+     *
+     * Imported rather than typed, so the test cannot drift from the constant it
+     * is waiting on.
+     */
+    await page.waitForTimeout(PRESENCE_SETTLE_MS + 500);
+
+    // Kofi's arrival is what puts text in it.
+    const kofi = await joinAs(browser, "Kofi Mensah", { code: meetingCode });
+    open.push(kofi);
+
+    const paint = await measured.then((handle) => handle.jsonValue());
+    expect(paint, "the live region never carried an announcement to measure").not.toBeNull();
     // Rendered geometry, not the class list: `sr-only` collapses the region to
     // a 1px box and clips the overflow, so a regression that leaves the text in
     // normal flow shows up here as a box the width of a sentence.
-    const box = await region.boundingBox({ timeout: 5_000 });
-    expect(box, "the live region has no rendered box at all").not.toBeNull();
     expect(
-      box!.width,
-      "the live region is laid out at its content width — sr-only is not applying",
+      paint!.width,
+      `the live region is laid out at its content width carrying "${paint!.text}" — sr-only is not applying`,
     ).toBeLessThanOrEqual(2);
-    expect(box!.height, "the live region is laid out at its content height").toBeLessThanOrEqual(2);
+    expect(paint!.height, "the live region is laid out at its content height").toBeLessThanOrEqual(2);
   });
 });

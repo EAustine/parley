@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
 
@@ -29,8 +29,8 @@ test.describe("the room on a phone", () => {
     await participant.context.close().catch(() => {});
   });
 
-  test("the control bar fits the viewport", async ({ browser }) => {
-    participant = await joinAs(browser, "Ama Serwaa", { viewport: IPHONE });
+  test("the control bar fits the viewport", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode, viewport: IPHONE });
     const { page } = participant;
 
     await wakeControls(page);
@@ -55,8 +55,8 @@ test.describe("the room on a phone", () => {
     ).toBeLessThanOrEqual(IPHONE.width);
   });
 
-  test("a panel does not cover the control bar", async ({ browser }) => {
-    participant = await joinAs(browser, "Kofi Mensah", { viewport: IPHONE });
+  test("a panel does not cover the control bar", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Kofi Mensah", { code: meetingCode, viewport: IPHONE });
     const { page } = participant;
 
     await wakeControls(page);

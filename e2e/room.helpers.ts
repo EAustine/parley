@@ -1,10 +1,5 @@
 import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
-/**
- * The live meeting `npm run seed:dev` creates. Its code is fixed, which is why
- * the seed exists — an ad-hoc row would give a different code every run.
- */
-export const LIVE_CODE = "wcz-4npm-hjd";
 
 export type Participant = { context: BrowserContext; page: Page; name: string };
 
@@ -18,7 +13,16 @@ export type Participant = { context: BrowserContext; page: Page; name: string };
 export async function joinAs(
   browser: Browser,
   name: string,
-  options: { withMedia?: boolean; viewport?: { width: number; height: number } } = {},
+  options: {
+    /**
+     * The meeting to join. Required, and supplied by the `meetingCode` fixture
+     * rather than a shared constant — a test that does not own its room cannot
+     * assert what is in it, which is why the suite used to need `workers: 1`.
+     */
+    code: string;
+    withMedia?: boolean;
+    viewport?: { width: number; height: number };
+  },
 ): Promise<Participant> {
   const context = await browser.newContext({
     permissions: ["camera", "microphone"],
@@ -48,11 +52,11 @@ export async function joinAs(
 
   const page = await context.newPage();
 
-  await page.goto(`/j/${LIVE_CODE}`);
+  await page.goto(`/j/${options.code}`);
   await page.getByLabel("Your name").fill(name);
   await page.getByRole("button", { name: "Join meeting" }).click();
 
-  await page.waitForURL(`**/room/${LIVE_CODE}`);
+  await page.waitForURL(`**/room/${options.code}`);
   // Generous: this is a real signalling round trip to a cloud SFU, and the
   // first one of a run is the slowest.
   await expect(

@@ -1,4 +1,6 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+
+import { expect, test } from "./fixtures";
 
 /**
  * §3.9's timezone acceptance, in real browsers set to real timezones.
@@ -38,13 +40,16 @@ const ZONE_LABEL = /\d{2}:\d{2} (GMT|UTC)([+-]\d{1,2}(:\d{2})?)?|\d{2}:\d{2} [A-
  * way `check-meetings.mjs` gets one — every scheduling screen is behind auth
  * and magic links otherwise arrive by email.
  */
-async function signedInPage(browser: Browser, timezoneId: string): Promise<Page> {
+async function signedInPage(
+  browser: Browser,
+  timezoneId: string,
+  email: string,
+): Promise<Page> {
   const context = await browser.newContext({ timezoneId });
   const page = await context.newPage();
 
   const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const email = process.env.CHECK_EMAIL ?? "eluroaustine3@gmail.com";
   if (!supabase || !service) {
     throw new Error("Run via `npm run check:media`, which loads .env.local.");
   }
@@ -87,12 +92,10 @@ async function schedule(
 }
 
 test.describe("across timezones", () => {
-  test("a meeting made in Accra reads correctly in Berlin and Los Angeles", async ({
-    browser,
-  }) => {
+  test("a meeting made in Accra reads correctly in Berlin and Los Angeles", async ({ browser, hostEmail }) => {
     test.setTimeout(180_000);
 
-    const accra = await signedInPage(browser, ACCRA);
+    const accra = await signedInPage(browser, ACCRA, hostEmail);
     // The browser's own zone is what the form defaults to, and what every
     // format call reads. If this is wrong nothing below means anything.
     expect(
@@ -111,7 +114,7 @@ test.describe("across timezones", () => {
     await expect(accra.getByText(/Tue 15 Sep, 14:30 GMT/)).toBeVisible();
 
     // Berlin, in September: +2. The same instant is 16:30 there.
-    const berlin = await signedInPage(browser, BERLIN);
+    const berlin = await signedInPage(browser, BERLIN, hostEmail);
     await berlin.goto(`/schedule/${code}`);
     // §3.9: "always print the zone label" — the number alone is not checkable.
     await expect(berlin.getByText(/Tue 15 Sep, 16:30 GMT\+2/)).toBeVisible();
@@ -122,7 +125,7 @@ test.describe("across timezones", () => {
     // Los Angeles, in September: −7. 07:30, same morning — and the label is
     // "PDT", not "GMT-7". `zzz` prefers a named abbreviation where the zone has
     // one, which is the more readable answer and not what I first expected.
-    const la = await signedInPage(browser, LOS_ANGELES);
+    const la = await signedInPage(browser, LOS_ANGELES, hostEmail);
     await la.goto(`/schedule/${code}`);
     await expect(la.getByText(/Tue 15 Sep, 07:30 PDT/)).toBeVisible();
 
@@ -138,12 +141,10 @@ test.describe("across timezones", () => {
     for (const page of [accra, berlin, la]) await page.context().close();
   });
 
-  test("a winter meeting shifts with Berlin's offset, not with a fixed one", async ({
-    browser,
-  }) => {
+  test("a winter meeting shifts with Berlin's offset, not with a fixed one", async ({ browser, hostEmail }) => {
     test.setTimeout(180_000);
 
-    const accra = await signedInPage(browser, ACCRA);
+    const accra = await signedInPage(browser, ACCRA, hostEmail);
     // Same wall clock as above, three months later. Berlin is +1 in December,
     // so this is 15:30 there rather than 16:30 — a fixed offset would print
     // the same number in both seasons, and be an hour wrong for half the year.
@@ -154,15 +155,42 @@ test.describe("across timezones", () => {
       timezone: ACCRA,
     });
 
-    const berlin = await signedInPage(browser, BERLIN);
+    const berlin = await signedInPage(browser, BERLIN, hostEmail);
     await berlin.goto(`/schedule/${code}`);
     await expect(berlin.getByText(/Tue 15 Dec, 15:30 GMT\+1/)).toBeVisible();
 
     for (const page of [accra, berlin]) await page.context().close();
   });
 
-  test("the dashboard prints the zone label too", async ({ browser }) => {
-    const berlin = await signedInPage(browser, BERLIN);
+  test("the dashboard prints the zone label too", async ({ browser, hostEmail }) => {
+    const berlin = await signedInPage(browser, BERLIN, hostEmail);
+
+    /**
+     * Schedule the rows this reads, rather than reading whatever is there.
+     *
+     * It used to sign in and assert against the dashboard as found — which
+     * meant it was really asserting on `seed:dev`'s fixtures, or on rows other
+     * tests had left behind. `CLAUDE.md` names this file specifically: "Two
+     * scheduling tests were wrong before the code was, because they leaned on
+     * rows other sections deliberately mutate." This was the third.
+     *
+     * Two rows, not one: a missing label on the second row is as much a missed
+     * meeting as on the first, and one row cannot show that the loop below runs
+     * more than once.
+     */
+    await schedule(berlin, {
+      title: "Zone label, first row",
+      date: "2026-12-15",
+      time: "15:30",
+      timezone: "Europe/Berlin",
+    });
+    await schedule(berlin, {
+      title: "Zone label, second row",
+      date: "2026-12-16",
+      time: "09:00",
+      timezone: "Europe/Berlin",
+    });
+
     await berlin.goto("/dashboard");
     // §3.9 makes the label non-optional: it is what makes the number checkable.
     // Asserted on every row rather than on one, since a missing label on the

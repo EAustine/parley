@@ -1,8 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
-import { emptyRoom } from "./livekit-admin";
 import {
-  LIVE_CODE,
   expectParticipants,
   joinAs,
   wakeControls,
@@ -18,10 +16,6 @@ import {
  * singles out — stopping from the browser's own bar — because the whole risk is
  * that our UI does not hear about it.
  */
-
-test.beforeEach(async () => {
-  await emptyRoom(LIVE_CODE);
-});
 
 /**
  * The persistent share bar, not the suppressed-view copy on the stage.
@@ -45,11 +39,9 @@ test.describe("screen share", () => {
     for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
   });
 
-  test("reaches the other participant, and collapses them to a filmstrip", async ({
-    browser,
-  }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("reaches the other participant, and collapses them to a filmstrip", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
     await expectParticipants(kwabena.page, 2);
 
@@ -118,8 +110,8 @@ test.describe("screen share", () => {
    * This test stays, and matters more for it — it is what would notice if that
    * behaviour ever changed underneath us.
    */
-  test("stopping from the browser's own control updates the app", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+  test("stopping from the browser's own control updates the app", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     // Keep a handle on whatever getDisplayMedia returns. A wrapper, not a
     // stub: the real call still runs and a real display track still publishes.
     await ama.page.evaluate(() => {
@@ -130,7 +122,7 @@ test.describe("screen share", () => {
         return stream;
       };
     });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
 
     await wakeControls(ama.page);
@@ -170,9 +162,9 @@ test.describe("screen share", () => {
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeHidden();
   });
 
-  test("a second sharer is asked, and the first is told", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("a second sharer is asked, and the first is told", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
     await expectParticipants(kwabena.page, 2);
 
@@ -225,8 +217,8 @@ test.describe("screen share", () => {
     await expect(ama.page.getByRole("dialog")).toHaveCount(0);
   });
 
-  test("sharing alone asks nothing", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+  test("sharing alone asks nothing", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 1);
 
     await wakeControls(ama.page);
@@ -237,9 +229,9 @@ test.describe("screen share", () => {
     await expect(ama.page.getByRole("dialog")).toHaveCount(0);
   });
 
-  test("share survives opening and closing the chat panel", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("share survives opening and closing the chat panel", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(kwabena.page, 2);
 
     await wakeControls(ama.page);
@@ -267,9 +259,9 @@ test.describe("participants panel", () => {
     for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
   });
 
-  test("lists everyone with their device state", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+  test("lists everyone with their device state", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
 
     await openParticipants(ama);
@@ -291,11 +283,11 @@ test.describe("participants panel", () => {
     ).toContainText("2");
   });
 
-  test("offers no way for a guest to act on anyone", async ({ browser }) => {
+  test("offers no way for a guest to act on anyone", async ({ browser, meetingCode }) => {
     // §3.8's actions are the host's. Neither of these participants is one —
     // both are guests on a meeting owned by someone else.
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
-    kwabena = await joinAs(browser, "Kwabena Osei", { withMedia: false });
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
     await expectParticipants(ama.page, 2);
 
     await openParticipants(ama);
@@ -304,10 +296,8 @@ test.describe("participants panel", () => {
     await expect(panel.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
   });
 
-  test("has no unmute action anywhere — a host can silence, never activate", async ({
-    browser,
-  }) => {
-    ama = await joinAs(browser, "Ama Serwaa", { withMedia: false });
+  test("has no unmute action anywhere — a host can silence, never activate", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     await openParticipants(ama);
 
     // §3.8's rule, asserted as an absence across the whole room rather than

@@ -1,8 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
-import { emptyRoom } from "./livekit-admin";
 import {
-  LIVE_CODE,
   gridShape,
   joinAs,
   leave,
@@ -13,9 +11,6 @@ import {
 } from "./room.helpers";
 
 // Start from an empty room, never from what the last test left behind.
-test.beforeEach(async () => {
-  await emptyRoom(LIVE_CODE);
-});
 
 /**
  * The gap Phase 4's report could not close by hand: the Browser pane blocks
@@ -34,9 +29,9 @@ test.describe("two participants", () => {
     for (const p of [ama, kwabena]) await p?.context.close().catch(() => {});
   });
 
-  test("publish and subscribe to each other's video", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa");
-    kwabena = await joinAs(browser, "Kwabena Osei");
+  test("publish and subscribe to each other's video", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode });
 
     for (const p of [ama, kwabena]) {
       await expect(
@@ -78,9 +73,9 @@ test.describe("two participants", () => {
     }
   });
 
-  test("mute in one is visible in the other, from track state", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa");
-    kwabena = await joinAs(browser, "Kwabena Osei");
+  test("mute in one is visible in the other, from track state", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode });
 
     const amaOnKwabena = kwabena.page.locator('[aria-label="Ama Serwaa is muted"]');
     await expect(amaOnKwabena).toHaveCount(0);
@@ -108,9 +103,9 @@ test.describe("two participants", () => {
     await expect(amaOnKwabena).toHaveCount(0);
   });
 
-  test("camera off leaves an avatar, and the video comes back", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa");
-    kwabena = await joinAs(browser, "Kwabena Osei");
+  test("camera off leaves an avatar, and the video comes back", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode });
 
     await expect(kwabena.page.locator("video")).toHaveCount(2);
     await wakeControls(ama.page);
@@ -132,9 +127,9 @@ test.describe("two participants", () => {
     await expect(kwabena.page.locator("video")).toHaveCount(2);
   });
 
-  test("the speaking ring follows real speech, and ignores a cough", async ({ browser }) => {
-    ama = await joinAs(browser, "Ama Serwaa");
-    kwabena = await joinAs(browser, "Kwabena Osei");
+  test("the speaking ring follows real speech, and ignores a cough", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode });
 
     // The fixture loops: 4s speech, 3s silence, a 200ms cough, 2.8s silence,
     // 4s speech. Sampling across more than one full cycle is what separates
@@ -188,7 +183,7 @@ test.describe("two participants", () => {
 });
 
 test.describe("joining", () => {
-  test("costs exactly one token, not one per screen", async ({ browser }) => {
+  test("costs exactly one token, not one per screen", async ({ browser, meetingCode }) => {
     const context = await browser.newContext({ permissions: ["camera", "microphone"] });
     const page = await context.newPage();
 
@@ -199,10 +194,10 @@ test.describe("joining", () => {
       }
     });
 
-    await page.goto(`/j/${LIVE_CODE}`);
+    await page.goto(`/j/${meetingCode}`);
     await page.getByLabel("Your name").fill("Ama Serwaa");
     await page.getByRole("button", { name: "Join meeting" }).click();
-    await page.waitForURL(`**/room/${LIVE_CODE}`);
+    await page.waitForURL(`**/room/${meetingCode}`);
     await expect(
       page.getByRole("heading", { name: /Meeting, \d+ participant/ }),
     ).toBeAttached({ timeout: 60_000 });
@@ -219,7 +214,7 @@ test.describe("joining", () => {
 });
 
 test.describe("a busy meeting", () => {
-  test("holds the join screen and goes through by itself", async ({ browser }) => {
+  test("holds the join screen and goes through by itself", async ({ browser, meetingCode }) => {
     const context = await browser.newContext({ permissions: ["camera", "microphone"] });
     const page = await context.newPage();
 
@@ -241,7 +236,7 @@ test.describe("a busy meeting", () => {
       await route.continue();
     });
 
-    await page.goto(`/j/${LIVE_CODE}`);
+    await page.goto(`/j/${meetingCode}`);
     await page.getByLabel("Your name").fill("Ama Serwaa");
     await page.getByRole("button", { name: "Join meeting" }).click();
 
@@ -255,7 +250,7 @@ test.describe("a busy meeting", () => {
     await expect(page.getByText("Too many attempts")).toHaveCount(0);
 
     // Then it goes through on its own, with nothing more from the person.
-    await page.waitForURL(`**/room/${LIVE_CODE}`, { timeout: 30_000 });
+    await page.waitForURL(`**/room/${meetingCode}`, { timeout: 30_000 });
     await expect(
       page.getByRole("heading", { name: /Meeting, \d+ participant/ }),
     ).toBeAttached({ timeout: 60_000 });
@@ -266,8 +261,8 @@ test.describe("a busy meeting", () => {
 });
 
 test.describe("the grid", () => {
-  test("reflows on join and leave", async ({ browser }) => {
-    const ama = await joinAs(browser, "Ama Serwaa");
+  test("reflows on join and leave", async ({ browser, meetingCode }) => {
+    const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
 
     // One participant: §3.4 letterboxes to 16:9 rather than cropping.
     await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(1);
@@ -277,7 +272,7 @@ test.describe("the grid", () => {
       aspectRatio: "16 / 9",
     });
 
-    const kwabena = await joinAs(browser, "Kwabena Osei");
+    const kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode });
     await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(2);
     expect(await gridShape(ama.page)).toMatchObject({ columns: 2, rows: 1 });
 
