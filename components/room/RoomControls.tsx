@@ -69,7 +69,21 @@ export function RoomControls({
 
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 pb-6"
+      /**
+       * `z-30`, above the panels.
+       *
+       * Both panels are `z-20` and, on mobile, `inset-x-0 bottom-0
+       * h-[60dvh]` — a bottom sheet that covered this bar entirely. A
+       * positioned element with `z-20` beats a positioned element with `auto`
+       * whatever the DOM order, so opening chat on a phone hid mic, camera and
+       * leave. §3.4 requires the mute control to stay reachable, and mute is a
+       * privacy control.
+       *
+       * The bottom padding clears the iPhone home indicator, which `dvh` does
+       * not account for: `dvh` describes the viewport, not the region of it
+       * that is safe to put a control in.
+       */
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
       // Hidden controls stay in the DOM and keep their tab stops: §3.4 says
       // they reappear on any keypress or focus, which cannot happen if
       // focusing them is what would have brought them back.
@@ -99,7 +113,14 @@ export function RoomControls({
       )}
 
       <div
-        className="flex items-center gap-3 rounded-full px-3 py-2"
+        /**
+         * Tighter below `sm`. Seven controls at 44–48px plus a leave pill and
+         * six 12px gaps comes to roughly 420px, against a 375pt iPhone — and
+         * the stage clips `overflow-hidden`, so the ends simply vanished. The
+         * gap and padding come down rather than the controls, which have their
+         * own floor in §9's touch targets.
+         */
+        className="flex max-w-[calc(100vw-1rem)] items-center gap-1.5 rounded-full px-2 py-2 sm:gap-3 sm:px-3"
         style={{
           background: "var(--scrim)",
           // Invisible and clickable is a trap. Keyboard focus is unaffected by

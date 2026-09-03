@@ -308,6 +308,14 @@ Empty state is an invitation, not an apology: "No meetings yet. Start one now, o
 
 ---
 
+### 3.10a Landing page
+
+`/` has two jobs and no third. It carries the two entry points §2's flow C names — a meeting-code field and sign-in — plus the wordmark and the tagline. Nothing else is specified, deliberately: the product is not seeking users, and an unscoped marketing page built in a final phase is a design exercise with nothing to check it against.
+
+The code field must live here and not only on the unknown-code page. Mounting it exclusively on a dead end makes joining by code reachable only after failing to join.
+
+---
+
 ### 3.11 Connection quality and reconnection
 
 LiveKit reports `excellent | good | poor | lost`.

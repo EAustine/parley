@@ -215,7 +215,11 @@ Layout, left-aligned on a `#0E1013` ground:
 
 **Absolute URLs, full tags.** Crawlers do not execute JavaScript — the `og:image`, `og:url`, and `twitter:image` values must be complete absolute URLs baked into the HTML, not assembled client-side. This is the bug that shipped with Hueristic; do not repeat it.
 
-Generate a second variant for meeting links (`/j/[code]`) showing the meeting title and host name, so a pasted invite renders as something meaningful in Slack and iMessage rather than a generic card.
+**Meeting links get the site-wide card, with no meeting data in it.** "You've been invited to a meeting on Parley" and nothing more.
+
+A per-meeting variant showing title and host was specified here and is withdrawn. The host half reversed §3.2's explicit decision against exposing host identity to link-holders. The title half is subtler and was the real find: an unfurl discloses on *paste*, not on *open*. §3.2 reasoned about who holds the link; an unfurl widens that to everyone who can see the channel, plus the platform's fetcher and its cache.
+
+The counter — that anyone in the channel could click through and read the title anyway — does not survive the accident case. Paste a link to the wrong channel with an unfurl and "1:1 re: performance concerns" is broadcast instantly and passively to everyone scrolling past. Without one, it sits there until someone cares enough to click. Meeting titles are sensitive for the same reasons calendar titles are, and the asymmetry between passive broadcast and deliberate click is exactly the disclosure this avoids. Whoever pastes the link can type what the meeting is if they want it known.
 
 ---
 
@@ -251,8 +255,12 @@ https://parley.app/j/kqr-8mzt-vnp
 
 ---
 
-## 8. Optional: the live favicon
+## 8. Considered and declined: the live favicon
 
-When the user is in an active call, swap `app/icon.svg` for a variant with **all four cells filled** — the room is full, you are in it.
+An earlier draft of this document proposed swapping `app/icon.svg` for an all-four-cells-filled variant while in a call, so the meeting tab could be found among twenty. **Declined**, and recorded here so it is not reinvented.
 
-Costs almost nothing, makes the call tab findable among twenty others, and it is the one place where the mark's own logic pays off as a feature: the empty cell filling in means someone arrived. Phase 10, if there is room.
+It contradicted this document's own misuse list, `CLAUDE.md`'s rule, and `BUILD-PLAN.md`'s kickoff prompt — all three forbid filling the fourth cell, which meant the proposal made every brand document self-contradictory. The identity has exactly one idea and the mark spends it on that empty cell. An optional tab affordance is not what you spend it on.
+
+It was also unbuildable as written: `app/icon.svg` is a build-time convention, pre-join reaches the room through `router.push` with no document load, and iOS Safari renders no tab favicon at all — so it would have done nothing for the mobile visitor §3.3 calls the highest-traffic flow.
+
+A value inversion — dark mark on a light square — was raised as a way to signal the state without touching the fourth cell. Cleverer, and still wrong: at 16px an inverted badge reads as a different logo rather than as a state of the same one, and it gives the mark two appearances with no answer to which is canonical. A red dot would communicate instantly, and a red dot is not this identity.

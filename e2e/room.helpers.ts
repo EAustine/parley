@@ -18,9 +18,15 @@ export type Participant = { context: BrowserContext; page: Page; name: string };
 export async function joinAs(
   browser: Browser,
   name: string,
-  options: { withMedia?: boolean } = {},
+  options: { withMedia?: boolean; viewport?: { width: number; height: number } } = {},
 ): Promise<Participant> {
-  const context = await browser.newContext({ permissions: ["camera", "microphone"] });
+  const context = await browser.newContext({
+    permissions: ["camera", "microphone"],
+    // Phase 10 checks the room at phone width. Set on the context rather than
+    // resized afterwards, so the first paint is the one being measured — the
+    // control bar's overflow was a first-paint problem.
+    ...(options.viewport ? { viewport: options.viewport } : {}),
+  });
 
   // Joining with camera and microphone off is a thing people do, and it is what
   // the device store already records. Seeding it is how a crowd is assembled

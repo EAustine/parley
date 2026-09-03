@@ -102,9 +102,22 @@ t((variants.default?.px ?? 0) >= 24,
   "and the default clears the 24px floor for document surfaces",
   `${variants.default?.cls} = ${variants.default?.px}px`);
 
-/** 44 in the room and pre-join; 24 everywhere else. */
+/**
+ * 44 in the room and pre-join; 24 everywhere else.
+ *
+ * Keyed on directory, which is a proxy for surface and not the same thing.
+ * `components/meetings/JoinCodeForm.tsx` renders on `/j/[code]` — a pre-join
+ * surface — and was graded at 24 because of where the file lives. Components
+ * that reach a touch-primary surface from elsewhere are listed here rather
+ * than moved, because moving a file to satisfy a checker is the checker
+ * deciding the layout.
+ */
+const TOUCH_ELSEWHERE = new Set([
+  "components/meetings/JoinCodeForm.tsx", // rendered by app/j/[code]/page.tsx
+]);
+
 const floorFor = (file) =>
-  /^components\/(room|prejoin)\//.test(file) ? 44 : 24;
+  /^components\/(room|prejoin)\//.test(file) || TOUCH_ELSEWHERE.has(file) ? 44 : 24;
 
 const files = [];
 (function walk(dir) {

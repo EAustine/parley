@@ -2912,3 +2912,138 @@ Also untested: the mobile pager and panel layouts on a real touch device, and
 18, `check:deps` 5/5, `check:bundle` 10/10, `check:media` **42/42**, up from 32
 and green on a full run — which, this phase more than most, is the only run
 that counts.
+
+---
+
+## Phase 10 — mobile, error routes, and the last of the polish
+
+The final phase, and half of it was deciding what not to build.
+
+### Four things in the task list contradicted the specification
+
+Each was put to Austine and settled in the documents rather than in code.
+
+**The live favicon is declined and recorded.** Its only described
+implementation — fill the fourth cell while in a call — was forbidden by
+BRAND.md's own misuse list, CLAUDE.md's rule, and BUILD-PLAN's kickoff prompt,
+which made every brand document self-contradictory. It was also unbuildable as
+written: `app/icon.svg` is a build-time convention, pre-join reaches the room
+through `router.push` with no document load, and iOS Safari renders no tab
+favicon at all — so it would have done nothing for the mobile visitor §3.3
+calls the highest-traffic flow. A value inversion was raised as a way to signal
+the state without touching the cell, and declined too: at 16px an inverted
+badge reads as a different logo rather than a state of the same one.
+
+**"Meeting full" is struck.** No capacity limit exists in the schema, the token
+contract's six error codes, LiveKit config, or the PRD, so building the screen
+would have meant inventing the concept in the final phase. The 429 "This
+meeting is busy" copy already in pre-join is what the line was reaching for.
+LiveKit's own plan ceiling is a real unhandled failure and goes in the
+untested-paths table rather than on a screen.
+
+**The per-meeting OG card carries no meeting data.** The host half reversed
+§3.2's decision and was not reachable anyway — `get_meeting_by_code` returns no
+host field. The title half was the subtler find, and not mine: **an unfurl
+discloses on paste, not on open.** §3.2 reasoned about who holds the link; an
+unfurl widens that to everyone who can see the channel, plus the platform's
+fetcher and its cache. The counter — that anyone in the channel could click
+through anyway — does not survive the accident case, where a link pasted to the
+wrong channel broadcasts "1:1 re: performance concerns" passively to everyone
+scrolling past.
+
+A consequence worth having: taking no parameters means there is no lookup, so
+there is no unknown, ended, cancelled or expired branch to get wrong. An OG
+route must return an image rather than a 500, and the surest way is to have
+nothing to fail at.
+
+**"Touch targets at 44px minimum" and "dashboard under 180KB" are both stale** —
+superseded by CLAUDE.md's 44/24 split shipped in Phase 9, and by §10's ≤ 280 kB
+against a route measuring 267.
+
+### A retired colour on the most-seen artefact in the product
+
+`app/opengraph-image.tsx` hardcoded `TILE_BORDER = "#414954"` — the
+pre-Phase-0 value, retired in Phase 0 for measuring 2.09:1 when WCAG 1.4.11
+wants 3:1. The token has been `#5D6777` since. It survived ten phases because
+`scripts/contrast.mjs` reads only `globals.css`, so no gate can see a colour
+hardcoded in a card.
+
+Fixed, and the constants extracted to `lib/og.tsx` so the two cards cannot
+drift again — which is the same lesson the contrast table learned twice.
+
+### The mobile faults, and the number that made them real
+
+Two, both measured rather than reasoned about:
+
+**The control bar overflowed the phone.** Seven controls at 44–48px plus a
+leave pill and six 12px gaps came to roughly 420px against 375, and the stage
+clips `overflow-hidden`, so the ends did not wrap or scroll — they were not
+there. Reverting the fix puts the mic control at **x = −39.47px**.
+
+**Both panels covered it entirely.** They are `inset-x-0 bottom-0 h-[60dvh]` at
+`z-20` on mobile and the control bar had no z-index at all — a positioned
+element with a stacking order beats a positioned element without one whatever
+the DOM order. So opening chat on a phone hid mic, camera and leave, against
+§3.4's requirement that controls stay reachable with both panels open, and mute
+is a privacy control.
+
+`toBeVisible` would not have caught the second: the bar was in the layout and
+painted, just underneath. Hit-testing the centre point is what asks whether a
+finger would reach it.
+
+Also: **no safe-area handling existed anywhere.** `dvh` describes how tall the
+viewport is, not which part of it is safe to put a control in, so the bar's
+24px bottom padding sat under an iPhone's 34px home indicator. `viewportFit:
+"cover"` plus `env(safe-area-inset-bottom)` fixes it, and neither does anything
+without the other.
+
+### An unsupported browser could join a room it could never use
+
+The `unsupported` and `insecure` states existed with good copy and were
+unreachable in the case that matters: they were only set inside `request()`,
+which fires from a click, and `canJoin` was computed from the name field alone.
+So a guest in a browser without the media APIs could type a name, press Join,
+receive a valid token, and land in a room that would fail — presenting as a
+connection problem, blaming the network for a browser fault.
+
+Detection now runs on mount. Feature detection is not a permission request, so
+§3.3's rule that the prompt must not fire on page load is untouched.
+`RTCPeerConnection` is checked alongside `getUserMedia` because they fail
+independently.
+
+### The last framework default page
+
+`app/not-found.tsx` did not exist, so three `notFound()` calls and every
+unmatched URL landed on Next's default. No *control* reached it — `MeetingRow`
+gates its Details link correctly — so CLAUDE.md's rule was satisfied; the
+exposure was URL-borne, which is how anyone actually arrives: a forwarded link,
+a stale bookmark, a typo.
+
+It carries its own way back, because it cannot rely on a header being there.
+Verified both paths rather than assumed: an unmatched URL renders inside the
+root layout alone with no header, while a `notFound()` inside a route group
+keeps that group's layouts and does get one. My first comment claimed the first
+case for both and was wrong.
+
+### `/` had no interactive element in production
+
+The only button was gated on `NODE_ENV !== "production"`, so §2's flow C —
+"Dashboard or home → enter code" — was unimplemented from home, and
+`JoinCodeForm` was mounted only on the unknown-code page. Joining by code
+worked exclusively *after* failing to join.
+
+§3.10a now specifies the page and it is built to that: two entry points, the
+wordmark, the tagline, nothing else.
+
+`check:targets` gained a surface the directory rule could not see —
+`JoinCodeForm` renders on `/j/[code]`, a pre-join surface, from
+`components/meetings/`. The floor is by surface, and a component can appear on
+more than one.
+
+### Checks
+
+`check:media` **44/44**, up from 42 — the two new mobile geometry tests. All
+others green: `check:a11y` 58, `check:room` 96, `check:connection` 72,
+`check:chat` 73, `check:ics` 69, `check:meetings` 68, `check:permissions` 39,
+`check:contrast` 25, `check:rls` 18, `check:deps` 5/5, `check:targets` 5/5,
+`check:bundle` 10/10. Every route inside budget; rule 8 holds.

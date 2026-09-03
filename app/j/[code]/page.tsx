@@ -175,7 +175,7 @@ function MeetingNotFound({ code }: { code: string }) {
 
 function Centred({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center gap-8 px-6 py-16">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-8 px-6 py-16">
       {children}
     </div>
   );

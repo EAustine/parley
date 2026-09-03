@@ -344,7 +344,15 @@ Tasks:
 - Touch targets at 44px minimum
 - iOS Safari viewport handling (`dvh`, not `vh`)
 - Landing page
-- Error routes: unknown code, ended meeting, meeting full, browser unsupported
+- Error routes: unknown code, ended meeting, browser unsupported
+
+  **"Meeting full" struck.** No capacity limit exists in the schema, the token contract's six error codes, LiveKit config, or the PRD — so building the screen would have meant inventing the concept first, in the final phase. The 429 "This meeting is busy" copy already in pre-join is what that line was reaching for.
+
+  Recorded rather than dropped: LiveKit's own plan ceiling is a real failure this product does not handle. Hitting it presents as a generic connection failure with no explanation of the cause. Only reachable at a scale this project will not see, and it goes in the untested-paths table, not on a screen.
+
+- **Landing page: code field and sign-in.** `/` currently renders zero interactive elements in production, and `JoinCodeForm` is mounted only on the unknown-code dead end — so §2's flow C works only *after* a failed join. That is a specified entry point reachable exclusively by failure.
+
+  Scope is the two real entry points plus the wordmark and tagline that already exist as brand assets. Not a design exercise: `/` has no PRD section to build against, and inventing one in the last phase is how final phases go wrong. But someone arriving without a link is a peer or a recruiter, not a participant, and they should be told what this is in one line that is already written.
 - Per-meeting OG variant for `/j/[code]` showing meeting title and host, so a pasted invite renders meaningfully in Slack and iMessage
 - Optional: live favicon — swap `app/icon.svg` for an all-four-cells-filled variant while in an active call
 - Bundle check: dashboard route under 180KB gzipped, `livekit-client` absent from it

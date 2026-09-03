@@ -75,7 +75,20 @@ export function PreJoin({
   }, [media.stream]);
 
   const trimmedName = name.trim();
-  const canJoin = !joining && (!isGuest || trimmedName.length > 0);
+  /**
+   * A browser that cannot do WebRTC cannot join, whatever the name field says.
+   *
+   * This used to be `!joining && (!isGuest || name)`, so the only thing
+   * standing between an unsupported browser and a broken room was the person
+   * not pressing the button. §3.11's rule that nothing fails silently applies
+   * before the connection as much as during it: the screen already knows, and
+   * already has the copy.
+   *
+   * `insecure` is separated because it is fixable by the visitor — the copy
+   * tells them to open the HTTPS address — while `unsupported` is not.
+   */
+  const unusableBrowser = media.state === "unsupported" || media.state === "insecure";
+  const canJoin = !joining && !unusableBrowser && (!isGuest || trimmedName.length > 0);
 
   /** Hold the screen, count down, and go again — never bounce to an error. */
   function holdAndRetry(seconds: number) {

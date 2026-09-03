@@ -100,7 +100,11 @@ export function ChatPanel({
       // `[hidden] { display: none !important }` in our own base layer, so this
       // does not depend on Tailwind's preflight happening to do the same — see
       // CLAUDE.md's testing rules, which is where that lesson came from.
-      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-card md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
+      // `pb-24` on mobile: the control bar is `z-30` and floats over this
+      // sheet — it has to, because §3.4 requires mute to stay reachable with a
+      // panel open, and mute is a privacy control. Without the inset the
+      // composer sat underneath it.
+      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-card pb-24 md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
       style={{ borderColor: "var(--tile-border)" }}
       onKeyDown={(event) => {
         // Escape closes from anywhere inside, including mid-draft.

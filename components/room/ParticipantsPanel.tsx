@@ -69,7 +69,7 @@ export function ParticipantsPanel({
     <aside
       aria-label="Participants"
       hidden={!open}
-      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-card md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
+      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-card pb-24 md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
       style={{ borderColor: "var(--tile-border)" }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {

@@ -1,8 +1,10 @@
 import { ImageResponse } from "next/og";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 
 import { SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+import {
+  BACKGROUND, FOREGROUND, MUTED_FOREGROUND, TILE_BORDER, SCRIM,
+  Mark, instrumentSans,
+} from "@/lib/og";
 
 // next/font/google does not expose the font binary to ImageResponse, so the
 // static weights are vendored in app/fonts/ and read from disk here.
@@ -12,15 +14,6 @@ export const alt = `${SITE_NAME} — ${SITE_TAGLINE}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const BACKGROUND = "#0E1013";
-const FOREGROUND = "#F2F4F7";
-const MUTED_FOREGROUND = "#9AA1AC";
-const TILE_BORDER = "#414954";
-const SCRIM = "rgba(14, 16, 19, 0.72)";
-
-function fontPath(file: string) {
-  return join(process.cwd(), "app", "fonts", file);
-}
 
 /**
  * The mark at product scale — three filled cells and one empty, drawn as real
@@ -83,47 +76,9 @@ function ProductTiles() {
 }
 
 /** The logomark, 24-unit grid, at 88px. */
-function Mark({ size: markSize }: { size: number }) {
-  const u = markSize / 24;
-  const cell = (x: number, y: number, filled: boolean) => ({
-    position: "absolute" as const,
-    display: "flex",
-    left: x * u,
-    top: y * u,
-    width: 9 * u,
-    height: 9 * u,
-    borderRadius: 2.4 * u,
-    ...(filled
-      ? { backgroundColor: FOREGROUND }
-      : {
-          // >=32px: the empty cell carries a 1.5 stroke at 40% opacity.
-          border: `${1.5 * u}px solid ${FOREGROUND}`,
-          opacity: 0.4,
-        }),
-  });
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        position: "relative",
-        width: markSize,
-        height: markSize,
-      }}
-    >
-      <div style={cell(1, 1, true)} />
-      <div style={cell(14, 1, true)} />
-      <div style={cell(1, 14, true)} />
-      <div style={cell(14, 14, false)} />
-    </div>
-  );
-}
 
 export default async function OpenGraphImage() {
-  const [regular, semibold] = await Promise.all([
-    readFile(fontPath("InstrumentSans-Regular.ttf")),
-    readFile(fontPath("InstrumentSans-SemiBold.ttf")),
-  ]);
+  const fonts = await instrumentSans();
 
   return new ImageResponse(
     (
@@ -173,15 +128,7 @@ export default async function OpenGraphImage() {
     ),
     {
       ...size,
-      fonts: [
-        { name: "Instrument Sans", data: regular, weight: 400, style: "normal" },
-        {
-          name: "Instrument Sans",
-          data: semibold,
-          weight: 600,
-          style: "normal",
-        },
-      ],
+      fonts,
     },
   );
 }

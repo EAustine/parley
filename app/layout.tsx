@@ -46,6 +46,18 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0E1013",
+  /**
+   * `cover`, so `env(safe-area-inset-*)` resolves to something.
+   *
+   * Without it those variables are zero on every device and the control bar's
+   * bottom padding is a plain 24px sitting under an iPhone's 34px home
+   * indicator. `dvh` does not help here — it describes how tall the viewport
+   * is, not which part of it is safe to put a control in.
+   *
+   * The room already paints `--background` edge to edge, so extending under
+   * the notch costs nothing visually and is what makes the inset meaningful.
+   */
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

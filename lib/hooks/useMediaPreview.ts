@@ -80,6 +80,32 @@ async function classifyError(
 
 export function useMediaPreview(): MediaPreview {
   const [state, setState] = useState<PermissionState>("idle");
+
+  /**
+   * Whether this browser can do a meeting at all, decided on mount.
+   *
+   * The `unsupported` and `insecure` states existed and were unreachable in
+   * the case that matters: they were only set inside `request()`, which fires
+   * from a click, and `PreJoin` computed `canJoin` from the name field alone.
+   * So a guest in a browser without the media APIs could type a name, press
+   * Join, receive a valid token and land in a room that could never work — a
+   * connection failure blaming the network for a browser problem.
+   *
+   * **Feature detection, not a permission request.** §3.3 forbids firing the
+   * prompt on page load; reading whether a property exists is not asking for
+   * anything, and it is what lets the screen say the true thing before anyone
+   * touches a control.
+   *
+   * `RTCPeerConnection` is checked alongside `getUserMedia` because they fail
+   * independently: a browser can expose media capture and still have no
+   * WebRTC, and LiveKit needs both.
+   */
+  useEffect(() => {
+    const noCapture = !navigator.mediaDevices?.getUserMedia;
+    const noWebRTC = typeof window.RTCPeerConnection !== "function";
+    if (!noCapture && !noWebRTC) return;
+    setState(window.isSecureContext === false ? "insecure" : "unsupported");
+  }, []);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameras, setCameras] = useState<MediaDeviceOption[]>([]);
   const [microphones, setMicrophones] = useState<MediaDeviceOption[]>([]);

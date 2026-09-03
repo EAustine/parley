@@ -68,7 +68,11 @@ export function JoinCodeForm({ autoFocus = false }: { autoFocus?: boolean }) {
         </p>
       )}
 
-      <Button type="submit" className="w-full" disabled={!value.trim()}>
+      {/* `touch`, though this file is not under components/room or
+          components/prejoin: it renders on `/j/[code]`, which is a pre-join
+          surface, and on `/`. The floor CLAUDE.md sets is by *surface*, and a
+          component can appear on more than one. */}
+      <Button size="touch" type="submit" className="w-full" disabled={!value.trim()}>
         Join meeting
       </Button>
     </form>
