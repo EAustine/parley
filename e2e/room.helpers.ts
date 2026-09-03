@@ -1,5 +1,7 @@
 import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
+import { signIn } from "./auth";
+
 
 export type Participant = { context: BrowserContext; page: Page; name: string };
 
@@ -22,6 +24,17 @@ export async function joinAs(
     code: string;
     withMedia?: boolean;
     viewport?: { width: number; height: number };
+    /**
+     * Sign in as this account before joining, so the participant is the
+     * meeting's host rather than a guest.
+     *
+     * §7 derives identity and role from the session, so host-only surfaces —
+     * the host badge, "Ask to mute", "Remove" — are unreachable without one.
+     * Nothing in the suite had ever been the host of the meeting it was
+     * looking at, which is why §3.8's asymmetry was covered only from the side
+     * that cannot use it.
+     */
+    asHost?: string;
   },
 ): Promise<Participant> {
   const context = await browser.newContext({
@@ -52,8 +65,14 @@ export async function joinAs(
 
   const page = await context.newPage();
 
-  await page.goto(`/j/${options.code}`);
-  await page.getByLabel("Your name").fill(name);
+  if (options.asHost) {
+    await signIn(page, options.asHost, `/j/${options.code}`);
+  } else {
+    await page.goto(`/j/${options.code}`);
+  }
+  // A signed-in host is not asked to name themselves — §3.3.
+  const nameField = page.getByLabel("Your name");
+  if (await nameField.count()) await nameField.fill(name);
   await page.getByRole("button", { name: "Join meeting" }).click();
 
   await page.waitForURL(`**/room/${options.code}`);

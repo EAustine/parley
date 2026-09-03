@@ -89,7 +89,7 @@ export function ParticipantsPanel({
       // what is beneath, and on `#0E1013` there is nothing meaningfully darker
       // to go to; dark interfaces carry elevation with a lighter fill and a
       // visible edge.
-      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-popover pb-24 md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
+      className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-popover pb-24 md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
       style={{ borderColor: "var(--tile-border)" }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -171,11 +171,26 @@ function ParticipantRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="type-body truncate">
-            {participant.isLocal ? `${name} (you)` : name}
-          </span>
+          <span className="type-body truncate">{name}</span>
+          {/*
+            v1.2 C2: "(you)" in `--muted-foreground` rather than at the same
+            weight as the name. It was inside the name span, so it read as part
+            of what someone is called.
+          */}
+          {participant.isLocal && (
+            <span className="type-body shrink-0 text-muted-foreground">(you)</span>
+          )}
+          {/*
+            A small outlined chip, not a word. `--tile-border` is the room
+            ground's boundary token and belongs to no other surface, so the
+            chip takes `--border` — 1.29:1 against the panel, which is a
+            boundary rather than a divider and is what the token is for. The
+            label itself carries the contrast at `--muted-foreground`.
+          */}
           {isHost(participant) && (
-            <span className="type-caption text-muted-foreground">Host</span>
+            <span className="type-caption shrink-0 rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+              Host
+            </span>
           )}
         </div>
         <ConnectionLabel participant={participant} />

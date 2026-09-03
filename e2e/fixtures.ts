@@ -26,7 +26,11 @@ import {
  * name can no longer collide with anything, leaving them to accumulate across
  * runs is untidy in an account we also watch for spend.
  */
-export const test = base.extend<{ meetingCode: string; hostEmail: string }>({
+export const test = base.extend<{
+  meetingCode: string;
+  hostEmail: string;
+  hostedMeeting: { code: string; email: string };
+}>({
   meetingCode: async ({}, use) => {
     const code = await createMeeting();
     await use(code);
@@ -50,6 +54,27 @@ export const test = base.extend<{ meetingCode: string; hostEmail: string }>({
   hostEmail: async ({}, use) => {
     const host = await createFixtureHost();
     await use(host.email);
+    await deleteFixtureHost(host.id);
+  },
+
+  /**
+   * A meeting *and* the account that owns it.
+   *
+   * `meetingCode` and `hostEmail` are independent on purpose — most tests need
+   * one or the other. Host-only surfaces need both to be the same person: §7
+   * derives role from the session, so a participant is only the host if they
+   * are signed in as the account on the meeting's `host_id`.
+   *
+   * Nothing in the suite had ever been the host of the meeting it was looking
+   * at, so §3.8's asymmetry — a host can ask someone to mute and can remove
+   * them, and can never unmute anyone — was covered only from the side that
+   * cannot use it.
+   */
+  hostedMeeting: async ({}, use) => {
+    const host = await createFixtureHost();
+    const code = await createMeeting({ host: host.id });
+    await use({ code, email: host.email });
+    await emptyRoom(code).catch(() => {});
     await deleteFixtureHost(host.id);
   },
 });

@@ -22,21 +22,42 @@ export function ChatMessage({
     // §3.5: "visually distinct and quieter". Smaller, muted, and centred so it
     // does not read as something someone said.
     return (
-      <p className="type-caption px-1 py-2 text-center text-muted-foreground">
+      // v1.2 C1: 24px of air on each side, so a join sits between two
+      // conversations rather than inside one. Margin rather than padding
+      // because the scroller is a block formatting context — adjacent margins
+      // collapse, so a group and a system message are 24px apart rather than
+      // 24 plus the group's own 16.
+      <p className="type-caption my-6 px-1 text-center text-muted-foreground">
         {entry.name} {entry.kind === "joined" ? "joined" : "left"}
       </p>
     );
   }
 
   return (
-    <div className={startsGroup ? "pt-3" : "pt-0.5"}>
+    // 16px between groups, 2px inside one — v1.2 C1.
+    <div className={startsGroup ? "mt-4" : "mt-0.5"}>
       {startsGroup && (
         <div className="flex items-baseline gap-2">
-          <span className="type-small font-semibold text-foreground">
+          {/*
+            v1.2 C1 inverts the hierarchy this had. The name was
+            `type-small font-semibold text-foreground` — louder than the message
+            under it — and the body is the thing anyone came to read. So the
+            name is caption weight in `--muted-foreground` and the body keeps
+            `--foreground`.
+          */}
+          <span className="type-caption text-muted-foreground">
             {entry.mine ? "You" : entry.name}
           </span>
+          {/*
+            "One step dimmer" than the name, expressed as weight rather than
+            colour. There is no token dimmer than `--muted-foreground` — the
+            next neutral down is `--tile-border`, which CLAUDE.md reserves for
+            the room ground and permits on no other surface — and dimming with
+            alpha would take this under 4.5:1 on `--popover`. Weight 400 against
+            the name's 500 is the step the palette can actually carry.
+          */}
           <time
-            className="type-caption tabular-nums text-muted-foreground"
+            className="type-caption font-normal tabular-nums text-muted-foreground"
             dateTime={new Date(entry.at).toISOString()}
           >
             {clockTime(entry.at)}
@@ -45,7 +66,11 @@ export function ChatMessage({
       )}
       {/* `whitespace-pre-wrap` because Shift+Enter puts real newlines in the
           body, and `break-words` because a 900-character URL is one word. */}
-      <p className="type-body whitespace-pre-wrap break-words text-foreground">
+      <p
+        className={`type-body whitespace-pre-wrap break-words text-foreground${
+          startsGroup ? " mt-1" : ""
+        }`}
+      >
         {autolink(entry.body).map((segment, i) =>
           segment.kind === "link" ? (
             <a

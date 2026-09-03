@@ -242,6 +242,111 @@ test.describe("chat", () => {
    * instead, including that a refusal does not extend the window and that one
    * flooder cannot silence anyone else.
    */
+  /**
+   * v1.2 C1's hierarchy, measured.
+   *
+   * The name used to be `type-small font-semibold text-foreground` — louder
+   * than the message beneath it. C1 inverts that: the body is what anyone came
+   * to read, so it keeps `--foreground` while the name drops to caption weight
+   * in `--muted-foreground`.
+   *
+   * Colours are resolved from the room's own custom properties rather than
+   * matched against hex, so this asserts the relationship and not a snapshot of
+   * the palette.
+   */
+  test("message typography carries the hierarchy", async ({ browser, meetingCode }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
+    await expectParticipants(ama.page, 2);
+
+    await openChat(ama);
+    await say(ama, "first");
+    await openChat(kwabena);
+    await say(kwabena, "second");
+    await expect(ama.page.getByText("second")).toBeVisible();
+
+    const measured = await ama.page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const resolve = (name: string) => {
+        const probe = document.createElement("span");
+        probe.style.color = getComputedStyle(panel).getPropertyValue(name).trim();
+        panel.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      };
+      // Anchored on the timestamps rather than on "a div containing a time and
+      // a p" — the scroller itself matches that description, and picking it up
+      // as group zero made the first `p` a system message.
+      const groups = [...panel.querySelectorAll<HTMLElement>("time")].map(
+        (t) => t.parentElement!.parentElement!,
+      );
+      const first = groups[0];
+      const second = groups[1];
+      if (!first || !second) return null;
+
+      const name = first.querySelector<HTMLElement>("span")!;
+      const time = first.querySelector<HTMLElement>("time")!;
+      const body = first.querySelector<HTMLElement>("p")!;
+      const header = name.parentElement!;
+      const system = [...panel.querySelectorAll<HTMLElement>("p")].find((el) =>
+        /joined$/.test(el.textContent?.trim() ?? ""),
+      );
+
+      const px = (el: Element, prop: string) => parseFloat(getComputedStyle(el).getPropertyValue(prop));
+      return {
+        muted: resolve("--muted-foreground"),
+        foreground: resolve("--foreground"),
+        nameColour: getComputedStyle(name).color,
+        nameSize: px(name, "font-size"),
+        nameWeight: getComputedStyle(name).fontWeight,
+        timeSize: px(time, "font-size"),
+        timeWeight: getComputedStyle(time).fontWeight,
+        bodyColour: getComputedStyle(body).color,
+        bodySize: px(body, "font-size"),
+        bodyLine: px(body, "line-height"),
+        headerToBody: Math.round(body.getBoundingClientRect().top - header.getBoundingClientRect().bottom),
+        betweenGroups: Math.round(
+          second.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+        ),
+        systemGap: system
+          ? Math.round(Math.abs(first.getBoundingClientRect().top - system.getBoundingClientRect().bottom))
+          : null,
+        systemCentred: system ? getComputedStyle(system).textAlign : null,
+        systemSize: system ? px(system, "font-size") : null,
+      };
+    });
+
+    expect(measured, "no chat groups to measure").not.toBeNull();
+    const m = measured!;
+
+    // The name is quiet metadata; the body is the message.
+    expect(m.nameColour, "the sender name is not --muted-foreground").toBe(m.muted);
+    expect(m.nameSize, "the sender name is not caption size").toBe(12);
+    expect(m.nameWeight).toBe("500");
+    expect(m.bodyColour, "the body is not --foreground").toBe(m.foreground);
+    expect(m.bodySize).toBe(15);
+    expect(m.bodyLine).toBe(22);
+
+    // "One step dimmer" as weight, since no token is dimmer than
+    // --muted-foreground and alpha would break the contrast floor.
+    expect(m.timeSize, "the timestamp is a different size from the name").toBe(m.nameSize);
+    expect(Number(m.timeWeight), "the timestamp is not a step lighter").toBeLessThan(
+      Number(m.nameWeight),
+    );
+
+    expect(m.headerToBody, "4px between name and body").toBeGreaterThanOrEqual(2);
+    expect(m.headerToBody).toBeLessThanOrEqual(6);
+    expect(m.betweenGroups, "16px between message groups").toBeGreaterThanOrEqual(14);
+    expect(m.betweenGroups).toBeLessThanOrEqual(18);
+
+    // §3.5 and C1: system messages are structurally different, not just smaller.
+    expect(m.systemCentred).toBe("center");
+    expect(m.systemSize).toBe(12);
+    expect(m.systemGap, "24px between a group and a system message").toBeGreaterThanOrEqual(20);
+    expect(m.systemGap!).toBeLessThanOrEqual(28);
+  });
+
   test("a flood disables the sender's input and reaches nobody as a flood", async ({ browser, meetingCode }) => {
     ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });

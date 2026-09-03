@@ -296,6 +296,45 @@ summary:focus-visible,
   }
 }
 
+/*
+ * v1.2 C1/C3: the panels slide in over 180ms on the standard easing.
+ *
+ * An animation on the *open* state rather than a transition between states,
+ * because the closed state is the `hidden` attribute and our own base layer
+ * declares `[hidden] { display: none !important }` — deliberately, so the
+ * property does not rest on a third-party reset. Nothing transitions out of
+ * `display: none`, and the ways around that (`@starting-style` with
+ * `transition-behavior: allow-discrete`, or swapping to `visibility`) either
+ * narrow browser support or give up the guarantee.
+ *
+ * Closing is instant, and that is what C3's "no flicker, no simultaneous
+ * transition" asks for: swapping panels shows one leaving at once and the
+ * other arriving over 180ms, never two animations crossing.
+ *
+ * Reduced motion is handled by the blanket rule below, which collapses this to
+ * 0.01ms — the panel appears with no travel, which is the point.
+ */
+.parley-panel:not([hidden]) {
+  animation: parley-panel-up 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (min-width: 768px) {
+  /* A right-edge drawer on desktop, a bottom sheet below it — §3.5. */
+  .parley-panel:not([hidden]) {
+    animation-name: parley-panel-in;
+  }
+}
+
+@keyframes parley-panel-up {
+  from { translate: 0 100%; opacity: 0; }
+  to   { translate: 0 0; opacity: 1; }
+}
+
+@keyframes parley-panel-in {
+  from { translate: 100% 0; opacity: 0; }
+  to   { translate: 0 0; opacity: 1; }
+}
+
 /* Travel is `--parley-rise` (40% of the sender's tile height, set per reaction)
    and `--parley-drift` (a wobble bounded to a quarter of the lane pitch — see
    `lib/room/limits.ts` for why the separation itself is not random).

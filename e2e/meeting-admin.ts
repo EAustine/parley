@@ -106,6 +106,8 @@ export async function createMeeting(
     scheduledEnd?: Date | null;
     endedAt?: Date | null;
     timezone?: string;
+    /** Whose meeting it is. Defaults to the run's fixture host. */
+    host?: string;
   } = {},
 ): Promise<string> {
   const {
@@ -115,6 +117,7 @@ export async function createMeeting(
     scheduledEnd = null,
     endedAt = null,
     timezone = "Africa/Accra",
+    host = hostId(),
   } = options;
 
   const code = generateMeetingCode();
@@ -124,7 +127,7 @@ export async function createMeeting(
     body: JSON.stringify({
       code,
       title,
-      host_id: hostId(),
+      host_id: host,
       status,
       scheduled_start: scheduledStart?.toISOString() ?? null,
       scheduled_end: scheduledEnd?.toISOString() ?? null,

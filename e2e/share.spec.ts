@@ -300,7 +300,12 @@ test.describe("participants panel", () => {
 
     await openParticipants(ama);
     const panel = ama.page.getByRole("complementary", { name: "Participants" });
-    await expect(panel.getByText("Ama Serwaa (you)")).toBeVisible();
+    // v1.2 C2 split "(you)" out of the name span and into `--muted-foreground`,
+    // so it is no longer part of what someone is called. Asserted as two
+    // elements in one row rather than as one string.
+    const own = panel.locator("li").filter({ hasText: "Ama Serwaa" });
+    await expect(own.getByText("Ama Serwaa", { exact: true })).toBeVisible();
+    await expect(own.getByText("(you)", { exact: true })).toBeVisible();
     await expect(panel.getByText("Kwabena Osei", { exact: true })).toBeVisible();
 
     // Both joined with media off, so both mic-off markers are present — named,

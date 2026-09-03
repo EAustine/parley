@@ -3626,3 +3626,87 @@ stopped working would produce twelve, which no plausible elapsed time excuses.
 
 `check:media` **57/57** — 40 app tests parallel in 2.4m, 17 media tests serial
 in 3.1m. All 375 static checks green.
+
+---
+
+## v1.2 Track C — panels
+
+### Most of C1 and C2 was already built
+
+Width 360px, the ephemerality copy in the empty state, the body at 15/22 in
+`--foreground`, the timestamp already beside the name on one baseline, system
+messages already centred at 12px in `--muted-foreground` with no header, the row
+order avatar → name → right-aligned device state, the uniform hueless avatar,
+mute encoded as a different icon rather than a red one — all shipped. Third
+track running, third time the plan described work that was done.
+
+The plan's own diagnosis of the system message is the interesting miss. It says
+they "compete with real messages" and lists four properties to change, all four
+of which were already correct. They competed because the **sender name** was
+`type-small font-semibold text-foreground` — louder than the message beneath it.
+Fixing the name is what fixes the competition.
+
+### What changed
+
+**C1 inverts the hierarchy.** The name drops to caption weight in
+`--muted-foreground`; the body keeps `--foreground`. 4px between name and body,
+16px between groups, 24px around a system message — as margins, because the
+scroller is a block formatting context and adjacent margins collapse, so a group
+next to a system message is 24px apart rather than 24 plus the group's own 16.
+
+**"One step dimmer" has no token, and one may not be added.** The next neutral
+below `--muted-foreground` is `--tile-border`, which CLAUDE.md reserves for the
+room ground; alpha at 80% over `--popover` computes to 4.57:1, which clears the
+floor by 0.07 and is invisible to `check:contrast` because that script compares
+token against token and cannot see a *use*. So the step is weight — 400 against
+the name's 500 — and the colour is unchanged. **This is a reading, not a
+certainty.**
+
+**C2** gives the host badge an outlined chip and pulls "(you)" out of the name
+span into `--muted-foreground`. It was inside the name, so it read as part of
+what someone is called.
+
+**C1/C3's 180ms slide** is an animation on the open state rather than a
+transition between states. The closed state is the `hidden` attribute, and our
+own base layer declares `[hidden] { display: none !important }` — deliberately,
+so the property does not rest on a third-party reset. Nothing transitions out of
+`display: none`, and the ways around it either narrow browser support
+(`@starting-style` with `transition-behavior: allow-discrete`) or give up the
+guarantee. **Closing is therefore instant**, which satisfies C3's "no
+simultaneous transition" and contradicts CLAUDE.md's "Panel open/close | 180ms".
+Raised rather than resolved.
+
+### The suite had never been a host
+
+`share.spec` notes in passing that "both are guests on a meeting owned by
+someone else". That was true of the whole suite: §3.8's asymmetry — a host can
+ask someone to mute and can remove them, and can never unmute anyone — was
+covered only from the side that cannot use it, because §7 derives role from the
+session and no test had one.
+
+Testing C2's host chip needed that fixed. `e2e/auth.ts` now signs a page in
+through the app's own callback, `joinAs` takes `asHost`, and a `hostedMeeting`
+fixture creates a meeting *and* the account that owns it — the two existing
+fixtures are independent on purpose, and a participant is only the host if they
+are signed in as the account on the meeting's `host_id`.
+
+### Two of my own guards were wrong
+
+**The C3 test asserted `getComputedTiming().duration === 180`** — the
+stylesheet's declared duration, read back. It now seeks the animation and reads
+what it computes to at each end.
+
+Not `getBoundingClientRect`, which was the second attempt: the keyframes animate
+the individual `translate` property, and Chromium reports the panel's box
+unchanged at `currentTime = 0` while `getComputedStyle` returns `translate:
+100%`. Measured that directly before believing it.
+
+**And it asserted the closing panel had no running animation** — which no change
+to the code could ever make false, because closing is instant. A guard that
+cannot fail is not a guard; it now asserts that only one panel is rendered
+during a swap, which a cross-fade would break.
+
+### Checks
+
+`check:media` **60/60** — 43 app parallel, 17 media serial. All 375 static
+checks green.

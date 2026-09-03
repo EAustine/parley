@@ -172,6 +172,165 @@ test.describe("the side panels", () => {
 
 
   /**
+   * v1.2 C2's row. The host badge was the word "Host" in muted text, which is
+   * indistinguishable from any other secondary label in the row; C2 asks for a
+   * chip. And "(you)" was inside the name span, so it read as part of what
+   * someone is called.
+   */
+  test("a participant row separates the name, the chip and the device state", async ({
+    browser,
+    hostedMeeting,
+  }) => {
+    // Signed in as the account that owns the meeting, so the badge this test is
+    // about actually renders — a guest is never the host.
+    participant = await joinAs(browser, "Akosua Busia", {
+      code: hostedMeeting.code,
+      withMedia: false,
+      asHost: hostedMeeting.email,
+    });
+    const { page } = participant;
+
+    await wakeControls(page);
+    await page.getByRole("button", { name: "Participants", exact: true }).click();
+    await expect(people(participant)).toBeVisible();
+
+    const row = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Participants"]')!;
+      const li = panel.querySelector<HTMLElement>("li");
+      if (!li) return null;
+      const resolve = (name: string) => {
+        const probe = document.createElement("span");
+        probe.style.color = getComputedStyle(panel).getPropertyValue(name).trim();
+        panel.appendChild(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      };
+      const you = [...li.querySelectorAll<HTMLElement>("span")].find(
+        (el) => el.textContent?.trim() === "(you)",
+      );
+      const chip = [...li.querySelectorAll<HTMLElement>("span")].find(
+        (el) => el.textContent?.trim() === "Host",
+      );
+      // Not matched on the display name: a signed-in host is never asked to
+      // type one, so theirs comes from the session rather than from the test.
+      // The name is the first span in the row that is not the avatar initial.
+      const name = [...li.querySelectorAll<HTMLElement>("span")].find(
+        (el) => !el.closest("[aria-hidden]") && el !== you && el !== chip,
+      );
+      return {
+        muted: resolve("--muted-foreground"),
+        border: resolve("--border"),
+        youColour: you ? getComputedStyle(you).color : null,
+        youIsSeparate: Boolean(you) && you !== name,
+        chip: chip
+          ? {
+              borderWidth: parseFloat(getComputedStyle(chip).borderTopWidth),
+              borderColour: getComputedStyle(chip).borderTopColor,
+              radius: parseFloat(getComputedStyle(chip).borderTopLeftRadius),
+              afterName: name ? chip.getBoundingClientRect().left > name.getBoundingClientRect().left : false,
+            }
+          : null,
+      };
+    });
+
+    expect(row, "no participant row").not.toBeNull();
+    expect(row!.youIsSeparate, '"(you)" is still part of the name').toBe(true);
+    expect(row!.youColour, '"(you)" is not --muted-foreground').toBe(row!.muted);
+
+    // The local participant is the host of their own instant meeting.
+    expect(row!.chip, "no host chip").not.toBeNull();
+    expect(row!.chip!.borderWidth, "the host badge is not outlined").toBeGreaterThanOrEqual(1);
+    expect(row!.chip!.borderColour).toBe(row!.border);
+    expect(row!.chip!.radius, "the host badge is not a chip").toBeGreaterThan(0);
+    expect(row!.chip!.afterName, "the host chip is not after the name").toBe(true);
+  });
+
+  /**
+   * v1.2 C1/C3: the panel arrives over 180ms, and swapping panels never runs
+   * two animations at once.
+   *
+   * Closing is instant by design. The closed state is the `hidden` attribute
+   * and `app/globals.css` declares `[hidden] { display: none !important }` in
+   * our own base layer, so nothing transitions out of it — and C3 asks for "no
+   * simultaneous transition", which one-in-at-a-time delivers exactly.
+   */
+  test("a panel slides in over 180ms, and swapping never overlaps", async ({
+    browser,
+    meetingCode,
+  }) => {
+    participant = await joinAs(browser, "Yaw Boateng", { code: meetingCode, withMedia: false });
+    const { page } = participant;
+
+    await wakeControls(page);
+    await page.getByRole("button", { name: "Chat", exact: true }).click();
+
+    /*
+     * Seek the real animation and read what it computes to at each end.
+     *
+     * Not `getBoundingClientRect`, which was the first attempt: the keyframes
+     * animate the individual `translate` property, and Chromium reports the
+     * panel's box unchanged at `currentTime = 0` even while `getComputedStyle`
+     * returns `translate: 100%`. The computed value is what is actually being
+     * rendered — the box just is not being remeasured for it — so that is what
+     * this reads. It is still the browser's output rather than the stylesheet's
+     * input, which is what the rule is about.
+     */
+    const slide = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]');
+      const animation = panel?.getAnimations()[0];
+      if (!panel || !animation) return null;
+      const at = (ms: number) => {
+        animation.pause();
+        animation.currentTime = ms;
+        const style = getComputedStyle(panel);
+        return { translate: style.translate, opacity: style.opacity };
+      };
+      return { start: at(0), end: at(180), width: panel.getBoundingClientRect().width };
+    });
+
+    expect(slide, "the chat panel arrives with no animation").not.toBeNull();
+    // It starts displaced by its own width and arrives at rest — a slide, not a
+    // fade. `100%` of a 360px panel is the drawer's full width.
+    expect(slide!.start.translate, "the panel does not travel on open").not.toBe("none");
+    expect(parseFloat(slide!.start.opacity)).toBeLessThan(0.1);
+    expect(["none", "0px", "0px 0px"]).toContain(slide!.end.translate);
+    expect(parseFloat(slide!.end.opacity)).toBe(1);
+
+    // Swap, and look at both panels in the same frame.
+    await expect(chat(participant)).toBeVisible();
+    await wakeControls(page);
+    await page.getByRole("button", { name: "Participants", exact: true }).click();
+
+    /*
+     * C3: "no flicker, no simultaneous transition."
+     *
+     * Asserted as *one panel rendered at a time*, which is a property a
+     * cross-fade would break. An earlier version of this asserted that the
+     * closing panel had no running animation — which no change to the code
+     * could ever have made false, because closing is instant. A guard that
+     * cannot fail is not a guard.
+     */
+    const frame = await page.evaluate(() => {
+      const shown = (label: string) => {
+        const el = document.querySelector<HTMLElement>(`aside[aria-label="${label}"]`);
+        if (!el) return null;
+        return {
+          display: getComputedStyle(el).display,
+          animating: el.getAnimations().filter((a) => a.playState === "running").length,
+        };
+      };
+      return { chat: shown("Meeting chat"), participants: shown("Participants") };
+    });
+
+    expect(frame.chat!.display, "both panels are rendered during the swap").toBe("none");
+    expect(
+      frame.participants!.animating,
+      "the opening panel is not animating",
+    ).toBeGreaterThan(0);
+  });
+
+  /**
    * Escape returns focus to the control that opened the panel — §9's floor for
    * a non-modal panel. Worth pinning here because A3 moved that logic from two
    * per-panel closures onto one shared `closePanel`.
