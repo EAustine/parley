@@ -1,6 +1,10 @@
 "use client";
 
-import { REACTION_LANES } from "@/lib/room/limits";
+import {
+  REACTION_LANES,
+  REACTION_LANE_PITCH,
+  reactionDrift,
+} from "@/lib/room/limits";
 import type { ReactionEvent } from "@/lib/room/chat";
 
 /**
@@ -21,8 +25,11 @@ export function ReactionOverlay({
   anchorFor,
 }: {
   reactions: ReactionEvent[];
-  /** Where a participant's tile is, as a percentage of the grid. */
-  anchorFor: (identity: string) => { left: number; bottom: number };
+  /**
+   * Where a participant's tile is, as a percentage of the grid, and how far a
+   * reaction should travel — 40% of that tile's height, per §3.6 and E1.
+   */
+  anchorFor: (identity: string) => { left: number; bottom: number; rise: number };
 }) {
   return (
     <div
@@ -34,15 +41,22 @@ export function ReactionOverlay({
         // Lanes spread simultaneous reactions horizontally so they do not
         // overlap — §3.6. Centred on the anchor rather than running off to one
         // side of it.
-        const offset = (reaction.lane - (REACTION_LANES - 1) / 2) * 22;
+        const offset =
+          (reaction.lane - (REACTION_LANES - 1) / 2) * REACTION_LANE_PITCH;
         return (
           <span
             key={reaction.id}
             className="parley-reaction absolute select-none text-2xl"
-            style={{
-              left: `calc(${anchor.left}% + ${offset}px)`,
-              bottom: `${anchor.bottom}%`,
-            }}
+            style={
+              {
+                left: `calc(${anchor.left}% + ${offset}px)`,
+                bottom: `${anchor.bottom}%`,
+                // Read by the keyframes, so the travel is a property of the
+                // tile the reaction came from rather than a constant.
+                "--parley-rise": `${Math.round(anchor.rise)}px`,
+                "--parley-drift": `${reactionDrift(reaction.id)}px`,
+              } as React.CSSProperties
+            }
           >
             {reaction.emoji}
           </span>

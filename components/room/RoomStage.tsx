@@ -346,7 +346,7 @@ function RoomSurface({
    */
   const anchorFor = useCallback((identity: string) => {
     const root = surface.current;
-    const fallback = { left: 50, bottom: 30 };
+    const fallback = { left: 50, bottom: 30, rise: 120 };
     if (!root) return fallback;
 
     const tile =
@@ -361,6 +361,10 @@ function RoomSurface({
       // Above the name label rather than on top of it — §3.6 is explicit that
       // reactions never occlude the label or the mic indicator.
       bottom: ((room.bottom - box.bottom + LABEL_CLEARANCE_PX) / room.height) * 100,
+      // v1.2 E1: "travel upward roughly 40% of the tile height". A proportion,
+      // not the fixed 180px it was — that was most of a filmstrip tile and a
+      // twitch on a full-area one.
+      rise: box.height * 0.4,
     };
   }, []);
 

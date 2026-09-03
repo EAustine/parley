@@ -3544,3 +3544,85 @@ workers with "tile 1 is a frozen frame", and passed 7/7 in isolation seconds
 later. Real media contending with `grid.spec`'s seventeen participants is the
 load ceiling the parallelisation note already flagged, and it is the first time
 it has actually bitten.
+
+---
+
+## v1.2 E1 — reactions
+
+### A4 was wrong in the same way A1 was
+
+"§3.6 specified float-up from the sender's tile over 2400ms with horizontal
+stagger, and it was never built." It was built. `app/globals.css` already
+carried a 2400ms ease-out rise with a scale and an opacity curve, `lib/room/
+limits.ts` already staggered simultaneous reactions into lanes, and there was
+already a separate reduced-motion keyframe that fades in place rather than
+travelling instantly.
+
+Both plan items were written from screenshots, and a screenshot cannot show
+motion. The gaps were real but much narrower than "never built", which is worth
+recording because the same shape has now happened twice: **the observation was
+right, the diagnosis was not.**
+
+### What was actually missing
+
+**Travel was a fixed 180px.** E1 asks for roughly 40% of the tile height, and
+the difference is not cosmetic: 180px is most of a filmstrip tile and a twitch
+on a full-area one. `anchorFor` now returns the tile's height alongside its
+position, and the keyframe reads it as `--parley-rise`. Verified by mutation —
+pinned back to 180 the test fails with "rose 180px against a 612px tile", so the
+proportionality assertion is what holds, not the `not.toBe(180)` backstop beside
+it.
+
+**The rise and the pop were one animation.** They have different durations —
+2400ms and 200ms — which one `transform` keyframe cannot express. Splitting them
+onto the individual `translate` and `scale` properties lets each have its own
+timing without nesting a second element. Opacity moved from reaching 1 at 12% to
+15%, as specified.
+
+**The picker had no press feedback.** Read as the emoji buttons rather than the
+bar control that opens the popover: B4 already gives that control a 0.96 press,
+and a second, louder treatment would contradict the tier it belongs to. The
+emoji is what you press to send, and §3.6's one-per-second limit means the next
+press may do nothing at all — so this is the only acknowledgement some presses
+get. *That reading is mine; E1 says "the picker button itself", which could mean
+either.*
+
+The press animation is deliberately **not** wrapped in `prefers-reduced-motion:
+no-preference`. The blanket reduce rule collapses it to 0.01ms, which still
+fires `animationend` — and the class is cleared on that event, so guarding it
+would leave the class stuck on forever for exactly the users who asked for less
+motion.
+
+### Where E1 and the code disagreed
+
+E1: "slight horizontal drift, randomised within a narrow band, so simultaneous
+reactions do not stack into a column."
+
+`lib/room/limits.ts` already carried the opposite instruction, with its
+reasoning: lanes are "derived from how many are already in flight rather than
+randomly: random offsets collide about as often as they separate, which is the
+one thing the rule is trying to prevent."
+
+That reasoning is correct, and it answers the second half of E1's sentence —
+the stacking is already prevented, and nothing random can promise that. So the
+drift is the first half only: a wobble bounded to a quarter of the lane pitch,
+which leaves two reactions in adjacent lanes at least 11px apart however it
+falls. Derived from the reaction's id rather than `Math.random()`, because it
+has to survive re-renders — a random value recomputed on render would
+re-anchor a reaction mid-flight every time the grid updated around it.
+
+### A test that assumed time
+
+`reactions › cross between clients` asserted a flat `<= 2` from twelve rapid
+presses, which silently assumed twelve clicks land inside about a second. They
+do on an idle machine. Under four workers each click is a slower round trip, the
+twelve span two and a half seconds, and the limiter correctly emitted three — so
+the test failed for the limiter doing exactly what §3.6 asks.
+
+The ceiling is now computed from the measured elapsed window. A limiter that had
+stopped working would produce twelve, which no plausible elapsed time excuses.
+
+### Checks
+
+`check:media` **57/57** — 40 app tests parallel in 2.4m, 17 media tests serial
+in 3.1m. All 375 static checks green.

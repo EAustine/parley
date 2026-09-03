@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ICONS } from "@/lib/icons";
@@ -23,6 +24,23 @@ import {
  * one would make the second press reopen the popover instead of reacting.
  */
 export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void }) {
+  /**
+   * v1.2 E1: "The picker button itself gets press feedback: 0.9 → 1.1 → 1.0
+   * over 200ms. The absence of that is why the current build feels
+   * unresponsive on click."
+   *
+   * Read as the emoji buttons rather than the bar control that opens the
+   * popover. The bar control already has B4's 0.96 press, and giving it a
+   * second, louder press treatment would contradict the tier it belongs to —
+   * whereas the emoji is the thing you actually press to send a reaction, and
+   * §3.6 rate-limits it to one a second, so a press that produces nothing
+   * visible is exactly the case this is for.
+   *
+   * A class toggled on click rather than `:active`: the sequence has to finish
+   * after the finger lifts, and `:active` ends with the press.
+   */
+  const [pressed, setPressed] = useState<Reaction | null>(null);
+
   return (
     <Popover>
       <Tooltip>
@@ -57,11 +75,17 @@ export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void
             <button
               key={emoji}
               type="button"
-              onClick={() => onReact(emoji)}
+              onClick={() => {
+                setPressed(emoji);
+                onReact(emoji);
+              }}
+              onAnimationEnd={() => setPressed((p) => (p === emoji ? null : p))}
               // The emoji is the label visually; the name is the label a
               // screen reader reads, because "😮" is not a spoken word.
               aria-label={`React with ${REACTION_NAMES[emoji]}`}
-              className="flex size-11 items-center justify-center rounded-lg text-xl transition-colors duration-[120ms] hover:bg-accent"
+              className={`flex size-11 items-center justify-center rounded-lg text-xl transition-colors duration-[120ms] hover:bg-accent${
+                pressed === emoji ? " parley-reaction-press" : ""
+              }`}
             >
               <span aria-hidden>{emoji}</span>
             </button>

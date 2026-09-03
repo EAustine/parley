@@ -317,38 +317,31 @@ test.describe("reactions", () => {
     const applause = ama.page.getByRole("button", { name: "React with applause" });
     await expect(applause).toBeVisible();
 
-    /**
-     * It arrives at the other end at all — allowing for the fact that it may
-     * not, once.
+    /*
+     * Press until one lands, then let the channel go quiet before taking the
+     * baseline.
      *
-     * Reactions are published with `reliable: false` (`useRoomMessages.ts`), so
-     * delivery is explicitly not guaranteed: this is a lossy data channel by
-     * design, matching §3.6's view of reactions as the highest-volume,
-     * lowest-information channel in the room. A single send asserted with
-     * `toBe(1)` was therefore claiming a property the product does not offer,
-     * and it held only while the suite ran serially on a quiet local network.
-     * Parallel workers made the drop likely enough to see.
+     * Reactions are published `reliable: false` (`useRoomMessages.ts`), so a
+     * single send is not guaranteed to arrive — §3.6 treats them as the
+     * highest-volume, lowest-information channel in the room. Asserting
+     * `toBe(1)` on one send claimed a guarantee the product declines to make,
+     * and it held only while the suite ran serially on a quiet network.
      *
-     * Pressing again is what a person does when nothing happens, and §3.6's
-     * one-per-second limit is what bounds it. The retry is not papering over a
-     * bug; the bug would be a reaction that never arrives however many times
-     * you press.
+     * The settle afterwards is the part this test taught me twice: a retry that
+     * lands *after* the baseline is read counts against the twelve rapid
+     * presses below and fails the rate limit for something the rate limit did
+     * not do.
      */
-    await applause.click();
-    await expect
-      .poll(
-        async () => {
-          const seen = await reactionsSeen(kwabena);
-          if (seen === 0) {
-            // Clear of the 1000ms rate limit, or the press is dropped on send.
-            await ama.page.waitForTimeout(1100);
-            await applause.click();
-          }
-          return seen;
-        },
-        { timeout: 20_000, message: "no reaction ever arrived, across repeated presses" },
-      )
-      .toBeGreaterThanOrEqual(1);
+    for (let attempt = 0; attempt < 8 && (await reactionsSeen(kwabena)) === 0; attempt++) {
+      if (attempt > 0) await ama.page.waitForTimeout(1100);
+      await applause.click();
+      await ama.page.waitForTimeout(600);
+    }
+    expect(
+      await reactionsSeen(kwabena),
+      "no reaction arrived across repeated presses",
+    ).toBeGreaterThanOrEqual(1);
+    await ama.page.waitForTimeout(1200);
     // §9: named, not read as an emoji.
     await expect(
       kwabena.page.locator('[role="status"][aria-live="polite"]'),
@@ -359,11 +352,29 @@ test.describe("reactions", () => {
     // reactions now — and must not become twelve reactions later either, which
     // is what a queue would do.
     const before = await reactionsSeen(kwabena);
+    /*
+     * The window is measured, not assumed.
+     *
+     * This asserted a flat `<= 2`, which silently assumed twelve clicks land
+     * inside about a second. They do when the machine is idle. Under four
+     * parallel workers each click is a slower round trip, the twelve span two
+     * and a half seconds, and the limiter correctly emits three — so the test
+     * failed for the limiter doing exactly what §3.6 asks.
+     *
+     * One per participant per 1000ms is the rule, so the ceiling is a function
+     * of how long the presses actually took. A limiter that had stopped working
+     * would produce twelve, which no plausible elapsed time excuses.
+     */
+    const startedAt = Date.now();
     for (let i = 0; i < 12; i++) await applause.click({ delay: 20 });
+    const elapsed = Date.now() - startedAt;
     await ama.page.waitForTimeout(1200);
     const soonAfter = (await reactionsSeen(kwabena)) - before;
-    expect(soonAfter, `${soonAfter} reactions arrived from 12 rapid presses`)
-      .toBeLessThanOrEqual(2);
+    const allowed = Math.ceil(elapsed / 1000) + 1;
+    expect(
+      soonAfter,
+      `${soonAfter} reactions arrived from 12 presses spanning ${elapsed}ms — at one per second that allows ${allowed}`,
+    ).toBeLessThanOrEqual(allowed);
 
     // Nothing was buffered for release afterwards.
     await ama.page.waitForTimeout(3000);
@@ -373,6 +384,73 @@ test.describe("reactions", () => {
 
     // And the screen clears itself.
     await expect(kwabena.page.locator(".parley-reaction")).toHaveCount(0);
+  });
+
+  /**
+   * v1.2 E1: "travel upward roughly 40% of the tile height over 2400ms".
+   *
+   * It was a fixed 180px — most of a filmstrip tile, and a twitch on a
+   * full-area one. Measured by seeking the real animation to its end and
+   * reading the box, rather than by waiting 2400ms and hoping to catch the
+   * element before React removes it: the assertion is about where it travels
+   * to, and seeking is what makes that deterministic.
+   */
+  test("rise is a proportion of the sender's tile, not a constant", async ({
+    browser,
+    meetingCode,
+  }) => {
+    ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
+    await expectParticipants(ama.page, 2);
+    await expectParticipants(kwabena.page, 2);
+
+    await wakeControls(ama.page);
+    await ama.page.getByRole("button", { name: "Send a reaction" }).click();
+    const heart = ama.page.getByRole("button", { name: "React with a heart" });
+    const reaction = kwabena.page.locator(".parley-reaction").first();
+    for (let attempt = 0; attempt < 8 && (await reaction.count()) === 0; attempt++) {
+      if (attempt > 0) await ama.page.waitForTimeout(1100);
+      await heart.click();
+      await reaction.waitFor({ state: "visible", timeout: 2_000 }).catch(() => {});
+    }
+    await expect(reaction).toBeVisible();
+
+    const travelled = await kwabena.page.evaluate(() => {
+      const emoji = document.querySelector<HTMLElement>(".parley-reaction");
+      const tile = document.querySelector<HTMLElement>("[data-participant]");
+      if (!emoji || !tile) return null;
+
+      const rise = emoji.getAnimations().find((a) =>
+        (a as CSSAnimation).animationName === "parley-reaction-rise",
+      );
+      if (!rise) return null;
+
+      rise.pause();
+      rise.currentTime = 0;
+      const start = emoji.getBoundingClientRect();
+      rise.currentTime = 2400;
+      const end = emoji.getBoundingClientRect();
+      return {
+        up: start.top - end.top,
+        sideways: Math.abs(end.left - start.left),
+        tileHeight: tile.getBoundingClientRect().height,
+      };
+    });
+
+    expect(travelled, "no rise animation on the reaction").not.toBeNull();
+    const { up, sideways, tileHeight } = travelled!;
+
+    expect(
+      up,
+      `rose ${Math.round(up)}px against a ${Math.round(tileHeight)}px tile`,
+    ).toBeCloseTo(tileHeight * 0.4, -1);
+    // And it is genuinely proportional, not the old constant that happened to
+    // sit near 40% at one tile size.
+    expect(up, "the rise is still the old fixed 180px").not.toBe(180);
+
+    // The drift is a wobble, not a lane: bounded to a quarter of the 22px
+    // pitch, so it can never close the gap lanes exist to guarantee.
+    expect(sideways, `drifted ${sideways}px sideways`).toBeLessThanOrEqual(5.5);
   });
 
   test("never occlude the name label, and disappear on their own", async ({ browser, meetingCode }) => {

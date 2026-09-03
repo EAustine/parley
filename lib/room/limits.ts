@@ -111,3 +111,36 @@ export const REACTION_LANES = 5;
 export function nextLane(inFlight: number): number {
   return inFlight % REACTION_LANES;
 }
+
+/** Pitch between lanes, in pixels. The drift below must stay well inside it. */
+export const REACTION_LANE_PITCH = 22;
+
+/**
+ * A small per-reaction wobble, on top of the lane.
+ *
+ * v1.2 E1 asks for "slight horizontal drift, randomised within a narrow band,
+ * so simultaneous reactions do not stack into a column". The second half of
+ * that sentence is already handled — and deliberately not by randomness, for
+ * the reason recorded above: random offsets collide about as often as they
+ * separate. Lanes guarantee the separation; nothing random can.
+ *
+ * So this is the first half only, and it is bounded at a quarter of the lane
+ * pitch. Two reactions in adjacent lanes stay at least 11px apart however the
+ * drift falls, which keeps the guarantee lanes exist to provide while giving
+ * the motion the organic variation E1 is after.
+ *
+ * Derived from the reaction's id rather than `Math.random()`: it has to be
+ * stable across re-renders, or a reaction re-anchors mid-flight every time the
+ * grid updates around it.
+ */
+export const REACTION_DRIFT_MAX = REACTION_LANE_PITCH / 4;
+
+export function reactionDrift(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  // [-1, 1) from the low bits, then scaled into the band.
+  const unit = ((hash >>> 0) % 2000) / 1000 - 1;
+  return Math.round(unit * REACTION_DRIFT_MAX * 10) / 10;
+}
