@@ -3047,3 +3047,98 @@ others green: `check:a11y` 58, `check:room` 96, `check:connection` 72,
 `check:chat` 73, `check:ics` 69, `check:meetings` 68, `check:permissions` 39,
 `check:contrast` 25, `check:rls` 18, `check:deps` 5/5, `check:targets` 5/5,
 `check:bundle` 10/10. Every route inside budget; rule 8 holds.
+
+---
+
+## After Phase 10 — reconciling the documents, and one source of truth
+
+Not a phase. The last of the drift, and the arrangement that produced it.
+
+### The stale line, and the two beside it
+
+`BUILD-PLAN`'s Phase 9 task list asked for `aria-pressed` on toggles while
+`CLAUDE.md`'s floor forbids it. Following it would have broken two passing
+gates — `check:room` asserts the absence, `media.spec` asserts it on the mic
+button by name — to undo a decision `CLAUDE.md` explains.
+
+It survived because the Phase 7 ownership split reconciled `CLAUDE.md` and PRD
+§9 and never brought the third document into it. **A split between two of three
+documents is not a split; it is a smaller contradiction.**
+
+Two more lines in the same list were stale the same way: focus trapping on
+non-modal panels, which the floor now explicitly reverses, and a `>=3` collapse
+threshold §9 had already removed for being unable to produce its own example
+string. None of the three was enforced by anything.
+
+### Austine's fix was better than mine
+
+I struck the one line and flagged the other two. The rewrite that came back
+deleted the enumeration entirely and replaced it with a pointer: "Build to
+`CLAUDE.md`'s accessibility floor and `PRD.md` §9's announcement policy. Those
+are authoritative and are not restated here."
+
+That removes the class rather than three instances of it. Nothing in that
+section can drift now, because nothing in it restates anything. The same move
+had already been made twice — for the contrast table and for §9's mechanics —
+and this is the third and last place it applied.
+
+### The check I added was wrong, and the very next edit proved it
+
+To stop the line coming back I made `check:room` read all three documents and
+assert `BUILD-PLAN` contains no `aria-pressed`.
+
+The rewrite above broke it immediately — by adding a paragraph explaining that
+`aria-pressed` had been removed and why. **A check that forbids describing a
+mistake pushes the next person to delete the explanation rather than the
+requirement**, which is the opposite of what this file exists for.
+
+It is scoped to task bullets now: prose about the history passes, a line asking
+for it fails. Both directions proved by mutation, because the distinction is
+the entire point of the check and I had already got it wrong once.
+
+Adding it also exposed a fault in the checker itself. `check:room`'s total was
+an expression summing each section's length by hand, so a new check ran and
+passed while the total still read 96 — reporting one fewer than it ran,
+silently, in the direction that looks like nothing happened. It self-counts
+now, as `check-chat` always has. I noticed only because I expected 97.
+
+### Phase 10 had four of the same kind
+
+Each contradicted a document `BUILD-PLAN`'s own header says takes precedence,
+and each was already overruled in the built product — so the document was the
+only thing still wrong:
+
+| Line | Overruled by |
+|---|---|
+| "Touch targets at 44px minimum" | `CLAUDE.md`'s 44/24 split, shipped in Phase 9 with `check:targets` |
+| "OG variant showing meeting title and host" | `BRAND.md` — meeting links get no meeting data |
+| "Optional: live favicon" | `BRAND.md` §8, considered and declined |
+| "dashboard route under 180KB gzipped" | PRD §10's ≤ 280 kB, against a route measuring 267 |
+
+Fixed in the same style: point at the authoritative document, and record what
+was removed and why.
+
+### One copy now
+
+The four governing documents lived in two places — the repo and a working copy
+outside it — and were kept in step by hand.
+
+**That arrangement is the root cause of nearly every contradiction this session
+found.** A decision would land in one copy and not the other, and the gap was
+invisible until something built against the stale half: `aria-pressed` for two
+phases, `react-day-picker` for six, the OG card's retired `TILE_BORDER` for
+ten. Each time the fix was the same shape, and each time the arrangement that
+caused it survived.
+
+The outside copy is deleted. The documents live in the repository now,
+committed alongside the code they govern, and three checks read them directly —
+`check:room` for the accessibility ownership split, `check:connection` for
+§3.11's markers, `check:contrast` for the token snapshot.
+
+It is the same lesson as the contrast table and the announcement mechanics,
+applied to the documents themselves rather than to a section of one: two copies
+drift, and the second copy is a liability rather than a convenience.
+
+### Checks
+
+`check:room` 96 → **97/97**. All others unchanged and green.
