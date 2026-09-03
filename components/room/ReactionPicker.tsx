@@ -4,6 +4,7 @@ import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ICONS } from "@/lib/icons";
+import { CONTROL_MOTION } from "@/lib/motion";
 import { REACTIONS, REACTION_NAMES, type Reaction } from "@/lib/room/messages";
 import {
   Popover,
@@ -50,7 +51,7 @@ export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void
               type="button"
               aria-label="Send a reaction"
               // v1.2 B4: secondary tier — ghost at rest, lifting on hover.
-              className="flex size-11 items-center justify-center rounded-full border transition-[transform,background-color,border-color] duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:scale-[1.04] hover:bg-[var(--secondary)] active:scale-[0.96] active:duration-[80ms] motion-reduce:transform-none motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
+              className={`flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
               style={{
                 borderColor: "transparent",
                 color: "var(--foreground)",
@@ -83,7 +84,9 @@ export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void
               // The emoji is the label visually; the name is the label a
               // screen reader reads, because "😮" is not a spoken word.
               aria-label={`React with ${REACTION_NAMES[emoji]}`}
-              className={`flex size-11 items-center justify-center rounded-lg text-xl transition-colors duration-[120ms] hover:bg-accent${
+              // E2's easing, not Tailwind's default `cubic-bezier(.4,0,.2,1)` —
+              // this was the last control in the product still on it.
+              className={`flex size-11 items-center justify-center rounded-lg text-xl transition-colors duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:bg-accent${
                 pressed === emoji ? " parley-reaction-press" : ""
               }`}
             >

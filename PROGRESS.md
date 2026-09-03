@@ -3861,3 +3861,114 @@ the room forces `.dark` at the surface they read from.
 `check:media` **61/61** — 43 app parallel in 2.0m, 18 media serial in 2.9m.
 `check:bundle` 10/10, unchanged — the new layout added no weight to
 `/j/[code]`. All 375 static checks green.
+
+---
+
+## v1.2 E2 — motion polish
+
+Five of E2's seven rows were already correct. Two cannot be built as written,
+and the interesting finding is that one of the "correct" ones was correct only
+on paper.
+
+### The declared motion that wasn't happening
+
+`CONTROL_MOTION` — Track B4's hover 1.04 / press 0.96 — declared
+`transition-[transform,...]`. **Tailwind v4 compiles `hover:scale-*` to the
+individual `scale` property and leaves `transform: none`**, so the transition
+named a property that never changed. The fill eased over 120ms and the scale
+snapped in 0ms, on all seven controls. Right values, right durations, no motion.
+
+Two more of the same shape came with it:
+
+- The **Leave** button. `components/ui/button.tsx` carries `transition-all` and
+  `active:…translate-y-px`, and `cn()` is twMerge — so applying `CONTROL_MOTION`
+  *strips* `transition-all` (same group) while the nudge compiles to the
+  individual `translate`. B4 silently removed the easing from a press that had
+  it before.
+- `motion-reduce:transform-none` was inert for the same reason. Reduced motion
+  works, but through `motion-reduce:hover:scale-100`; the dead class is deleted
+  rather than kept as decoration.
+
+That is the individual-transform-property gap biting a **fourth** time here —
+after the panel slide's `translate`, the pre-join mirror, and now these two. It
+is worth stating as a rule: in Tailwind v4, if a transition list names
+`transform`, it is almost certainly wrong.
+
+**The test I wrote first did not catch it**, which is the part worth recording.
+It asserted the *settled* hovered scale, which is 1.04 whether it took 120ms or
+no time at all. It now seeks the real transition and reads `scale` at both ends,
+and a mutation confirms it: reverted to `transform`, it fails with "hover does
+not transition `scale` — it snaps".
+
+### Two more, one of them mine
+
+The shared constant did not exist before today — the same class string was
+written twice and missed once, so E2's control row was implemented in the room
+bar, near-copied in the picker, and absent from pre-join. It is now `lib/motion.ts`.
+
+Extracting it introduced a regression: pre-join's `DeviceToggle` is a raw
+`<button>`, not the shadcn one, and a disabled button still matches `:hover` —
+so "No microphone found" began lifting 1.04 as though it were pressable.
+`disabled:pointer-events-none` fixes it. **Not covered by a test**: producing a
+disabled toggle needs a machine with no camera, which the fake-device harness
+cannot present. Recorded rather than claimed.
+
+And the picker's six emoji buttons had no easing class at all, falling back to
+Tailwind's `cubic-bezier(.4, 0, .2, 1)` — the last control in the product still
+on a curve that appears in no document.
+
+### Toast: the one row that came from a dependency
+
+Sonner transitions at **400ms on `ease`** — measured via `getAnimations()` on a
+live toast, not assumed. E2 asks for 150 in / 100 out on the standard curve.
+
+Overridden in `globals.css`, and the first attempt silently did nothing: sonner's
+own rule is `[data-sonner-toast]`, exactly the specificity of ours, and it
+injects its stylesheet at runtime *after* our file — a tie decided by injection
+order is a tie we lose. Opacity was still 0.65 at 150ms. Qualifying with
+`.cn-toast`, the class `components/ui/sonner.tsx` already hands it, outranks it
+without `!important`.
+
+`e2e/toast.spec.ts` asserts the **consequence** — where the toast actually is at
+150ms — rather than reading back the duration, which is one step from testing
+the stylesheet against itself. It caught the failed override immediately.
+
+### The grid reflow does not animate, and cannot as specified
+
+E2 singles this out: "The grid reflow is the one worth care ... Animate the
+container, not each tile."
+
+`RoomGrid` has `transition: grid-template-columns 200ms cubic-bezier(0.2, 0, 0, 1)`,
+and a mapping agent reported it "animating the container not each tile, exactly
+as E2 asks". **Measured, it never fires.** In the same Chromium the suite runs:
+
+| change | animations | result |
+|---|---|---|
+| 2 → 3 tracks (a real join) | 0 | jumps straight to final widths |
+| 2 tracks, `minmax` flex change | 1 | interpolates |
+| 2 tracks, plain `fr` change | 1 | interpolates |
+
+`grid-template-columns` is interpolable only between track lists of the **same
+length**. Every join or leave changes the count — which is precisely the moment
+the row exists for. The transition has never once run in production, and the
+existing `reflows on join and leave` test asserts only the end-state shape, so
+nothing noticed.
+
+The plan's prescribed mechanism cannot produce its stated outcome: the container
+does not change size on a join, the tracks inside it do, and those are not
+interpolable across a count change. **Not guessed at — raised.**
+
+### Share layout switch
+
+E2's 240ms row exists in no other document — neither PRD §4.4 nor CLAUDE.md's
+shape-and-motion table has it. Nothing implements it. It is also a subtree swap
+rather than a property change: B1 made the sharer keep the plain grid while a
+remote presenter gets share-plus-filmstrip, so the two layouts are different
+elements. Cross-fading them means either remounting (which would detach live
+video tracks — worse than snapping) or keeping both mounted. Raised with the
+grid reflow, as the same kind of question.
+
+### Checks
+
+`check:media` **63/63** — 44 app parallel, 19 media serial. All 375 static
+checks green.

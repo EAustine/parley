@@ -179,4 +179,59 @@ test.describe("the pre-join preview", () => {
     expect(layout.filled, `filled-primary buttons: ${layout.filled.join(" | ")}`).toHaveLength(1);
     expect(layout.filled[0]).toMatch(/Join meeting/i);
   });
+
+  /**
+   * v1.2 E2: "Control hover / press | 120 / 80ms".
+   *
+   * Track B4 gave the room's control bar this treatment and `ReactionPicker`
+   * grew a near-copy of it; the pre-join device toggles had neither. E2 says
+   * "control", not "control bar", and a mic toggle is the same control
+   * whichever screen it is on — so the three now share one constant.
+   *
+   * Read from `scale`, not `transform`: Tailwind v4 compiles these to the
+   * individual property and leaves `transform: none`, which is what made the
+   * mirror assertion above fail the first time it was written.
+   */
+  test("the device toggles respond to hover", async ({ page, meetingCode }) => {
+    await page.goto(`/j/${meetingCode}`);
+    await page.getByRole("button", { name: "Allow camera and microphone" }).click();
+    await expect(page.locator("video")).toBeVisible({ timeout: 20_000 });
+
+    const mic = page.getByRole("button", { name: /microphone/i });
+    const resting = await mic.evaluate((el) => getComputedStyle(el).scale);
+
+    await mic.hover();
+
+    /*
+     * That it lifts *over time*, not just that it ends up lifted.
+     *
+     * The first version of this asserted only the settled value, and passed
+     * against a control whose scale snapped in 0ms: `CONTROL_MOTION` listed
+     * `transform` in its transition, but Tailwind v4 compiles `hover:scale-*`
+     * to the individual `scale` property, so the named property never changed
+     * and the one that did was not covered. Durations correct, motion absent —
+     * the exact shape a settled-value assertion cannot see.
+     */
+    const motion = await mic.evaluate((el) => {
+      const scale = el
+        .getAnimations()
+        .find((a) => (a as CSSTransition).transitionProperty === "scale");
+      if (!scale) return null;
+      scale.pause();
+      scale.currentTime = 0;
+      const atStart = getComputedStyle(el).scale;
+      scale.currentTime = 120;
+      const atEnd = getComputedStyle(el).scale;
+      return { atStart, atEnd };
+    });
+
+    expect(motion, "hover does not transition `scale` — it snaps").not.toBeNull();
+    const first = (v: string) => Number(String(v).split(" ")[0]);
+    expect(resting, "the toggle is scaled at rest").toBe("none");
+    expect(first(motion!.atEnd), "hover did not lift the control").toBeGreaterThan(1);
+    expect(
+      first(motion!.atStart),
+      `scale jumped straight to its end value (${motion!.atStart})`,
+    ).toBeLessThan(first(motion!.atEnd));
+  });
 });

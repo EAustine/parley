@@ -4,6 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useLocalParticipant } from "@livekit/components-react";
 
 import { ICONS } from "@/lib/icons";
+import { CONTROL_MOTION } from "@/lib/motion";
 import type { Reaction } from "@/lib/room/messages";
 import { ReactionPicker } from "@/components/room/ReactionPicker";
 import { Button } from "@/components/ui/button";
@@ -326,23 +327,6 @@ export function RoomControls({
   );
 }
 
-/**
- * v1.2 B4's hover and press, shared by every control in the bar.
- *
- * 1.04 on hover with a background lift over 120ms, 0.96 on press over 80ms.
- * The two durations differ on purpose: a press should land immediately and a
- * hover should ease in, and `active:duration` is what lets one element carry
- * both.
- *
- * `motion-reduce` drops the travel and keeps the colour change — CLAUDE.md's
- * rule is "removes travel, keeps opacity", and a control that gives no
- * feedback at all on press is worse for everyone. The fill is not travel.
- */
-const CONTROL_MOTION =
-  "transition-[transform,background-color,border-color,color] duration-[120ms] " +
-  "ease-[cubic-bezier(0.2,0,0,1)] hover:scale-[1.04] active:scale-[0.96] " +
-  "active:duration-[80ms] motion-reduce:transform-none motion-reduce:hover:scale-100 " +
-  "motion-reduce:active:scale-100";
 
 function CircleToggle({
   on,

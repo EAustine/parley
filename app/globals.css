@@ -297,6 +297,40 @@ summary:focus-visible,
 }
 
 /*
+ * v1.2 E2: "Toast | 150 in / 100 out".
+ *
+ * Sonner's own transition is 400ms on `ease`, measured rather than assumed —
+ * `getAnimations()` on a live toast reports two `CSSTransition`s (transform and
+ * opacity) at 400ms each. That is more than twice the table's figure and the
+ * wrong easing, and it is the one piece of motion in the product that came from
+ * a dependency's defaults rather than from the spec.
+ *
+ * Overridden here rather than in `components/ui/sonner.tsx` because it is a
+ * transition on sonner's own element, not a prop it accepts — the same reason
+ * the palette is already handed to it as `--normal-bg` and friends.
+ *
+ * `data-removed` is sonner's own exit attribute, confirmed against its
+ * stylesheet in `node_modules/sonner` rather than guessed.
+ */
+/*
+ * `.cn-toast` as well as the attribute, so this outranks sonner rather than
+ * merely tying with it. Sonner's own rule is `[data-sonner-toast]` — one
+ * attribute, the same specificity as ours — and it injects its stylesheet at
+ * runtime, after this file. A tie decided by injection order is a tie we lose,
+ * which is what the first version of this did: opacity was still 0.65 at 150ms.
+ * `.cn-toast` is the class `components/ui/sonner.tsx` already hands it.
+ */
+[data-sonner-toast].cn-toast {
+  transition-property: transform, opacity, height, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-sonner-toast].cn-toast[data-removed="true"] {
+  transition-duration: 100ms;
+}
+
+/*
  * v1.2 C1/C3: the panels slide in over 180ms on the standard easing.
  *
  * An animation on the *open* state rather than a transition between states,

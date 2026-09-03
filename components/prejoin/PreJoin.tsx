@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 
 import { useMediaPreview } from "@/lib/hooks/useMediaPreview";
 import { ICONS } from "@/lib/icons";
+import { CONTROL_MOTION } from "@/lib/motion";
 import { PermissionNotice } from "@/components/prejoin/PermissionState";
 import { MicMeter } from "@/components/prejoin/MicMeter";
 import { recallName, rememberJoin } from "@/lib/prejoin-handoff";
@@ -414,7 +415,15 @@ function DeviceToggle({
           // See the accessibility floor — carrying both says the same thing
           // twice.
           aria-label={label}
-          className="flex size-12 items-center justify-center rounded-full border transition-colors duration-[120ms] disabled:opacity-50"
+          /*
+           * E2's control hover/press, which the room bar had and this did not.
+           *
+           * `disabled:pointer-events-none` because this is a raw `<button>`
+           * rather than the shadcn one, and a disabled button still matches
+           * `:hover` — so "No microphone found" lifted 1.04 as though it were
+           * pressable the moment the shared motion was applied here.
+           */
+          className={`flex size-12 items-center justify-center rounded-full border disabled:pointer-events-none disabled:opacity-50 ${CONTROL_MOTION}`}
           style={{
             // Off is a fill change, not a hue change — rule 5.
             backgroundColor: on ? "transparent" : "var(--secondary)",
