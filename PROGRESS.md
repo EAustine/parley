@@ -4112,3 +4112,51 @@ own capacity note warns about: "it must be made deterministic rather than
 tolerated". It now asserts the bar does not move at all, and a mutation confirms
 it: with `preventScroll` removed, "the control bar moved 477px while the panel
 opened".
+
+### F1, and a defect that made chat unusable on a phone
+
+The mapping measured the sheet against the video rather than describing it: at
+one participant on a 375×812 phone the open sheet's top edge sat **138px above
+the tile's bottom edge — covering 70% of the video** — and the tile did not
+move. The stage is `h-full` inside a padded box and the sheet is `absolute`, so
+nothing in the layout could react to it. That is F1's second clause, quantified.
+
+It also found a live defect in the same padding, which I then confirmed in the
+running app:
+
+> Send renders at y=660–704. The control bar starts at y=668. Hit-testing
+> Send's centre returns the participants-count badge, not the button.
+
+Only the top 8px of Send was clear, and `useControlVisibility` never hides the
+bar on touch — so this was permanent, not a transient overlap. **You could not
+tap Send in chat on a phone.** B4 is where it came from: grouping the controls
+made them wrap rather than shrink below §9's floor, which took the bar from ~72
+to 144px, while the sheet went on reserving a hard-coded `pb-24` of 96.
+
+The fix is to stop guessing the number. `RoomControls` now measures its own box
+with a `ResizeObserver` and publishes `--parley-controls-h`; the sheets and the
+room surface consume it. That holds through wrapping, through the safe-area
+inset, and through the error row that appears above the bar when a device
+fails — none of which a constant can track.
+
+Sheets are `55dvh`, and the stage reserves that height below `md` so the video
+ends above the sheet instead of running under it. The sheet stays absolutely
+positioned: restructuring the room into a flex column would change the desktop
+drawer too, and desktop is finished and asserted.
+
+The reserve transitions over 180ms to match the sheet's own entrance —
+container, one property, not the tiles. Deliberately **not** routed through E2's
+FLIP: opening a panel is your own action, and §4.4's test for motion is whether
+it tells you something you do not already know. A join does; your own tap does
+not.
+
+Two mistakes of mine on the way, both in the test rather than the code. I
+hit-tested Send while the composer was empty — shadcn's
+`disabled:pointer-events-none` means `elementFromPoint` skips a disabled button,
+so it reported "nothing there" whether the bar covered it or not. And the first
+draft wrote a second `transition` key into the same style object, silently
+replacing the dim transition §3.11 depends on.
+
+`overflow-hidden` on the room surface is now `overflow-clip`, which does not
+create a scroll container at all — the structural close on the class of defect
+`preventScroll` fixed one instance of.

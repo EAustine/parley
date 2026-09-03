@@ -371,7 +371,7 @@ function RoomSurface({
   return (
     <div
       ref={surface}
-      className="relative h-dvh w-full overflow-hidden bg-background p-3 pb-24"
+      className="relative h-dvh w-full overflow-clip bg-background p-3 pb-[var(--parley-controls-h)]"
     >
       <Shortcuts onToggleChat={toggleChat} onShowHelp={() => setHelpOpen(true)} />
 
@@ -384,6 +384,22 @@ function RoomSurface({
         className={[
           "h-full",
           chatOpen || participantsOpen ? "md:pr-[360px]" : "",
+          /*
+           * v1.2 F1: "with the video area shrinking above rather than being
+           * covered".
+           *
+           * Measured before this: at one participant on a 375x812 phone the
+           * open sheet's top edge sat 138px above the tile's bottom edge — it
+           * covered 70% of the video, and the tile did not move, because the
+           * stage is `h-full` in a padded box and the sheet is `absolute`.
+           * Nothing in the layout could react to it.
+           *
+           * Reserving the sheet's height below `md` is what makes the stage
+           * react. The sheet stays absolute — restructuring the room into a
+           * flex column would change the desktop drawer too, and desktop is
+           * finished and asserted.
+           */
+          chatOpen || participantsOpen ? "max-md:pb-[55dvh]" : "",
           // The sharing bar is `absolute top-0`, so the stage has to make room
           // for it the way `pb-24` already makes room for the control bar.
           // Overlaying it would cover the top of the grid, which B1 exists to
@@ -393,13 +409,27 @@ function RoomSurface({
           .filter(Boolean)
           .join(" ")}
         style={{
+          /*
+           * 180ms, matching the sheet's own entrance. The grid resizing
+           * instantly while the sheet slides in reads as two unrelated events.
+           *
+           * One property on one element — the container, not the tiles — so
+           * this is the reflow rule's permitted shape rather than sixteen
+           * layout animations. And it is deliberately *not* routed through the
+           * FLIP hook: opening a panel is your own action, and PRD §4.4's test
+           * for motion is whether it tells you something you do not already
+           * know. A join does; your own tap does not.
+           */
           // §3.11: "Overlay over the dimmed, frozen room — not a full-page
           // unmount." The grid keeps its last frame because nothing detached;
           // dimming it says the meeting is not live without pretending you
           // were never in one. The overlay carries the explanation, so this
           // layer does not need to stay readable.
           opacity: connection.phase === "failed" ? 0.4 : 1,
-          transition: "opacity 200ms cubic-bezier(0.2, 0, 0, 1)",
+          // One declaration, two properties — a second `transition` key would
+          // silently replace the first, which is what the first draft did.
+          transition:
+            "padding-bottom 180ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1)",
         }}
       >
         {share.presenter && !share.presenter.isLocal ? (

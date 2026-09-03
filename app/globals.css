@@ -49,6 +49,11 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
+  /* Published by RoomControls from its own rendered box. The fallback is the
+     old hard-coded 96px, used only for the frames before the first measure —
+     never as the answer, because it is the wrong one on a phone. */
+  --parley-controls-h: 6rem;
+
   /* 4px base — 4, 8, 12, 16, 24, 32, 48, 64 */
   --spacing: 0.25rem;
 }

@@ -170,4 +170,80 @@ test.describe("the room on a phone", () => {
     await mic.click();
     await expect(page.getByRole("button", { name: /Turn on microphone/i })).toBeVisible();
   });
+
+  /**
+   * v1.2 F1: the sheet caps at 55dvh and the video shrinks above it rather
+   * than being covered — and the composer clears the control bar.
+   *
+   * Both halves were measurably wrong. The sheet's top edge sat 138px above
+   * the tile's bottom edge, covering 70% of the video, and the tile did not
+   * move because the stage is `h-full` in a padded box while the sheet is
+   * absolute. And the sheet reserved a hard-coded 96px for a control bar that
+   * B4's wrapping made 144px tall, so Send rendered *under* the bar — hit
+   * testing its centre returned the participants badge. On touch the bar never
+   * auto-hides, so that was permanent, not a transient overlap.
+   */
+  test("the sheet caps the video rather than covering it, and Send is reachable", async ({
+    browser,
+    meetingCode,
+  }) => {
+    participant = await joinAs(browser, "Abena Poku", {
+      code: meetingCode,
+      viewport: IPHONE,
+      withMedia: false,
+    });
+    const { page } = participant;
+
+    await wakeControls(page);
+    await page.getByRole("button", { name: "Chat" }).click();
+    /*
+     * Type first. Send is disabled while the composer is empty, and shadcn's
+     * `disabled:pointer-events-none` makes `elementFromPoint` skip it — so
+     * hit-testing an empty composer's Send reports "nothing there" whether the
+     * bar covers it or not. It is also the honest scenario: you only reach for
+     * Send once you have something to send.
+     */
+    await page.getByRole("textbox", { name: /message/i }).fill("kasa");
+    // Past the 180ms sheet entrance and the stage's matching reflow.
+    await page.waitForTimeout(400);
+
+    const geometry = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const tile = document.querySelector<HTMLElement>("[data-participant]");
+      const send = [...document.querySelectorAll<HTMLElement>("button")].find(
+        (b) => b.textContent?.trim() === "Send",
+      );
+      const box = (el: Element | null | undefined) =>
+        el ? el.getBoundingClientRect() : null;
+      const sendBox = box(send);
+      const onTopOfSend = sendBox
+        ? document
+            .elementFromPoint(sendBox.x + sendBox.width / 2, sendBox.y + sendBox.height / 2)
+            ?.closest("button")?.textContent?.trim() ?? null
+        : null;
+      return {
+        panelHeight: box(panel)!.height,
+        panelTop: box(panel)!.top,
+        tileBottom: tile ? box(tile)!.bottom : null,
+        onTopOfSend,
+        viewport: innerHeight,
+      };
+    });
+
+    // 55% of the dynamic viewport, measured rather than read back.
+    expect(geometry.panelHeight / geometry.viewport).toBeCloseTo(0.55, 2);
+
+    // The video ends above the sheet instead of running under it.
+    expect(geometry.tileBottom, "no participant tile to measure").not.toBeNull();
+    expect(
+      geometry.tileBottom!,
+      `the sheet covers ${Math.round(geometry.tileBottom! - geometry.panelTop)}px of the video`,
+    ).toBeLessThanOrEqual(geometry.panelTop + 1);
+
+    // And the composer's own control is the thing at its own centre.
+    expect(
+      geometry.onTopOfSend,
+      "the control bar is painted over the chat Send button",
+    ).toBe("Send");
+  });
 });

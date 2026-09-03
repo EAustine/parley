@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLocalParticipant } from "@livekit/components-react";
 
@@ -59,6 +60,36 @@ export function RoomControls({
   onReact: (emoji: Reaction) => void;
   onLeave: () => void;
 }) {
+  /**
+   * Publish the bar's rendered height as `--parley-controls-h`.
+   *
+   * Everything that has to clear this bar used to hard-code `pb-24` — 96px —
+   * and B4 made that wrong. Grouping the controls means they wrap rather than
+   * shrink below §9's 44px floor, and a wrapped bar measures **144px** on a
+   * 375pt phone. The chat sheet reserved 96, so Send rendered at y=660 under a
+   * bar starting at y=668: hit-testing Send's centre returned the participants
+   * badge, and `useControlVisibility` never hides the bar on touch — so it was
+   * not transient. You could not tap Send on a phone at all.
+   *
+   * A number that has to equal a rendered box should be read from the box. The
+   * observer keeps it true through wrapping, through the safe-area inset, and
+   * through the error row that appears above the bar when a device fails.
+   */
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = bar.current;
+    if (!element) return;
+    const publish = () =>
+      document.documentElement.style.setProperty(
+        "--parley-controls-h",
+        `${Math.ceil(element.getBoundingClientRect().height)}px`,
+      );
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const platform = usePlatform();
   const {
     localParticipant,
@@ -84,6 +115,7 @@ export function RoomControls({
        * not account for: `dvh` describes the viewport, not the region of it
        * that is safe to put a control in.
        */
+      ref={bar}
       className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
       // Hidden controls stay in the DOM and keep their tab stops: §3.4 says
       // they reappear on any keypress or focus, which cannot happen if
