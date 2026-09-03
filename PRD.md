@@ -459,18 +459,15 @@ Radius: `--radius: 0.5rem`. Tiles `0.75rem`. Circular controls. The leave pill i
 
 Spacing on a 4px base: 4, 8, 12, 16, 24, 32, 48, 64.
 
-Motion:
-
-| Change | Duration | Easing |
-|---|---|---|
-| State toggle (mute, camera) | 120ms | `cubic-bezier(0.2, 0, 0, 1)` |
-| Speaking ring | 120ms | linear |
-| Panel open/close | 180ms | `cubic-bezier(0.2, 0, 0, 1)` |
-| Grid reflow | 200ms | `cubic-bezier(0.2, 0, 0, 1)` |
-| Reaction lifespan | 2400ms | ease-out |
-| Toast | 150ms in, 100ms out | standard |
+**The motion table lives in `CLAUDE.md` and is not duplicated here.** Durations, easings, and mechanism — FLIP for the grid reflow, instant panel close, share-region enter — are implementation reference, and a second copy has drifted twice already. This section owns the principles; `CLAUDE.md` owns the numbers. Same split as the contrast table and §9's mechanics.
 
 All motion answers a user action. No ambient animation anywhere. `prefers-reduced-motion: reduce` removes travel and keeps opacity changes only.
+
+**Motion is spent where it carries information, not evenly.** Two decisions show the test:
+
+A panel close is initiated by the person watching it, so it is instant — exit motion would tell them something is leaving, which they know, because they clicked to close it. A grid reflow on join is initiated by *someone else*, and the reflow is the only signal it happened; motion there shows the grid rearranging and lets a viewer track where people went. Same product, opposite answers, because one moment carries information and the other does not.
+
+That is the question to ask of any new motion: does it tell the user something they do not already know?
 
 ### 4.5 Brand
 

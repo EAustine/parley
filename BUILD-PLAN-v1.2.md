@@ -114,6 +114,14 @@ The mic meter is a horizontal bar under the preview, not a number: 4px tall, fil
 
 The name field and Join button sit below that as one clear block. Join is the only filled-primary button on the screen.
 
+**Testing the no-device state.** The fake-device harness always presents a camera, so the real condition cannot be produced in automation. Two separable claims sit behind that, and only one is ours:
+
+The browser reporting `NotFoundError` and an empty `videoinput` list when no camera exists is browser behaviour, verified once by hand through the Screen Time trick in the Phase 3 matrix. Our code disabling the toggle and rendering the right copy *given* that state is ours, and it is testable — stub `enumerateDevices` and `getUserMedia` with `page.addInitScript`.
+
+That is not the media-faking the Phase 4 rule forbids. That rule protects claims about WebRTC subscription and track behaviour. This claim is "our UI responds correctly to a state the browser reports", which a stub reproduces exactly.
+
+**Name the test for what it proves** — "renders the no-camera state when the device list is empty", not "works with no camera". The distinction is the whole point of the autolink finding.
+
 Every permission state renders **inside the preview frame**, not as a banner elsewhere — that keeps the eye in one place and makes the denied-state copy impossible to miss.
 
 ---

@@ -234,4 +234,101 @@ test.describe("the pre-join preview", () => {
       `scale jumped straight to its end value (${motion!.atStart})`,
     ).toBeLessThan(first(motion!.atEnd));
   });
+
+  /**
+   * v1.2 Track D: "renders the no-camera state when the device list is empty".
+   *
+   * **Named for what it proves, not for what it looks like.** It is not "works
+   * with no camera" — the fake-device harness always presents one, so the real
+   * condition cannot be produced in automation. Two claims sit behind that and
+   * only one is ours: the browser reporting `NotFoundError` and an empty
+   * `videoinput` list is browser behaviour, verified by hand once through the
+   * Screen Time trick in the Phase 3 matrix. **Our code rendering the right
+   * state given that report is ours, and a stub reproduces it exactly.**
+   *
+   * That is not the media-faking the Phase 4 rule forbids. That rule protects
+   * claims about WebRTC subscription and track behaviour; this claim is about
+   * our UI responding to a state the browser hands it.
+   */
+  test("renders the no-camera state when the device list is empty", async ({
+    page,
+    meetingCode,
+  }) => {
+    await page.addInitScript(() => {
+      const devices = navigator.mediaDevices;
+      // Audio only: a microphone exists, a camera does not.
+      devices.enumerateDevices = async () =>
+        [
+          {
+            deviceId: "mic-1",
+            kind: "audioinput",
+            label: "Built-in Microphone",
+            groupId: "g1",
+            toJSON() {
+              return this;
+            },
+          },
+        ] as unknown as MediaDeviceInfo[];
+
+      const original = devices.getUserMedia.bind(devices);
+      devices.getUserMedia = async (constraints?: MediaStreamConstraints) => {
+        if (constraints?.video) {
+          // What Chromium raises when the requested camera is not there.
+          throw Object.assign(new Error("Requested device not found"), {
+            name: "NotFoundError",
+          });
+        }
+        return original(constraints);
+      };
+    });
+
+    await page.goto(`/j/${meetingCode}`);
+    await page.getByRole("button", { name: "Allow camera and microphone" }).click();
+
+    // §3.3: "No camera found" — and audio-only join is still offered, so the
+    // copy must not read as a failure.
+    /*
+     * Matched on the full sentence, not on "No camera found".
+     *
+     * Three places carry that phrase in this state and they are all correct:
+     * the in-frame copy, the camera selector's own empty state, and the
+     * disabled toggle's accessible name. Track D's claim is specifically that
+     * the state renders *inside the preview frame*, so this asserts the
+     * sentence only that copy has — and the audio-only reassurance is the half
+     * that matters, since §3.3 requires this not to read as a failure.
+     */
+    await expect(
+      page.getByText(/No camera found\. Your microphone works/i),
+      "the no-camera state did not render inside the preview frame",
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator("video")).toHaveCount(0);
+
+    /*
+     * The camera toggle says why it cannot be used rather than silently doing
+     * nothing, and — the regression E2's shared motion introduced — a disabled
+     * control does not hover-lift as though it were pressable.
+     */
+    const camera = page.getByRole("button", { name: "No camera found" });
+    await expect(camera).toBeDisabled();
+
+    const resting = await camera.evaluate((el) => getComputedStyle(el).scale);
+    await camera.hover({ force: true });
+    const hovered = await camera.evaluate((el) => getComputedStyle(el).scale);
+    expect(
+      hovered,
+      `a disabled control lifted on hover (rest: ${resting}, hover: ${hovered})`,
+    ).toBe(resting);
+
+    /*
+     * Joining is still allowed — §3.3: "Joining with camera and mic both off is
+     * allowed and must not be treated as an error."
+     *
+     * The name is filled first because a guest cannot join without one either
+     * way; asserting an enabled Join before typing tests the name requirement,
+     * not the camera state, and would have failed for the right reason on the
+     * wrong claim.
+     */
+    await page.getByLabel("Your name").fill("Ama Serwaa");
+    await expect(page.getByRole("button", { name: "Join meeting" })).toBeEnabled();
+  });
 });

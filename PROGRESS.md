@@ -4035,3 +4035,39 @@ That mutation is also the reduced-motion path, so one check covers both.
 
 `check:media` **65/65** — 45 app parallel, 20 media serial. All 375 static
 checks green.
+
+### Both open items closed by the documents
+
+**The no-device state is testable after all.** I had recorded it as uncoverable
+because the fake-device harness always presents a camera. Track D now separates
+the two claims hiding behind that, and only one was ever ours: the browser
+reporting `NotFoundError` and an empty `videoinput` list is browser behaviour,
+verified by hand once through the Screen Time trick in the Phase 3 matrix. **Our
+code rendering the right state given that report is ours, and a stub reproduces
+it exactly** — `page.addInitScript` over `enumerateDevices` and `getUserMedia`.
+
+That is not the media-faking the Phase 4 rule forbids: that rule protects claims
+about WebRTC subscription and track behaviour, and this claim is that our UI
+responds to a state the browser hands it. The test is named for what it proves —
+"renders the no-camera state when the device list is empty", not "works with no
+camera" — which is the autolink lesson applied to a name rather than an
+assertion.
+
+It also closes the E2 regression that had no coverage: a disabled control must
+not hover-lift as though pressable. That assertion is now real rather than a
+note.
+
+Two of my own mistakes on the way, both the same shape — asserting the right
+thing about the wrong element. "No camera found" appears three times in this
+state and all three are correct (the in-frame copy, the selector's empty state,
+the toggle's accessible name), so the assertion had to match the sentence only
+the in-frame copy has. And I asserted Join was enabled without filling the
+name, which tests §3.3's name requirement rather than the camera state — it
+would have failed for the right reason on the wrong claim.
+
+**PRD §4.4's motion table is gone**, replaced by a pointer to CLAUDE.md and the
+principle underneath it: "Motion is spent where it carries information, not
+evenly ... does it tell the user something they do not already know?" That is
+the third duplication this project has resolved the same way, after the contrast
+table and §9's mechanics — and the reason is recorded as the same one: a second
+copy had drifted twice already.
