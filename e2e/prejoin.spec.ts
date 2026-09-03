@@ -2,6 +2,7 @@ import { expect, test } from "./fixtures";
 
 import {
   videoLiveness } from "./room.helpers";
+import { assertFloor } from "./targets";
 
 /**
  * §3.3's camera preview, measured as pixels rather than as markup.
@@ -330,5 +331,43 @@ test.describe("the pre-join preview", () => {
      */
     await page.getByLabel("Your name").fill("Ama Serwaa");
     await expect(page.getByRole("button", { name: "Join meeting" })).toBeEnabled();
+  });
+});
+
+/**
+ * The half of pre-join that `targets.spec.ts` cannot reach.
+ *
+ * §3.3 opens on an explanation and a button rather than a permission prompt, so
+ * the screen the `app` project measures has three controls on it. The device
+ * selectors and the mic and camera toggles exist only after permission is
+ * answered — which means real capture, which is why this state is measured here
+ * in the serial `media` project instead.
+ *
+ * Same floor, same helper, different project. The split is about what the state
+ * costs to reach, not about what is being asserted.
+ */
+test.describe("touch targets on pre-join", () => {
+  test("every control clears the 44px floor once devices are granted", async ({
+    page,
+    meetingCode,
+  }) => {
+    await page.goto(`/j/${meetingCode}`);
+    await page.getByRole("button", { name: "Allow camera and microphone" }).click();
+    await expect(page.locator("video")).toBeVisible({ timeout: 20_000 });
+
+    // Both widths: a selector row that fits at 1280 is the one that wraps and
+    // squeezes at 375.
+    for (const viewport of [
+      { width: 1280, height: 800 },
+      { width: 375, height: 812 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await assertFloor(page, {
+        floor: 44,
+        // Two device toggles, three selectors, the name field, and Join.
+        atLeast: 7,
+        label: `pre-join with devices at ${viewport.width}px`,
+      });
+    }
   });
 });

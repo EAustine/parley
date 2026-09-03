@@ -40,6 +40,32 @@ function nextClientIp(): string {
   return `10.${worker}.${Math.floor(clientSeq / 254)}.${(clientSeq % 254) + 1}`;
 }
 
+/**
+ * Let every running animation finish before measuring geometry.
+ *
+ * `getBoundingClientRect` returns the **transformed** box, while container
+ * query units resolve against the **untransformed layout box**. A tile caught
+ * mid-FLIP therefore reports a rect that disagrees with its own `cqmin`: the
+ * avatar test measured a 596px tile holding a 123px avatar, which is 28% of
+ * 439 — the tile's real layout box while the inverse transform still showed
+ * its old size. It passed alone and failed in a full run, which is the shape
+ * `CLAUDE.md` says must be made deterministic rather than tolerated.
+ *
+ * The probe that established this caught a tile at `scale: 0.998998` reporting
+ * rect 619.36 against layout 620 — the same disagreement, three orders of
+ * magnitude smaller because the animation was nearly done.
+ *
+ * `.finished` is exact where a fixed sleep is a guess; the catch is for
+ * animations cancelled by an element unmounting mid-wait.
+ */
+export async function settleAnimations(page: Page) {
+  await page.evaluate(() =>
+    Promise.all(
+      document.getAnimations().map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
+
 export async function joinAs(
   browser: Browser,
   name: string,

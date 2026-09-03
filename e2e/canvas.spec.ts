@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { joinAs, leave, wakeControls, type Participant, settleAnimations } from "./room.helpers";
 
 /**
  * Track B's canvas, measured.
@@ -32,15 +32,27 @@ test.describe("the room canvas", () => {
     const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     open.push(ama);
 
+    /*
+     * Settled, and measured as layout boxes rather than rects.
+     *
+     * The avatar is `min(28cqmin, 128px)`, and `cqmin` resolves against the
+     * tile's untransformed layout box while `getBoundingClientRect` returns the
+     * transformed one. Mid-FLIP the two disagree — this failed at "avatar 123px
+     * against a 596px shorter side", where 123 is 28% of the tile's real 439px
+     * layout box and 596 was the inverse transform still showing its old size.
+     * Alone it passed; under four workers it did not.
+     *
+     * So both halves of the comparison now come from the same frame of
+     * reference, and nothing is measured while an animation is running.
+     */
+    await settleAnimations(ama.page);
     const measured = await ama.page.evaluate(() => {
       const tile = document.querySelector<HTMLElement>("[data-participant]");
       const avatar = tile?.querySelector<HTMLElement>(".rounded-full");
       if (!tile || !avatar) return null;
-      const t = tile.getBoundingClientRect();
-      const a = avatar.getBoundingClientRect();
       return {
-        shorterSide: Math.min(t.width, t.height),
-        avatar: a.width,
+        shorterSide: Math.min(tile.offsetWidth, tile.offsetHeight),
+        avatar: avatar.offsetWidth,
         radius: parseFloat(getComputedStyle(tile).borderTopLeftRadius),
       };
     });
@@ -75,6 +87,9 @@ test.describe("the room canvas", () => {
     const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     open.push(ama);
 
+    // Ratios of two rects in one subtree are transform-invariant, but
+    // `bottomGap` is an absolute figure and a scaling tile moves it.
+    await settleAnimations(ama.page);
     const measured = await ama.page.evaluate(() => {
       const tile = document.querySelector<HTMLElement>("[data-participant]");
       if (!tile) return null;
@@ -222,6 +237,7 @@ test.describe("the room canvas", () => {
     await ama.page.getByRole("button", { name: "Share your screen" }).click();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 
+    await settleAnimations(kwabena.page);
     const strip = await kwabena.page.evaluate(() => {
       const heading = [...document.querySelectorAll("h2")].find((h) =>
         /^Participants, \d+$/.test(h.textContent?.trim() ?? ""),

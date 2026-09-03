@@ -203,7 +203,9 @@ At 96px tall a tile is ~171px wide, so roughly two and a bit fit a 375pt screen.
 
 ### F4. Control bar
 
-44px minimum targets, already covered by `check:targets`. Bar sits above the safe-area inset. On touch it never auto-hides.
+44px minimum targets, **measured rather than inferred**. `check:targets` resolves size classes and cannot see a control squeezed by its parent, so it never covered this and the plan overstated it. `mobile.spec` measures directly, which is right; extend that to the full state list rather than mobile alone, since the floor is 44px on room and pre-join and 24px elsewhere.
+
+Bar sits above the safe-area inset. On touch it never auto-hides.
 
 ---
 

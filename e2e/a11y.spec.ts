@@ -4,7 +4,7 @@ import { endedCode, expect, scheduledCode, test } from "./fixtures";
 import { generateMeetingCode } from "@/lib/meetings/code";
 import { PRESENCE_SETTLE_MS } from "@/lib/hooks/usePresence";
 
-import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { joinAs, leave, settleAnimations, wakeControls, type Participant } from "./room.helpers";
 
 /**
  * axe, run against **states rather than routes**.
@@ -37,26 +37,6 @@ import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
 const UNKNOWN_CODE = generateMeetingCode();
 
 /**
- * Let every animation finish before measuring.
- *
- * axe computes contrast from what is painted, and a dialog fading in paints
- * composites of its own colours against whatever is behind — it reported
- * `#34383e` on `#191c22` for a badge whose settled pairing is
- * `--muted-foreground` on `--secondary` at 5.68:1. Neither number is a token;
- * both are frames.
- *
- * `getAnimations()` is exact where a fixed sleep is a guess, and the catch is
- * for animations cancelled by an element unmounting mid-wait.
- */
-async function settle(page: Page) {
-  await page.evaluate(() =>
-    Promise.all(
-      document.getAnimations().map((a) => a.finished.catch(() => undefined)),
-    ),
-  );
-}
-
-/**
  * What axe is pointed at, and what it is not.
  *
  * `next-route-announcer` is the framework's own assertive live region. It is
@@ -69,7 +49,14 @@ async function settle(page: Page) {
  * and this is belt and braces.
  */
 async function scan(page: Page) {
-  await settle(page);
+  /*
+   * Settled first, for a reason of axe's own: it computes contrast from what is
+   * painted, and a dialog fading in paints composites of its own colours
+   * against whatever is behind. It reported `#34383e` on `#191c22` for a badge
+   * whose settled pairing is `--muted-foreground` on `--secondary` at 5.68:1.
+   * Neither number is a token; both are frames.
+   */
+  await settleAnimations(page);
   return new AxeBuilder({ page })
     .exclude("next-route-announcer")
     .exclude("nextjs-portal")

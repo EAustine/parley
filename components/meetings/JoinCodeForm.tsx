@@ -54,7 +54,11 @@ export function JoinCodeForm({ autoFocus = false }: { autoFocus?: boolean }) {
           autoCapitalize="none"
           spellCheck={false}
           autoFocus={autoFocus}
-          className="font-mono tracking-[0.08em]"
+          // h-11 for the same reason the button below is `size="touch"`: a
+          // field is a target, and this one renders on a pre-join surface. The
+          // Input default is h-8, the density the dashboard forms were scaled
+          // for. It also stops a 32px field sitting beside a 44px button.
+          className="h-11 font-mono tracking-[0.08em]"
           aria-describedby={error ? "code-error" : undefined}
           aria-invalid={error ? true : undefined}
         />

@@ -339,6 +339,8 @@ export function PreJoin({
             </Label>
             <Input
               id="display-name"
+              // 44px: a field is a target, and this is a pre-join surface.
+              className="h-11"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ama"
@@ -481,7 +483,8 @@ function DeviceSelect({
         {label}
       </Label>
       <Select value={value ?? undefined} onValueChange={onChange}>
-        <SelectTrigger id={id} className="w-full">
+        {/* 44px: the device selectors are targets on a pre-join surface. */}
+        <SelectTrigger id={id} size="touch" className="w-full">
           <SelectValue placeholder={`Choose a ${label.toLowerCase()}`} />
         </SelectTrigger>
         <SelectContent className="dark">

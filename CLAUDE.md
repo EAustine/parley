@@ -347,7 +347,9 @@ Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD
 - Reactions throttled to one announcement per participant per 2s
 - Connection changes announced once, not per retry
 - **Touch targets: 44px on the room and pre-join surfaces, 24px minimum elsewhere.** The blanket 44px was above our stated conformance target — WCAG 2.1 AA does not require it, and 2.2 AA sets 24px. Enforcing 44 on desktop dashboard and scheduling screens changes visual density for no accessibility gain. Enforcing it in the room does: those are touch-primary, used one-handed, mid-meeting.
-- `check:targets` measures computed sizes from built CSS and fails below the floor for the surface. The line above used to say "checked every phase" while the work sat in Phase 10 and roughly thirty controls missed it. A claim that is not a script is not a check.
+- Touch targets are gated by **measuring rendered boxes in a browser**, across the same state list Phase 9 uses for axe — not by resolving size classes. A class-resolving check reads `h-11 w-11` and reports 44px while a parent constraint, a conflicting utility, a transform, or a squeezed flex child delivers something smaller. That is how the control bar shrank below the floor for months with a green check.
+
+  This line has now been wrong twice, in opposite directions. It first claimed the floor was "checked every phase" while the work sat unstarted in Phase 10 and thirty controls missed it. It was then replaced with a script that resolves classes rather than measuring geometry — fixing an unenforced claim with a claim the script does not enforce. **Writing the script is not the fix; the script asserting the actual thing is the fix.** It is the same rule as the letterboxed tile that declared `aspect-ratio: 16/9` correctly and rendered 1956px into 1337px.
 - Nothing depends on colour alone
 - `axe` clean on every route
 

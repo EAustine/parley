@@ -4234,3 +4234,146 @@ browser claims the vertical drag for scrolling and `pointermove` never fires.
 
 `check:media` **69/69** — 48 app parallel, 21 media serial. `check:room` 103,
 `check:bundle` 10/10. All static checks green.
+
+---
+
+## v1.2 close-out — the touch-target floor, measured
+
+The updated `CLAUDE.md` and `BUILD-PLAN-v1.2.md` resolve the one item Track F
+left open: `check:targets` did not do what both documents said it did.
+
+> "Writing the script is not the fix; the script asserting the actual thing is
+> the fix." — `CLAUDE.md`, accessibility floor
+
+### The check that was not a check
+
+`scripts/check-targets.mjs` resolved `size="touch"` through the emitted
+stylesheet and reported 44px. That is a better class of check than reading the
+source — it survives a renamed utility, and it caught the phases where controls
+were plainly the wrong size — but it cannot see a parent constraint, a
+conflicting utility, a transform, or a squeezed flex child. It also only ever
+looked at `<Button>` and raw `<button>`, so a field, a select trigger, or a link
+was invisible to it entirely.
+
+It is deleted. `check:targets` now runs the measurement in a browser:
+
+- `e2e/targets.ts` — `measureTargets` and `assertFloor`, shared
+- `e2e/targets.spec.ts` — the six page states from `a11y.spec.ts`, each at 1280
+  and at 375, plus the four in-room states at both widths
+- `e2e/prejoin.spec.ts` — the granted-devices state, which needs real capture
+  and therefore belongs to the serial `media` project
+
+One npm script covers all three: `--project=app --project=media -g "touch
+targets"`, so a single build measures everything.
+
+### It failed on first run, five times, against shipped code
+
+Every one of these was green under the old script.
+
+| What | Rendered | Why the old check missed it |
+|---|---|---|
+| Name field, pre-join | 512×**32** | `<Input>` was never in the scan |
+| Meeting-code field, `/j/[code]` | 400×**32** | same — and its file *was* in the 44px exception list |
+| Three device selectors | 512×**32** | `SelectTrigger` was never in the scan |
+| Dialog close button | **28**×**28** | `size="icon-sm"`; every dialog in this product is a room dialog |
+| "Start a new meeting", ended and cancelled | 400×**32** | `<Button asChild>` at the default size |
+
+The code field is the sharpest of the five. `JoinCodeForm.tsx` was listed in
+`TOUCH_ELSEWHERE` *specifically* so it would be graded at 44px rather than 24 —
+and the exception was honoured while the field beside the button went unmeasured.
+An exception list that grades a file the checker only half-reads is worse than
+no exception at all: it reads as deliberate coverage.
+
+Fixes: an `icon-touch` size on `Button` (44px square — `touch` sets a height and
+lets padding decide the width, which for a 16px icon is 40px, past the floor on
+the axis nobody was measuring), a `touch` size on `SelectTrigger`, `h-11` on the
+two fields, `size="touch"` on the two links. `SelectTrigger` needed a variant
+rather than a class: its height is declared as `data-[size=default]:h-8`, which
+outranks a bare `h-11` in `className` on specificity, so the class would have
+been passed in and quietly lost.
+
+### Mutations
+
+**`size-11` → `size-10` on two room controls** — fails, `Chat 40x40 < 44px`.
+The room measurement bites.
+
+**`scale-90` while `size-11` stays declared** — fails. This is the load-bearing
+one: the class the old script resolved is still there and still says 44, and the
+box is 39.6. It is the case `CLAUDE.md` names in the sentence that prompted this
+work, and the deleted script could not have caught it in principle.
+
+**`flex-wrap` → `flex-nowrap` on the control bar** — *passed*, and proves
+nothing. I expected the bar to squeeze its children at 375px; it overflows
+instead, which `mobile.spec`'s clipping assertion covers and this one does not.
+Recorded as an attempt that failed to produce the condition, not as evidence
+that the condition is handled.
+
+### The vacuity guard earned its place immediately
+
+Pre-join measured three controls where I had guessed five. Not a bug: §3.3 opens
+on an explanation and a button rather than a permission prompt, so three is
+what that state renders. The device selectors and the two toggles exist only
+after permission is answered — real capture, hence the `media` project.
+
+Without a floor on *what was measured*, that state would have reported clean
+while five of its eight controls were never looked at.
+
+### Correction: "all static checks green" was wrong
+
+Track F's entry above says that, and `npm run lint` had been failing since Track
+A — three `react-hooks/rules-of-hooks` errors on `e2e/fixtures.ts`, where
+Playwright's fixture argument is named `use` by convention and the rule matches
+on the name. There is no React in `e2e/`. The rule is now scoped off for that
+directory, with the reasoning in `eslint.config.mjs`; renaming the argument
+would mean writing non-idiomatic Playwright to satisfy a rule aimed at a
+different library.
+
+I reported a green suite without running one of the checks in it.
+
+### Still not covered, and not silently
+
+The dashboard and the schedule screens are in neither state list — not axe's,
+and so not this one's. They are the 24px surfaces, they are behind auth, and
+`signIn` now exists in the suite, so adding them is small. It is a change to
+what "the Phase 9 state list" means, which is a decision rather than an
+implementation, so it is raised rather than taken.
+
+### A flake the new tests exposed, fixed rather than re-run
+
+`canvas.spec`'s avatar test failed in the full run and passed alone: *"avatar
+123px against a 596px shorter side"*. `CLAUDE.md` does not allow that to be
+re-run until green.
+
+Mechanism, established with a probe rather than assumed. `getBoundingClientRect`
+returns the **transformed** box; container query units resolve against the
+**untransformed layout box**. The avatar is `min(28cqmin, 128px)`, so mid-FLIP
+the two halves of the assertion come from different frames: 123 is 28% of 439 —
+the tile's real layout box — while 596 was the inverse transform still showing
+the size it had before the reflow.
+
+The inverse scale is about 1.36, so the tile was recovering from a *shrink*
+rather than from an arrival, which scales up from 0.96. With a single
+participant the likely trigger is the control bar publishing its height and the
+stage padding appearing beneath it — but I did not pin which reflow it was, and
+the fix does not depend on knowing.
+
+The probe caught a tile at `scale: 0.998998` reporting rect 619.36 against
+layout 620 — the same disagreement, three orders of magnitude smaller because
+the animation had nearly finished.
+
+Two changes, both correct independently: `settleAnimations` is now shared from
+`room.helpers.ts` (it replaces `a11y.spec`'s local copy and an inline duplicate
+in `targets.ts`), and the avatar test measures layout boxes on both sides so the
+comparison has one frame of reference.
+
+Latent since E2 built the FLIP. Adding seven tests to the app project is what
+made the timing land badly often enough to see.
+
+### Checks
+
+`check:targets` **8/8**, measured in a browser. `check:media` **77/77** — 55 app
+parallel, 22 media serial, clean on a full run rather than on a retry.
+`check:room` 103, `check:a11y` 58, `check:chat` 73, `check:connection` 72,
+`check:ics` 69, `check:permissions` 39, `check:contrast` 25, `check:codes` 6,
+`check:deps` 5, `check:bundle` 10. `lint` and `typecheck` clean — this time both
+were run.

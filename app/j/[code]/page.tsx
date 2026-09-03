@@ -117,7 +117,9 @@ function MeetingCancelled({ meeting }: { meeting: PublicMeeting }) {
         </div>
       </div>
 
-      <Button asChild className="w-full">
+      {/* `touch`: /j/[code] is a pre-join surface, and the floor there is
+          44px. The default h-8 is the dashboard’s density. */}
+      <Button asChild size="touch" className="w-full">
         <Link href="/dashboard">Start a new meeting</Link>
       </Button>
     </Centred>
@@ -139,7 +141,9 @@ function MeetingEnded({ meeting }: { meeting: PublicMeeting }) {
         </div>
       </div>
 
-      <Button asChild className="w-full">
+      {/* `touch`: /j/[code] is a pre-join surface, and the floor there is
+          44px. The default h-8 is the dashboard’s density. */}
+      <Button asChild size="touch" className="w-full">
         <Link href="/dashboard">Start a new meeting</Link>
       </Button>
     </Centred>

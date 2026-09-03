@@ -38,6 +38,15 @@ const buttonVariants = cva(
          */
         touch: "h-11 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
         icon: "size-8",
+        /**
+         * 44px square — `touch` for an icon-only control.
+         *
+         * `touch` sets a height and lets padding decide the width, which for a
+         * 16px icon comes to 40px: past the floor on the axis nobody was
+         * measuring. Every dialog in this product is a room dialog, so its
+         * close button is on a 44px surface.
+         */
+        "icon-touch": "size-11",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
         "icon-sm":
