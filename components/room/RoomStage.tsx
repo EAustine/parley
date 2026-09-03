@@ -244,11 +244,30 @@ function RoomSurface({
   onResume: () => void;
 }) {
   const visible = useControlVisibility();
-  const [chatOpen, setChatOpen] = useState(false);
-  const [participantsOpen, setParticipantsOpen] = useState(false);
+  /**
+   * One panel at a time — BUILD-PLAN v1.2 A3.
+   *
+   * This was two independent booleans, so both panels could be open together.
+   * On desktop that is not a subtle state: both are `absolute md:right-0
+   * md:w-[360px]` at `z-20`, so they occupy the same 360px column and the
+   * later one in the DOM simply paints over the earlier. The room reserved
+   * `md:pr-[360px]` for one of them either way, so nothing on screen said that
+   * two were open, and closing the top one revealed a panel the person did not
+   * remember opening.
+   *
+   * A single value makes the illegal state unrepresentable rather than merely
+   * unlikely, which is the reason to prefer it over two booleans kept in step
+   * by hand. `chatOpen` and `participantsOpen` stay as derived reads so the
+   * rest of the tree is unchanged.
+   */
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const chatOpen = panel === "chat";
+  const participantsOpen = panel === "participants";
   const [helpOpen, setHelpOpen] = useState(false);
-  const chatTrigger = useRef<HTMLElement | null>(null);
-  const participantsTrigger = useRef<HTMLElement | null>(null);
+  const triggers = useRef<Record<Panel, HTMLElement | null>>({
+    chat: null,
+    participants: null,
+  });
   const surface = useRef<HTMLDivElement>(null);
 
   const { item: announcement, announce } = useAnnouncer();
@@ -278,39 +297,40 @@ function RoomSurface({
     if (chatOpen) markRead();
   }, [chatOpen, markRead]);
 
-  const closeChat = useCallback(() => {
-    setChatOpen(false);
-    chatTrigger.current?.focus?.();
+  const closePanel = useCallback((which: Panel) => {
+    setPanel((current) => (current === which ? null : current));
+    triggers.current[which]?.focus?.();
   }, []);
 
-  const closeParticipants = useCallback(() => {
-    setParticipantsOpen(false);
-    participantsTrigger.current?.focus?.();
-  }, []);
-
-  const toggleParticipants = useCallback(() => {
-    setParticipantsOpen((open) => {
-      if (open) {
-        participantsTrigger.current?.focus?.();
-        return false;
-      }
-      participantsTrigger.current = triggerFor("participants-panel");
-      return true;
-    });
-  }, []);
-
-  const toggleChat = useCallback(() => {
-    setChatOpen((open) => {
-      if (open) {
-        chatTrigger.current?.focus?.();
-        return false;
+  /**
+   * Opening the other panel replaces this one rather than stacking on it, and
+   * deliberately does not restore focus to the closing panel's trigger: focus
+   * belongs in the panel that just opened, which each panel claims itself on
+   * `open`. Restoring is for closing, which `closePanel` still does.
+   */
+  const togglePanel = useCallback((which: Panel) => {
+    setPanel((current) => {
+      if (current === which) {
+        triggers.current[which]?.focus?.();
+        return null;
       }
       // Remember what opened it so Escape can hand focus back — a panel you
       // can open from the keyboard and not close from it is a trap.
-      chatTrigger.current = triggerFor("chat-panel");
-      return true;
+      triggers.current[which] = triggerFor(`${which}-panel`);
+      return which;
     });
   }, []);
+
+  const closeChat = useCallback(() => closePanel("chat"), [closePanel]);
+  const closeParticipants = useCallback(
+    () => closePanel("participants"),
+    [closePanel],
+  );
+  const toggleChat = useCallback(() => togglePanel("chat"), [togglePanel]);
+  const toggleParticipants = useCallback(
+    () => togglePanel("participants"),
+    [togglePanel],
+  );
 
   /**
    * Where a reaction rises from, as percentages of the room.
@@ -545,6 +565,9 @@ function RoomSurface({
  * So: the focused element if it is genuinely one, and otherwise the control
  * that owns this panel, found by the `aria-controls` it already declares.
  */
+/** §3.4's two side panels. The ids are `${Panel}-panel` in the DOM. */
+type Panel = "chat" | "participants";
+
 function triggerFor(panelId: string): HTMLElement | null {
   const active = document.activeElement as HTMLElement | null;
   if (active && active !== document.body && typeof active.focus === "function") {

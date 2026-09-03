@@ -237,3 +237,69 @@ test.describe("keyboard", () => {
     await expect(page.getByRole("button", { name: /Turn on microphone/i })).toBeVisible();
   });
 });
+
+/**
+ * The polite live region stays *visually* hidden while it is doing its job.
+ *
+ * BUILD-PLAN v1.2 A1 reported panel content painting a second time in the main
+ * area and named this region as the likely cause. Measuring it says otherwise —
+ * see PROGRESS — but the guard is worth having either way, because the failure
+ * mode is silent in exactly the way this project keeps getting caught by: an
+ * `sr-only` that stops applying breaks nothing, throws nothing, and simply
+ * starts printing every announcement onto the room.
+ *
+ * §9 routes join, leave, chat, reaction and connection announcements through
+ * one region, so a regression here is not one stray label — it is the whole
+ * announcement stream rendered over the video.
+ */
+test.describe("live regions", () => {
+  const open: Participant[] = [];
+
+  test.afterEach(async () => {
+    while (open.length) {
+      const p = open.pop()!;
+      await leave(p).catch(() => {});
+      await p.context.close().catch(() => {});
+    }
+  });
+
+  test("the room announcer never paints", async ({ browser }) => {
+    const ama = await joinAs(browser, "Ama Serwaa");
+    open.push(ama);
+    const kofi = await joinAs(browser, "Kofi Mensah");
+    open.push(kofi);
+    const { page } = ama;
+
+    await wakeControls(page);
+    await page.getByRole("button", { name: "Chat", exact: true }).click();
+    await page.getByRole("textbox", { name: /message/i }).fill("kasa kasa");
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("kasa kasa")).toBeVisible();
+
+    const region = page.locator("[data-live-region]");
+    await expect(region).toBeAttached();
+
+    /**
+     * The region has to be carrying something, or the size assertion below
+     * passes for the wrong reason — an empty box is small however it is
+     * styled. Kofi's arrival is what puts text in it.
+     */
+    await expect
+      .poll(async () => (await region.textContent())?.trim().length ?? 0, {
+        timeout: 15_000,
+        message: "the live region never carried an announcement to measure",
+      })
+      .toBeGreaterThan(0);
+
+    // Rendered geometry, not the class list: `sr-only` collapses the region to
+    // a 1px box and clips the overflow, so a regression that leaves the text in
+    // normal flow shows up here as a box the width of a sentence.
+    const box = await region.boundingBox({ timeout: 5_000 });
+    expect(box, "the live region has no rendered box at all").not.toBeNull();
+    expect(
+      box!.width,
+      "the live region is laid out at its content width — sr-only is not applying",
+    ).toBeLessThanOrEqual(2);
+    expect(box!.height, "the live region is laid out at its content height").toBeLessThanOrEqual(2);
+  });
+});

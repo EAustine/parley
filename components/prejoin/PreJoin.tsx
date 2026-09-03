@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 
@@ -44,7 +44,6 @@ export function PreJoin({
 }) {
   const router = useRouter();
   const media = useMediaPreview();
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   // §3.11: a guest who was dropped and is rejoining should not be made to
   // retype the name they just entered. Lazy initialiser rather than an effect —
@@ -68,11 +67,33 @@ export function PreJoin({
 
   const isGuest = signedInName === null;
 
-  useEffect(() => {
-    if (videoRef.current && media.stream) {
-      videoRef.current.srcObject = media.stream;
-    }
-  }, [media.stream]);
+  /**
+   * A callback ref, not a `useRef` plus an effect keyed on the stream.
+   *
+   * The `<video>` renders only when `showPreview` is true, and `showPreview`
+   * needs `hasCamera` — which `useMediaPreview` sets *after* an
+   * `await enumerateDevices()`, one tick later than it sets `stream`. So the
+   * commit that first carries a stream has no `<video>` in it, and the commit
+   * that mounts the `<video>` does not change `stream`. An effect keyed on
+   * `[media.stream]` therefore ran exactly once, against a null ref, and the
+   * preview was a black rectangle on every first load — §3.3's "the screen
+   * that decides whether the product feels competent".
+   *
+   * Toggling the camera off and on failed the same way for a second reason:
+   * `setCamera` flips `track.enabled` and keeps the same `MediaStream` object,
+   * so the remounted element again met no change in the dependency.
+   *
+   * A callback ref runs whenever the element appears, whatever caused it to
+   * appear, which is the property this actually needs. React re-runs it when
+   * the callback's identity changes too, so a genuinely new stream is still
+   * attached.
+   */
+  const attachPreview = useCallback(
+    (element: HTMLVideoElement | null) => {
+      if (element && media.stream) element.srcObject = media.stream;
+    },
+    [media.stream],
+  );
 
   const trimmedName = name.trim();
   /**
@@ -192,7 +213,7 @@ export function PreJoin({
           <div className="relative aspect-video overflow-hidden rounded-xl border border-tile-border bg-card">
             {showPreview ? (
               <video
-                ref={videoRef}
+                ref={attachPreview}
                 autoPlay
                 playsInline
                 muted

@@ -3142,3 +3142,133 @@ drift, and the second copy is a liability rather than a convenience.
 ### Checks
 
 `check:room` 96 → **97/97**. All others unchanged and green.
+
+---
+
+## v1.2 Track A — correctness
+
+Three items were actionable. A4, A5 and A6 are deferred by the plan itself to
+Tracks E, B and F.
+
+### A2 — the pre-join camera preview, and a dependency that described the wrong thing
+
+The worst defect of the three, because §3.3 makes pre-join the screen that
+decides whether the product feels competent, and it failed **on every first
+load** rather than intermittently.
+
+None of the usual suspects were wrong. `getUserMedia` resolved. The `<video>`
+was mounted, and carried `autoPlay`, `playsInline` and `muted` — all three, the
+set Safari needs. What was missing was `srcObject`, and the reason is a
+sequencing one:
+
+```
+setStream(next); setState("granted");   // one batch, one commit
+await navigator.mediaDevices.enumerateDevices();   // ← yields
+setHasCamera(videoTracks.length > 0);   // a later commit
+```
+
+`showPreview` needs `hasCamera`, so the commit that first carries a stream has
+**no `<video>` in it**, and the commit that mounts the `<video>` does not change
+`stream`. An effect keyed on `[media.stream]` therefore ran exactly once,
+against a null ref, and never again.
+
+Toggling the camera off and on failed the same way for a second reason:
+`setCamera` flips `track.enabled` and keeps the same `MediaStream` object, so
+the remounted element met no change in the dependency either.
+
+Both are the same underlying error — **a dependency list that names the data
+when the thing being waited on is the element.** A callback ref names the
+element, so it fires whenever the element appears, whatever caused it to
+appear. That is the fix.
+
+`e2e/prejoin.spec.ts` measures the frames rather than the markup, through
+`videoLiveness`: `spread` separates a real image from a flat fill, `motion`
+separates a live feed from one frozen frame. Reading back `srcObject !== null`
+would have passed against an element that never painted a pixel — which is
+exactly the state that shipped.
+
+### A3 — one panel at a time
+
+Panel state was two independent booleans. On desktop both panels are `absolute
+md:right-0 md:w-[360px]` at `z-20`, so they occupy the same column and the later
+one in the DOM simply paints over the earlier; the room reserved
+`md:pr-[360px]` for one of them either way. Nothing on screen distinguished
+"participants open" from "participants open over a chat panel you had
+forgotten".
+
+Now `null | "chat" | "participants"`, with `chatOpen` and `participantsOpen` as
+derived reads so the rest of the tree is unchanged. The illegal state is
+unrepresentable rather than merely unlikely.
+
+Worth recording: **no test in the suite ever opened both panels**, despite
+`a11y.spec.ts` quoting §3.4's "Controls remain reachable when both panels are
+open" in a comment directly above a test that opens one. The requirement was
+being cited, not exercised. `e2e/panels.spec.ts` now covers the swap in both
+directions, the control bar surviving a swap, and Escape returning focus.
+
+That phrase in `CLAUDE.md`'s accessibility floor — "the control bar to stay
+reachable with both open" — is now unreachable and wants a wording fix. The
+*rule* it justifies (non-modal panels are not focus-trapped) is untouched.
+
+### A1 — the reported cause was wrong, and so was the reported symptom
+
+A1 said panel content renders a second time as grey floating text in the main
+area, and named the Phase 9 announcement live region as the likely cause.
+
+Measured in the production build, with a message sent and a panel open:
+
+| | |
+|---|---|
+| `[data-live-region]` computed | `position: absolute`, `1px × 1px`, `overflow: hidden`, `clip-path: inset(50%)` |
+| `.sr-only` in the built CSS | present and complete |
+| DOM walk for text matching the log | three nodes — two inside the panel, one inside the live region |
+
+So the region is correctly hidden and there is exactly one copy of everything.
+Not the live region, and not a duplication bug.
+
+The screenshots settle what was actually seen. A1's list — "Austine joined",
+"Hi Austine", "Austine left", "jbsidauke", timestamps — is the chat panel's own
+contents, verbatim. Probing what the panel paints:
+
+| | |
+|---|---|
+| panel background | `rgb(23, 26, 31)` — `--card`, applying |
+| room ground | `rgb(14, 16, 19)` — `--background` |
+| panel left border | `1px solid rgb(93, 103, 119)` — `--tile-border` |
+| header | `rgb(242, 244, 247)` at opacity 1 — `--foreground`, not dim |
+
+Everything renders as specified. **The defect is that `--card` on
+`--background` is 1.09:1**, so the panel has no perceptible fill, and its only
+boundary is a 1px hairline on one edge. In the sharer's view — where B1 already
+records ~85% empty black — a 360px column of text with no container reads as
+loose text on the room, next to a share region and tiles that *do* have visible
+containers.
+
+The observation was right; the inferred cause was wrong. There is no rendering
+bug to fix, and the treatment is a design decision the plan already assigns to
+Track C, so it is not being picked here — rule 10.
+
+This is the same figure `CLAUDE.md` already flags for tiles: "`--card` vs
+`--background` is 1.09:1, so they need a boundary `--border` cannot provide at
+1.29:1". Tiles got `--tile-border`. The panels got one hairline of it, which is
+enough to define an edge and not enough to define a surface.
+
+The guard A1 asked for is in `a11y.spec.ts` anyway — it measures the live
+region's rendered box, and asserts the region is carrying text first, so it
+cannot pass against an empty one.
+
+### Checks
+
+`check:media` **46/49**. All five new tests pass. Three pre-existing tests fail
+in the full run and pass in isolation in 4.3s, 5.6s and 28.0s against 2.6m,
+1.7m and 2.0m timeouts — all three at `joinAs`, waiting on the room heading,
+before reaching anything either fix touches, and all three earlier in the run
+than any spec added here.
+
+That is not a reason to call them environmental and move on. The suite is now
+49 serial tests over ~20 minutes, each opening real browser contexts against a
+real cloud SFU, and the added load is the plausible trigger even though the
+added tests are not the cause. It is at its practical limit, and Track B will
+add to it.
+
+All 375 static checks unchanged and green.
