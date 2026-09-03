@@ -30,7 +30,7 @@
   --color-state-warning: var(--state-warning);
 
   /* room surface only */
-  --color-tile-border: var(--tile-border);
+  --color-boundary: var(--boundary);
   --color-scrim: var(--scrim);
 
   --font-sans: var(--font-instrument-sans);
@@ -85,7 +85,7 @@
 
     --state-critical: #c62b31;
     --state-warning: #8a5300;
-    --tile-border: #5d6777; /* room is dark in both themes */
+    --boundary: #687284; /* room is dark in both themes */
   }
 
   /* next-themes writes .light explicitly; it mirrors :root exactly. */
@@ -112,7 +112,7 @@
 
     --state-critical: #c62b31;
     --state-warning: #8a5300;
-    --tile-border: #5d6777;
+    --boundary: #687284;
   }
 
   .dark {
@@ -143,7 +143,7 @@
     /* room surface only — tiles sit directly on the ground with no fill
        contrast (--card vs --background is 1.09:1), so they need a
        boundary --border cannot provide at 1.29:1 */
-    --tile-border: #5d6777;
+    --boundary: #687284;
   }
 
   /* theme-invariant: the scrim always sits over video, and video

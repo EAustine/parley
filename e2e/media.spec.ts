@@ -1,3 +1,5 @@
+import { type Page } from "@playwright/test";
+
 import { expect, test } from "./fixtures";
 
 import {
@@ -153,17 +155,20 @@ test.describe("two participants", () => {
     expect(speakingSamples, "the ring never lit during speech").toBeGreaterThan(5);
     expect(quietSamples, "the ring never went out during silence").toBeGreaterThan(5);
 
-    // §3.4's encoding: 2px --foreground when speaking, 1px --tile-border idle.
+    // §3.4's encoding: 2px --foreground when speaking, 1px --boundary idle.
     const widths = new Set(samples.flatMap((s) => s.widths));
     expect([...widths].sort()).toEqual(["1px", "2px"]);
 
     const colours = new Set(
       (await tileBorders(kwabena.page)).map((b) => b.colour),
     );
+    const ends = await ringEndpoints(kwabena.page);
+    expect(ends.idle, "--boundary did not resolve to a colour").not.toBeNull();
+    expect(ends.speaking, "--foreground did not resolve to a colour").not.toBeNull();
     for (const colour of colours) {
       expect(
-        onTheRingAxis(colour),
-        `border colour ${colour} is not --tile-border, --foreground, or between them — §3.4 permits no other value`,
+        onTheRingAxis(colour, ends.idle!, ends.speaking!),
+        `border colour ${colour} is not --boundary, --foreground, or between them — §3.4 permits no other value`,
       ).toBe(true);
     }
 
@@ -357,7 +362,7 @@ test.describe("the grid", () => {
 });
 
 /**
- * Is this colour `--tile-border`, `--foreground`, or a point on the line
+ * Is this colour `--boundary`, `--foreground`, or a point on the line
  * between them?
  *
  * §3.4 specifies a 120ms transition on border-color, so the ring spends real
@@ -371,10 +376,36 @@ test.describe("the grid", () => {
  * Amber at `rgb(245, 165, 36)` is nowhere near it and still fails, which is
  * the property worth having.
  */
-function onTheRingAxis(colour: string): boolean {
-  const IDLE = [93, 103, 119];
-  const SPEAKING = [242, 244, 247];
+/**
+ * The endpoints are read from the page, not typed here.
+ *
+ * `IDLE` was `[93, 103, 119]` — `#5D6777`, the value `--boundary` held before it
+ * was raised to `#687284` for failing 3:1 on `--muted` and `--popover`. A
+ * hardcoded endpoint turns a token change into a red test on correct code, and
+ * `CLAUDE.md` already has the rule: test fixtures derive from the same
+ * constants as the code under test.
+ */
+async function ringEndpoints(page: Page) {
+  return page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>(".dark") ?? document.documentElement;
+    const read = (name: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = getComputedStyle(root).getPropertyValue(name).trim();
+      document.body.append(probe);
+      const rgb = getComputedStyle(probe).color;
+      probe.remove();
+      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+    };
+    return { idle: read("--boundary"), speaking: read("--foreground") };
+  });
+}
 
+function onTheRingAxis(
+  colour: string,
+  IDLE: number[],
+  SPEAKING: number[],
+): boolean {
   const m = colour.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
   if (!m) return false;
   const rgb = [Number(m[1]), Number(m[2]), Number(m[3])];

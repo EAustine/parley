@@ -6,7 +6,7 @@ import { join } from "node:path";
  *
  * Extracted in Phase 10, when the meeting-link card was added. The colours were
  * duplicated the moment there were two files, and this project has already paid
- * for that once: `TILE_BORDER` sat at `#414954` here — the pre-Phase-0 value,
+ * for that twice: `TILE_BORDER` sat at `#414954` here — the pre-Phase-0 value,
  * retired for measuring 2.09:1 — long after the token became `#5D6777`.
  * `scripts/contrast.mjs` reads only `globals.css`, so no gate can see a colour
  * hardcoded in a card, which makes one copy the only real defence.
@@ -20,15 +20,20 @@ export const BACKGROUND = "#0E1013";
 export const FOREGROUND = "#F2F4F7";
 export const MUTED_FOREGROUND = "#9AA1AC";
 /**
- * `--tile-border`, and it must stay in step with `app/globals.css`.
+ * `--boundary`, and it must stay in step with `app/globals.css`.
  *
  * This read `#414954` until Phase 10 — the pre-Phase-0 value, retired for
- * measuring 2.09:1 against the ground when WCAG 1.4.11 wants 3:1. The token has
- * been `#5D6777` (3.33:1) since. It survived because `scripts/contrast.mjs`
- * reads only `globals.css`, so no gate can see a colour hardcoded here, on the
- * most-seen artefact the product has.
+ * measuring 2.09:1 against the ground when WCAG 1.4.11 wants 3:1. Then it read
+ * `#5D6777` after the token became `#687284`, which is the same failure a
+ * second time: a bulk rename of `--tile-border` cannot see a constant called
+ * `TILE_BORDER`, and neither can a gate that reads only `globals.css`.
+ *
+ * So it is no longer only a comment asking to be kept in step. `check:contrast`
+ * now compares every literal in this block against the token it names, and
+ * fails when they drift. Renamed with the token, too — a constant named after
+ * the old name is how the next rename misses it again.
  */
-export const TILE_BORDER = "#5D6777";
+export const BOUNDARY = "#687284";
 export const SCRIM = "rgba(14, 16, 19, 0.72)";
 
 export function fontPath(file: string) {

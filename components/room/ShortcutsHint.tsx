@@ -35,7 +35,7 @@ export function ShortcutsHint({ onOpen }: { onOpen: () => void }) {
         // an interactive control needs a determinate ground, not one that
         // depends on what is on camera.
         background: "var(--popover)",
-        border: "1px solid var(--tile-border)",
+        border: "1px solid var(--boundary)",
         color: "var(--foreground)",
       }}
     >

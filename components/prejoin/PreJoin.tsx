@@ -14,13 +14,7 @@ import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select } from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -223,7 +217,7 @@ export function PreJoin({
 
       {/* --- the preview, and the meter flush beneath it ------------------ */}
       <div className="space-y-3">
-        <div className="relative aspect-video overflow-hidden rounded-xl border border-tile-border bg-card">
+        <div className="relative aspect-video overflow-hidden rounded-xl border border-boundary bg-card">
           {showPreview ? (
             <video
               ref={attachPreview}
@@ -429,7 +423,7 @@ function DeviceToggle({
           style={{
             // Off is a fill change, not a hue change — rule 5.
             backgroundColor: on ? "transparent" : "var(--secondary)",
-            borderColor: on ? "var(--tile-border)" : "var(--secondary)",
+            borderColor: on ? "var(--boundary)" : "var(--secondary)",
             color: "var(--foreground)",
           }}
         >
@@ -482,18 +476,26 @@ function DeviceSelect({
       <Label htmlFor={id} className="type-small">
         {label}
       </Label>
-      <Select value={value ?? undefined} onValueChange={onChange}>
-        {/* 44px: the device selectors are targets on a pre-join surface. */}
-        <SelectTrigger id={id} size="touch" className="w-full">
-          <SelectValue placeholder={`Choose a ${label.toLowerCase()}`} />
-        </SelectTrigger>
-        <SelectContent className="dark">
-          {options.map((option) => (
-            <SelectItem key={option.deviceId} value={option.deviceId}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
+      {/* 44px: the device selectors are targets on a pre-join surface. */}
+      <Select
+        id={id}
+        size="touch"
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {/* The placeholder is an option rather than a separate slot, and it
+            disappears once a device is chosen — a native select always has a
+            value, so there is nothing for an empty state to mean afterwards. */}
+        {value == null && (
+          <option value="" disabled>
+            {`Choose a ${label.toLowerCase()}`}
+          </option>
+        )}
+        {options.map((option) => (
+          <option key={option.deviceId} value={option.deviceId}>
+            {option.label}
+          </option>
+        ))}
       </Select>
     </div>
   );

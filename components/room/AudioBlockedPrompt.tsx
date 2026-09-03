@@ -27,7 +27,7 @@ export function AudioBlockedPrompt({ onEnable }: { onEnable: () => void }) {
         className="flex items-center gap-3 rounded-lg px-3 py-2"
         style={{
           background: "var(--popover)",
-          border: "1px solid var(--tile-border)",
+          border: "1px solid var(--boundary)",
         }}
       >
         <HugeiconsIcon

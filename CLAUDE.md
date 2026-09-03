@@ -49,7 +49,7 @@ Dropping hue instead is not the answer here: §4.2 spends the entire chroma budg
 **5. No hue except where it is the meaning.**
 Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.
 
-The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--tile-border` at 3.33:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
+The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--boundary` at 3.93:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
 
 **6. Chat is rendered as text.**
 Never `dangerouslySetInnerHTML`. Autolinked URLs get `rel="noopener noreferrer nofollow"`.
@@ -136,7 +136,7 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
     /* room surface only — tiles sit directly on the ground with no fill
        contrast (--card vs --background is 1.09:1), so they need a
        boundary --border cannot provide at 1.29:1 */
-    --tile-border:            #5D6777;
+    --boundary:               #687284;
   }
 
   .light {
@@ -162,7 +162,7 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
 
     --state-critical:         #C62B31;
     --state-warning:          #8A5300;
-    --tile-border:            #5D6777;   /* room is dark in both themes */
+    --boundary:               #687284;   /* room is dark in both themes */
   }
 
   /* theme-invariant: the scrim always sits over video, and video
@@ -184,18 +184,24 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 | `--muted-foreground` | all | 4.5 | 5.08 |
 | `--state-warning` | all | 4.5 | 6.49 |
 | `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
-| `--tile-border` | boundary use only: the room ground, and the panel edge on `--popover` | 3.0 | 3.33 |
+| `--boundary` | boundary use only: tile edges, panel edges, form-field borders — any surface with no usable fill contrast | 3.0 | 3.25 |
 
-`--tile-border` is the boundary colour for a surface that has no usable fill contrast against what it sits on — which in this palette is every surface, since the whole ramp spans 0.2 of a contrast point. Tiles and panels both qualify. It is never a text colour.
+`--boundary` is the boundary colour for any surface with no usable fill contrast against what it sits on — which in this palette is every surface, since the whole ramp spans 0.2 of a contrast point. Tiles, panels, and form fields all qualify. It is never a text colour.
 
-For a boundary, the pairing that matters is the edge against **the thing it separates the surface from**: 3.33:1 against `--background`, which clears the 3:1 non-text threshold. The 2.89:1 figure is the edge against the panel's own fill — the inner side of the line — and does not need to clear 3:1 independently.
+**Renamed from `--tile-border`.** The name described its first use and then lied about the next three. A token named for a component will keep lying every time it earns a new one; a token named for its purpose tells the next person whether their case qualifies.
+
+**Value raised from `#5D6777` to `#687284`.** The old value cleared 3:1 against `--background` but not against `--popover` (2.89) or `--muted` (2.76), which is fine for a panel edge separating from the room and not fine for a form field sitting *on* those surfaces. `#687284` clears 3:1 on every dark surface — worst case 3.25 on `--muted` — and 5.1 on the worst light surface.
+
+`--input` is not a boundary token and must not be used as one. At 1.44:1 dark and 1.25:1 light it was failing SC 1.4.11 on every `Input` and every `SelectTrigger`, invisibly, because `check:contrast` only ever evaluated it as a surface for text.
+
+**`check:contrast` must evaluate every token in both roles it is used in.** A value can pass as a text surface and fail as a boundary; the script comparing token against token in one role only is how both this and the tile edge shipped.
 | — | `scrim-over-white` permits `--foreground` only | 4.5 | 7.01 |
 
 **`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` currently computes foreground against opaque tokens only, so the one rule the room chrome depends on is enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
 
 Model it as `0.72 × #0E1013 + 0.28 × #FFFFFF` — white is the worst case for light text, and video can be anything. That resolves to roughly `#515355`, where `--foreground` clears at 7.01:1 while `--state-warning` falls to 3.79:1 and `--state-critical` to 2.53:1. Add it as a surface, permit only `--foreground` on it, and the existing permitted-surfaces machinery does the rest: any future hued-on-scrim element fails the check instead of shipping.
 
-Validation error text sits below a field on the ground, never inside the filled input. `--tile-border` is single-purpose and belongs to no other surface.
+Validation error text sits below a field on the ground, never inside the filled input.
 
 `npm run check:contrast` computes the full matrix and fails on any violation. It is the source of truth; the numbers above are a snapshot. Do not hand-edit them — regenerate.
 
@@ -207,7 +213,7 @@ Snapshot of the load-bearing pairs. Regenerate with `npm run check:contrast`; do
 | `--muted-foreground` / worst permitted (`--input`) | 5.08:1 |
 | `--state-critical` / worst permitted (`--secondary`) | 4.84:1 |
 | `--state-warning` / worst permitted (`--input`) | 6.49:1 |
-| `--tile-border` / `--background` | 3.33:1 |
+| `--boundary` / worst dark surface (`--muted`) | 3.25:1 |
 | `--foreground` (speaking, 2px) / `--background` | 17.29:1 |
 | white / `--destructive` (dark) | 4.98:1 |
 | Light `--muted-foreground` / white | 6.06:1 |

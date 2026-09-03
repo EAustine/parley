@@ -89,7 +89,7 @@ export function ConnectionBar({
         className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-lg px-3 py-2"
         style={{
           background: "var(--popover)",
-          border: `1px solid ${critical ? "var(--state-critical)" : "var(--tile-border)"}`,
+          border: `1px solid ${critical ? "var(--state-critical)" : "var(--boundary)"}`,
         }}
       >
         <div

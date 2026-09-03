@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { type Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { signIn } from "./auth";
-import { EMPTY_DASHBOARD, PUBLIC_STATES, SIGNED_IN_STATES } from "./states";
+import { EMPTY_DASHBOARD, PUBLIC_STATES, SIGNED_IN_STATES, type Theme } from "./states";
 import { PRESENCE_SETTLE_MS } from "@/lib/hooks/usePresence";
 
 import { joinAs, leave, settleAnimations, wakeControls, type Participant } from "./room.helpers";
@@ -39,6 +39,17 @@ import { joinAs, leave, settleAnimations, wakeControls, type Participant } from 
  * production build entirely — BUILD-PLAN asks for it to be kept out of the run,
  * and this is belt and braces.
  */
+/**
+ * Put the page in a palette before it paints.
+ *
+ * `emulateMedia` rather than clicking the theme toggle: `defaultTheme="system"`
+ * means the media query *is* the state a first-time visitor arrives in, and the
+ * toggle writes a preference that then has to be cleaned up between states.
+ */
+async function inTheme(page: Page, theme: Theme) {
+  await page.emulateMedia({ colorScheme: theme });
+}
+
 async function scan(page: Page) {
   /*
    * Settled first, for a reason of axe's own: it computes contrast from what is
@@ -71,10 +82,13 @@ test.describe("axe, by state", () => {
    * test's own; the others are read-only states nothing joins.
    */
   for (const state of PUBLIC_STATES) {
-    test(`${state.name} is clean`, async ({ page, meetingCode }) => {
-      await state.reach(page, meetingCode);
-      expectClean(await scan(page), state.name);
-    });
+    for (const theme of state.themes) {
+      test(`${state.name} is clean in ${theme}`, async ({ page, meetingCode }) => {
+        await inTheme(page, theme);
+        await state.reach(page, meetingCode);
+        expectClean(await scan(page), `${state.name}, in ${theme}`);
+      });
+    }
   }
 });
 
@@ -90,44 +104,40 @@ test.describe("axe, by state", () => {
  * one is minted for the same address.
  */
 test.describe("axe, signed in", () => {
-  test("every signed-in state is clean", async ({ page, hostedSchedule }) => {
-    test.setTimeout(180_000);
-    await signIn(page, hostedSchedule.email, "/dashboard");
-
-    for (const state of SIGNED_IN_STATES) {
-      await state.reach(page, hostedSchedule.code);
-      expectClean(await scan(page), state.name);
-    }
-  });
-
   /**
-   * And in dark, which nothing outside the room has ever been scanned in.
+   * One test per theme, derived from the state list rather than written twice.
    *
-   * `/j` and `/room` force `.dark`, so every axe run to date has seen these
-   * tokens only on room markup. The dashboard and the scheduling screens are
-   * the routes that actually *switch*: `defaultTheme="system"`, and a person
-   * whose OS is dark has never had this markup checked at all.
+   * This used to be two near-identical tests, the second differing only by an
+   * `emulateMedia` call — and that is precisely why the marketing page and
+   * sign-in were still light-only: nobody wrote their second test. The axis now
+   * comes from `states.ts`, so a surface that renders in two palettes is
+   * scanned in two palettes whether or not anyone remembers.
    *
-   * `emulateMedia` rather than clicking the toggle: the toggle writes a
-   * preference and re-renders, while the media query is the state a first-time
-   * visitor arrives in.
+   * One sign-in per test: Supabase invalidates the previous magic link when a
+   * new one is minted for the same address.
    */
-  test("every signed-in state is clean in dark", async ({ page, hostedSchedule }) => {
-    test.setTimeout(180_000);
-    await page.emulateMedia({ colorScheme: "dark" });
-    await signIn(page, hostedSchedule.email, "/dashboard");
+  for (const theme of ["light", "dark"] as const) {
+    test(`every signed-in state is clean in ${theme}`, async ({ page, hostedSchedule }) => {
+      test.setTimeout(180_000);
+      await inTheme(page, theme);
+      await signIn(page, hostedSchedule.email, "/dashboard");
 
-    for (const state of SIGNED_IN_STATES) {
-      await state.reach(page, hostedSchedule.code);
-      expectClean(await scan(page), `${state.name}, in dark`);
-    }
-  });
+      for (const state of SIGNED_IN_STATES) {
+        if (!state.themes.includes(theme)) continue;
+        await state.reach(page, hostedSchedule.code);
+        expectClean(await scan(page), `${state.name}, in ${theme}`);
+      }
+    });
+  }
 
-  test("the empty dashboard is clean", async ({ page, hostEmail }) => {
-    await signIn(page, hostEmail, "/dashboard");
-    await EMPTY_DASHBOARD.reach(page, undefined as never);
-    expectClean(await scan(page), EMPTY_DASHBOARD.name);
-  });
+  for (const theme of EMPTY_DASHBOARD.themes) {
+    test(`the empty dashboard is clean in ${theme}`, async ({ page, hostEmail }) => {
+      await inTheme(page, theme);
+      await signIn(page, hostEmail, "/dashboard");
+      await EMPTY_DASHBOARD.reach(page, undefined as never);
+      expectClean(await scan(page), `${EMPTY_DASHBOARD.name}, in ${theme}`);
+    });
+  }
 });
 
 /**

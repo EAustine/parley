@@ -108,7 +108,7 @@ export function ScreenShareStage({
         // is the thing that animates — see `app/globals.css`.
         className="parley-share-enter relative overflow-hidden rounded-xl bg-card"
         style={{
-          outline: "1px solid var(--tile-border)",
+          outline: "1px solid var(--boundary)",
           outlineOffset: "-1px",
           /*
            * Hug the picture. `min(100cqw, calc(100cqh * ratio))` rather than

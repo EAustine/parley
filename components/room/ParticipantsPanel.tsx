@@ -98,8 +98,8 @@ export function ParticipantsPanel({
       // surface token, only 1.29:1. That is what happens when every fill sits
       // within 22 hex values of `--background`.
       //
-      // The boundary is the 1px `--tile-border` edge below, at 3.33:1 against
-      // the ground and 2.89:1 against this fill — the only value in the set
+      // The boundary is the 1px `--boundary` edge below, at 3.93:1 against
+      // the ground and 3.41:1 against this fill — the only value in the set
       // that reads as an edge. `--border` would be 1.12:1 against it, invisible.
       //
       // Not a shadow. Shadows carry elevation on light grounds by darkening
@@ -107,7 +107,7 @@ export function ParticipantsPanel({
       // to go to; dark interfaces carry elevation with a lighter fill and a
       // visible edge.
       className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[55dvh] flex-col rounded-t-xl border-t bg-popover pb-[var(--parley-controls-h)] md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
-      style={{ borderColor: "var(--tile-border)" }}
+      style={{ borderColor: "var(--boundary)" }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -119,7 +119,7 @@ export function ParticipantsPanel({
 
       <header
         className="flex shrink-0 items-center justify-between border-b px-4 py-3"
-        style={{ borderColor: "var(--tile-border)" }}
+        style={{ borderColor: "var(--boundary)" }}
       >
         <h2 className="type-h2">
           Participants{" "}
@@ -200,7 +200,7 @@ function ParticipantRow({
             <span className="type-body shrink-0 text-muted-foreground">(you)</span>
           )}
           {/*
-            A small outlined chip, not a word. `--tile-border` is the room
+            A small outlined chip, not a word. `--boundary` is the room
             ground's boundary token and belongs to no other surface, so the
             chip takes `--border` — 1.29:1 against the panel, which is a
             boundary rather than a divider and is what the token is for. The

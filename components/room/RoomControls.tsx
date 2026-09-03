@@ -390,7 +390,7 @@ function CircleToggle({
           style={{
             // Off is a fill and an icon change, never a hue change — rule 5.
             backgroundColor: on ? "transparent" : "var(--secondary)",
-            borderColor: on ? "var(--tile-border)" : "var(--secondary)",
+            borderColor: on ? "var(--boundary)" : "var(--secondary)",
             color: "var(--foreground)",
           }}
         >

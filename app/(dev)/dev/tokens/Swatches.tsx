@@ -36,7 +36,7 @@ const GROUPS: { title: string; tokens: { name: string; role: string }[] }[] = [
       { name: "--border", role: "Chrome divider" },
       { name: "--input", role: "Field boundary" },
       { name: "--ring", role: "Focus ring, 2px offset" },
-      { name: "--tile-border", role: "Room tile hairline — 1px idle" },
+      { name: "--boundary", role: "Room tile hairline — 1px idle" },
     ],
   },
   {

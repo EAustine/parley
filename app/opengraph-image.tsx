@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 import { SITE_NAME, SITE_TAGLINE } from "@/lib/site";
 import {
-  BACKGROUND, FOREGROUND, MUTED_FOREGROUND, TILE_BORDER, SCRIM,
+  BACKGROUND, BOUNDARY, FOREGROUND, MUTED_FOREGROUND, SCRIM,
   Mark, instrumentSans,
 } from "@/lib/og";
 
@@ -47,7 +47,7 @@ function ProductTiles() {
             width: 164,
             height: 110,
             borderRadius: 12,
-            border: `1px solid ${TILE_BORDER}`,
+            border: `1px solid ${BOUNDARY}`,
             backgroundColor: tile.filled ? "#242830" : "transparent",
           }}
         >

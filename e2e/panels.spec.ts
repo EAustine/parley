@@ -89,7 +89,7 @@ test.describe("the side panels", () => {
    *
    * The load-bearing assertion is the **edge**, not the fill. No fill in the
    * set can carry this: the surface ramp spans 1.09:1 to 1.29:1 against the
-   * ground. Only `--tile-border` reads as an edge, and a later change to
+   * ground. Only `--boundary` reads as an edge, and a later change to
    * `--border` would look reasonable in a diff and be invisible on screen at
    * 1.12:1 — so the ratio is computed here rather than the token name matched.
    *
@@ -125,7 +125,7 @@ test.describe("the side panels", () => {
         roomBackground: getComputedStyle(room).backgroundColor,
         popover: resolve("--popover"),
         ground: resolve("--background"),
-        tileBorder: resolve("--tile-border"),
+        boundary: resolve("--boundary"),
       };
     });
 
@@ -153,7 +153,7 @@ test.describe("the side panels", () => {
      * mutation: with these first, `--border` fails here at 1.12:1 against the
      * fill.
      *
-     * 3.33:1 and 2.89:1 as shipped.
+     * 3.93:1 and 3.41:1 as shipped.
      */
     expect(
       ratio(paint.edgeColour, paint.ground),
@@ -167,7 +167,7 @@ test.describe("the side panels", () => {
     // A backstop, not the defence: the ratios above are what fail first if the
     // edge stops reading. This says it is also the system's token, not a
     // one-off value that happens to clear the floor.
-    expect(paint.edgeColour, "the edge is not --tile-border").toBe(paint.tileBorder);
+    expect(paint.edgeColour, "the edge is not --boundary").toBe(paint.boundary);
   });
 
 

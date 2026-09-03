@@ -241,6 +241,28 @@ That does not contradict the Phase 4 rule about testing with real tabs rather th
 
 ---
 
+## Accessibility scan coverage
+
+**The state list is states × themes, derived, not hand-maintained.** Marketing and sign-in are currently scanned in light only, and that gap exists because the list is written by hand and someone has to remember the second entry. Every theme-responsive surface gets both; the room and pre-join are forced dark and get one. Generate the pairs rather than typing them.
+
+**Radix `Select` fails axe twice — replace it with a native `<select>` rather than suppressing them.**
+
+The failures are `aria-hidden-focus` (Radix marks the shell hidden with focusable elements inside) and `scrollable-region-focusable` on the viewport. Both are arguably false positives in that Radix Select is genuinely operable, and both would need documented exclusions to get the two listbox states into the scan.
+
+Three independent arguments already point at native, and this is the third:
+
+- **Accessibility** — no custom shell, so neither rule can fire, and native selects have the deepest, best-tested assistive-technology support of any form control
+- **Mobile** — the OS picker, which is the same reasoning that made `<input type="date">` beat `react-day-picker`
+- **Bundle** — drops `@radix-ui/react-select`, and possibly the scroll-lock family that puts `/schedule` above `/dashboard`
+
+Five instances: three device selectors in pre-join, duration and timezone in schedule. Style the closed state with `appearance: none`; the open list is OS-rendered, which is a minor inconsistency in a dark app rather than a design failure.
+
+Verify with a real screen reader before and after, and check the closed state in Chrome, Safari, and Firefox.
+
+If the swap is judged too much for this pass, the fallback is two **narrowly scoped, documented** exclusions on the Select subtree with the reasoning recorded — never a blanket rule disable, and never an exclusion list that grows. But suppressing a warning about a component we could simply not use is treating the symptom.
+
+---
+
 ## Guardrails
 
 Everything in `CLAUDE.md` still binds. Specifically:

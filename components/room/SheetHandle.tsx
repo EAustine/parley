@@ -82,7 +82,7 @@ export function SheetHandle({
     >
       <span
         className="h-1 w-10 rounded-full"
-        style={{ background: "var(--tile-border)" }}
+        style={{ background: "var(--boundary)" }}
       />
     </div>
   );

@@ -134,8 +134,8 @@ export function ChatPanel({
       // surface token, only 1.29:1. That is what happens when every fill sits
       // within 22 hex values of `--background`.
       //
-      // The boundary is the 1px `--tile-border` edge below, at 3.33:1 against
-      // the ground and 2.89:1 against this fill — the only value in the set
+      // The boundary is the 1px `--boundary` edge below, at 3.93:1 against
+      // the ground and 3.41:1 against this fill — the only value in the set
       // that reads as an edge. `--border` would be 1.12:1 against it, invisible.
       //
       // Not a shadow. Shadows carry elevation on light grounds by darkening
@@ -143,7 +143,7 @@ export function ChatPanel({
       // to go to; dark interfaces carry elevation with a lighter fill and a
       // visible edge.
       className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[55dvh] flex-col rounded-t-xl border-t bg-popover pb-[var(--parley-controls-h)] md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
-      style={{ borderColor: "var(--tile-border)" }}
+      style={{ borderColor: "var(--boundary)" }}
       onKeyDown={(event) => {
         // Escape closes from anywhere inside, including mid-draft.
         if (event.key === "Escape") {
@@ -155,7 +155,7 @@ export function ChatPanel({
       <SheetHandle onDismiss={onClose} sheet={sheet} />
 
       <header className="flex shrink-0 items-center justify-between border-b px-4 py-3"
-              style={{ borderColor: "var(--tile-border)" }}>
+              style={{ borderColor: "var(--boundary)" }}>
         <h2 className="type-h2">Chat</h2>
         <button
           type="button"
@@ -204,7 +204,7 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="shrink-0 border-t p-3" style={{ borderColor: "var(--tile-border)" }}>
+      <div className="shrink-0 border-t p-3" style={{ borderColor: "var(--boundary)" }}>
         <label htmlFor="chat-composer" className="sr-only">
           Message
         </label>

@@ -83,8 +83,20 @@ async function schedule(
   await page.getByLabel("Date").fill(date);
   await page.getByLabel("Start time").fill(time);
 
-  await page.getByLabel("Timezone").click();
-  await page.getByRole("option", { name: timezone.replace(/_/g, " ") }).click();
+  /*
+   * One call, on the IANA value — the select is native now, so the option's
+   * value is the zone rather than its de-underscored label.
+   *
+   * And then read back, because this line was a guard that could not fail.
+   * Every caller passed the zone the browser context was already in, and
+   * `ScheduleForm` defaults to `browserTimeZone()` — so deleting these two
+   * lines left all four tests green. `CLAUDE.md`: "Delete the guard. If no test
+   * fails, the guard is untested." The read-back makes a no-op loud here; the
+   * test below makes it loud where it matters, by scheduling in a zone the
+   * browser is not in.
+   */
+  await page.getByLabel("Timezone").selectOption(timezone);
+  await expect(page.getByLabel("Timezone")).toHaveValue(timezone);
 
   await page.getByRole("button", { name: "Schedule meeting" }).click();
   await page.waitForURL(/\/schedule\/[a-z0-9-]+$/);
@@ -139,6 +151,44 @@ test.describe("across timezones", () => {
     );
 
     for (const page of [accra, berlin, la]) await page.context().close();
+  });
+
+  /**
+   * The timezone select decides what is *stored*, not what is displayed.
+   *
+   * Every other test in this file schedules from a browser already in the zone
+   * it passes, so the form's default was doing the work and the select was
+   * never exercised — the mapping for the native-select swap found it, and it
+   * had been true since the tests were written. This one schedules from Accra
+   * *in Berlin's zone*, which the default cannot produce.
+   *
+   * 14:30 Berlin in September is 12:30 UTC. If the select did nothing, the form
+   * would keep Accra, 14:30 would be stored as 14:30Z, and the assertion below
+   * fails by exactly the two hours the control is for. §3.9 calls this the one
+   * place a quiet bug produces a missed meeting.
+   */
+  test("the timezone select changes the instant that is stored", async ({ browser, hostEmail }) => {
+    test.setTimeout(180_000);
+
+    const accra = await signedInPage(browser, ACCRA, hostEmail);
+    const code = await schedule(accra, {
+      title: "Scheduled from Accra, in Berlin time",
+      date: "2026-09-15",
+      time: "14:30",
+      timezone: BERLIN,
+    });
+
+    const ics = await (await accra.request.get(`/api/meetings/${code}/ics`)).text();
+    expect(
+      ics.match(/DTSTART:[^\r\n]+/)?.[0],
+      "the stored instant is Accra's 14:30, so the timezone select did nothing",
+    ).toBe("DTSTART:20260915T123000Z");
+
+    // And the page says which 14:30 was meant, from a viewer who is not there.
+    await accra.goto(`/schedule/${code}`);
+    await expect(accra.getByText(/14:30 GMT\+2.*where it was scheduled/)).toBeVisible();
+
+    await accra.context().close();
   });
 
   test("a winter meeting shifts with Berlin's offset, not with a fixed one", async ({ browser, hostEmail }) => {

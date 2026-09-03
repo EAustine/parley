@@ -13,7 +13,7 @@
  * Why permitted surfaces rather than "check everything": chasing every surface
  * would push --state-critical so light it stops reading as red.
  *
- * --tile-border is the boundary colour for a surface with no usable fill
+ * --boundary is the boundary colour for a surface with no usable fill
  * contrast against what it sits on — which in this palette is every surface,
  * since the whole ramp spans 0.2 of a contrast point. Tiles and panels both
  * qualify. It is never a text colour. The pairing checked below is the edge
@@ -22,7 +22,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -92,13 +92,6 @@ const RULES = [
     label:
       "background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1)",
   },
-  {
-    token: "--tile-border",
-    surfaces: ["--background"],
-    threshold: NON_TEXT,
-    note: "boundary use only — the room ground, and the panel edge on --popover",
-    label: "boundary use only: the room ground, and the panel edge on `--popover`",
-  },
   // Foreground-on-fill pairs, checked directly rather than against surfaces.
   {
     token: "--primary-foreground",
@@ -143,6 +136,45 @@ const RULES = [
     // is by lowering a threshold. Scoping the rule to where the surface
     // actually exists is the honest fix.
     themes: ["dark"],
+  },
+];
+
+/**
+ * The second role. Same arithmetic, a different question.
+ *
+ * A surface rule asks "is what sits on this readable?". A boundary rule asks
+ * "is this line visible against what it separates a component from?". A colour
+ * can pass the first and fail the second, and until now only the first was ever
+ * asked — which is how `--input` drew every field's border at 1.44:1 dark and
+ * 1.25:1 light while the matrix reported 25/25.
+ *
+ * Not `--secondary` or `--accent`: those are button fills, and a button's edge
+ * is not what identifies it. Not `--input`: that is the field's own fill, the
+ * inner side of the line, and a boundary need not clear what it encloses as
+ * well as what it separates that from.
+ */
+const BOUNDARY_SURFACES = ["--background", "--card", "--popover", "--muted"];
+
+const BOUNDARY_RULES = [
+  {
+    token: "--boundary",
+    surfaces: BOUNDARY_SURFACES,
+    threshold: NON_TEXT,
+    label: "boundary use only: tile edges, panel edges, form-field borders — any surface with no usable fill contrast",
+    note: "Tile edges, panel edges, form-field borders. Never a text colour.",
+  },
+];
+
+/**
+ * A pairing rule cannot catch a forbidden *use*, so this one is a scan.
+ *
+ * Narrow on purpose: one token, named in `CLAUDE.md` — "`--input` is not a
+ * boundary token and must not be used as one" — rather than a list that grows.
+ */
+const FORBIDDEN_BOUNDARY_TOKENS = [
+  {
+    token: "--input",
+    why: "1.44:1 dark and 1.25:1 light against the ground — SC 1.4.11 needs 3:1. It is a fill; --boundary is the border.",
   },
 ];
 
@@ -222,6 +254,8 @@ if (!scrimDeclaration) {
   throw new Error("No --scrim declaration in globals.css — rule 4 is unchecked");
 }
 const scrimOverWhite = composite(scrimDeclaration[1], "#ffffff");
+/** The declaration itself, for the og.tsx literal comparison below. */
+const scrimSource = scrimDeclaration[1];
 
 const themes = {
   dark: parseBlock(css, ".dark {"),
@@ -259,8 +293,8 @@ for (const tokens of Object.values(themes)) {
         .map((r) => `${r.token}|${[...r.surfaces].sort().join(",")}|${r.threshold}`)
         .sort()
         .join("\n");
-    const mine = shape(RULES);
-    const theirs = shape([...lib.RULES, ...lib.PAIR_RULES]);
+    const mine = shape([...RULES, ...BOUNDARY_RULES]);
+    const theirs = shape([...lib.RULES, ...lib.BOUNDARY_RULES, ...lib.PAIR_RULES]);
     if (mine !== theirs) {
       console.error(
         "scripts/contrast.mjs and lib/contrast-rules.ts describe different rules.\n" +
@@ -279,7 +313,7 @@ const failures = [];
 const rows = [];
 
 for (const [themeName, tokens] of Object.entries(themes)) {
-  for (const rule of RULES) {
+  for (const rule of [...RULES, ...BOUNDARY_RULES]) {
     if (rule.themes && !rule.themes.includes(themeName)) continue;
     const fg = tokens[rule.token];
     if (!fg) {
@@ -336,7 +370,7 @@ const SNAPSHOT_PAIRS = [
   { label: "`--muted-foreground` / worst permitted", theme: "dark", fg: "--muted-foreground", worstOf: "--muted-foreground" },
   { label: "`--state-critical` / worst permitted", theme: "dark", fg: "--state-critical", worstOf: "--state-critical" },
   { label: "`--state-warning` / worst permitted", theme: "dark", fg: "--state-warning", worstOf: "--state-warning" },
-  { label: "`--tile-border` / `--background`", theme: "dark", fg: "--tile-border", bg: "--background" },
+  { label: "`--boundary` / worst permitted", theme: "dark", fg: "--boundary", worstOf: "--boundary" },
   { label: "`--foreground` (speaking, 2px) / `--background`", theme: "dark", fg: "--foreground", bg: "--background" },
   { label: "white / `--destructive` (dark)", theme: "dark", fg: "#FFFFFF", bg: "--destructive" },
   { label: "Light `--muted-foreground` / white", theme: "light", fg: "--muted-foreground", bg: "--background" },
@@ -348,7 +382,7 @@ if (snapshot) {
 
   console.log("| Token | Permitted surfaces | Threshold | Worst |");
   console.log("|---|---|---|---|");
-  for (const rule of RULES) {
+  for (const rule of [...RULES, ...BOUNDARY_RULES]) {
     if (!rule.label) continue;
     // Matched on the surface list as well as the token: `--foreground` carries
     // two rules — the opaque surfaces and the scrim — and matching on the token
@@ -371,7 +405,9 @@ if (snapshot) {
     let bg;
     let label = pair.label;
     if (pair.worstOf) {
-      const rule = RULES.find((r) => r.token === pair.worstOf);
+      const rule =
+        RULES.find((r) => r.token === pair.worstOf) ??
+        BOUNDARY_RULES.find((r) => r.token === pair.worstOf);
       let worst = null;
       for (const s of rule.surfaces) {
         const v = ratio(fg, tokens[s]);
@@ -388,6 +424,111 @@ if (snapshot) {
   process.exit(failures.length > 0 ? 1 : 0);
 }
 
+/**
+ * The forbidden-use scan.
+ *
+ * Everything above computes whether a *pairing* would pass. None of it can see
+ * a token being used in a role it was never checked for, which is exactly what
+ * happened: `--input` cleared every surface rule it had while drawing the
+ * border of every field at 1.44:1.
+ *
+ * So this reads the source. It is a scan, and a scan is weaker than a
+ * calculation — but the thing it prevents has no other detector, and it is one
+ * named token rather than a list that accumulates.
+ */
+const BORDER_USES = [
+  // Tailwind utilities: border-input, dark:border-input, ring-input, etc.
+  (t) => new RegExp(`(?:^|[\\s"'\`:])(?:border|divide|outline|ring)-${t.replace("--", "")}(?![\\w-])`, "g"),
+  // Inline styles: borderColor: "var(--input)", border: "1px solid var(--input)"
+  (t) => new RegExp(`(?:border|outline)[A-Za-z]*\\s*:\\s*[^;\n]*var\\(${t}\\)`, "g"),
+];
+
+const sourceFiles = [];
+(function walk(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walk(path);
+    else if (path.endsWith(".tsx") || path.endsWith(".ts")) sourceFiles.push(path);
+  }
+})(join(ROOT, "components"));
+(function walkApp(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkApp(path);
+    else if (path.endsWith(".tsx") || path.endsWith(".ts")) sourceFiles.push(path);
+  }
+})(join(ROOT, "app"));
+
+if (sourceFiles.length < 20) {
+  failures.push(
+    `only ${sourceFiles.length} source files found to scan — the walk is not reaching components/`,
+  );
+}
+
+for (const { token, why } of FORBIDDEN_BOUNDARY_TOKENS) {
+  for (const file of sourceFiles) {
+    const source = readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    for (const pattern of BORDER_USES) {
+      for (const hit of source.matchAll(pattern(token))) {
+        failures.push(
+          `${file.replace(ROOT + "/", "")}: ${token} is drawing a boundary — ${hit[0].trim()}\n    ${why}`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * The duplicated literals in `lib/og.tsx`.
+ *
+ * `ImageResponse` resolves no CSS custom properties, so the social cards carry
+ * hex literals. That file's own header says this has cost the project once:
+ * `TILE_BORDER` sat at the retired `#414954` long after the token moved. It
+ * then cost it a second time — `#5D6777` survived the raise to `#687284`,
+ * because a rename of `--tile-border` cannot see a constant named
+ * `TILE_BORDER`, and because this gate read only `globals.css`.
+ *
+ * Twice is a pattern, and a comment asking to be kept in step is not a check.
+ * The literals are compared against the tokens they name, in the theme the
+ * cards are drawn in — dark, always, because a social card has no viewer
+ * preference to follow.
+ */
+const OG_LITERALS = [
+  { constant: "BACKGROUND", token: "--background" },
+  { constant: "FOREGROUND", token: "--foreground" },
+  { constant: "MUTED_FOREGROUND", token: "--muted-foreground" },
+  { constant: "BOUNDARY", token: "--boundary" },
+  { constant: "SCRIM", token: "--scrim" },
+];
+
+{
+  const og = readFileSync(join(ROOT, "lib", "og.tsx"), "utf8");
+  const norm = (v) => v.toLowerCase().replace(/\s+/g, "");
+  let matched = 0;
+  for (const { constant, token } of OG_LITERALS) {
+    const declared = og.match(
+      new RegExp(`export const ${constant}\\s*=\\s*"([^"]+)"`),
+    );
+    if (!declared) {
+      failures.push(`lib/og.tsx does not export ${constant} — the card colours moved`);
+      continue;
+    }
+    // The cards are drawn dark, and `--scrim` is theme-invariant.
+    const expected = themes.dark[token] ?? scrimSource;
+    if (norm(declared[1]) !== norm(expected)) {
+      failures.push(
+        `lib/og.tsx: ${constant} is ${declared[1]} but ${token} is ${expected}`,
+      );
+    }
+    matched += 1;
+  }
+  if (matched < OG_LITERALS.length) {
+    failures.push("not every og.tsx literal was found — the comparison is vacuous");
+  }
+}
+
 const width = Math.max(...rows.map((r) => r.token.length));
 for (const r of rows) {
   const ok = r.worst >= r.threshold;
@@ -402,7 +543,9 @@ if (failures.length > 0) {
   console.error(`\n${failures.length} contrast violation(s):`);
   for (const f of failures) console.error(`  ${f}`);
   console.error(
-    "\nFix the token values in app/globals.css. Do not lower a threshold to pass.",
+    "\nA pairing below its threshold is fixed in app/globals.css; a token drawing\n" +
+      "a boundary it is not permitted to draw is fixed at the call site. Do not\n" +
+      "lower a threshold, and do not widen the permitted list, to pass.",
   );
   process.exit(1);
 }

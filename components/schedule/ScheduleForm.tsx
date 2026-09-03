@@ -13,13 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select } from "@/components/ui/select";
 
 /**
  * §3.9's form.
@@ -192,36 +186,31 @@ export function ScheduleForm({
             Duration
           </Label>
           <Select
+            id="duration"
             value={String(durationMinutes)}
-            onValueChange={(v) => setDuration(Number(v))}
+            onChange={(event) => setDuration(Number(event.target.value))}
           >
-            <SelectTrigger id="duration" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {DURATIONS.map((minutes) => (
-                <SelectItem key={minutes} value={String(minutes)}>
-                  {minutes} minutes
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {DURATIONS.map((minutes) => (
+              <option key={minutes} value={String(minutes)}>
+                {minutes} minutes
+              </option>
+            ))}
           </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="timezone" className="type-small">
             Timezone
           </Label>
-          <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger id="timezone" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {zones.map((zone) => (
-                <SelectItem key={zone} value={zone}>
-                  {zone.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
+          <Select
+            id="timezone"
+            value={timezone}
+            onChange={(event) => setTimezone(event.target.value)}
+          >
+            {zones.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone.replace(/_/g, " ")}
+              </option>
+            ))}
           </Select>
         </div>
       </div>
@@ -229,7 +218,7 @@ export function ScheduleForm({
       {/* §3.9 calls this the one place a quiet bug produces a missed meeting,
           so what will be stored is shown before it is stored. */}
       {resolved && (
-        <div className="space-y-2 rounded-lg border p-4" style={{ borderColor: "var(--input)" }}>
+        <div className="space-y-2 rounded-lg border p-4" style={{ borderColor: "var(--boundary)" }}>
           {!resolved.exact && (
             <p className="type-small text-[var(--state-warning)]">
               {time} doesn&rsquo;t exist on {date} in {timezone.replace(/_/g, " ")}

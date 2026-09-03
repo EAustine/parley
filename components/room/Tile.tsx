@@ -76,14 +76,14 @@ export function Tile({
         // inside it — approximately right, by accident, until containment
         // removed the accident.
         containerType: "size",
-        // Rule 5, and §3.4: no hue. Idle is 1px --tile-border at 3.33:1 against
+        // Rule 5, and §3.4: no hue. Idle is 1px --boundary at 3.93:1 against
         // the ground, speaking is 2px --foreground at 17.29:1 — a change in
         // both weight and value, so it survives greyscale and any video behind
         // it. --card against --background is 1.09:1, which is why the border is
         // the only thing making a camera-off tile a component at all.
         outline: isSpeaking
           ? "2px solid var(--foreground)"
-          : "1px solid var(--tile-border)",
+          : "1px solid var(--boundary)",
         outlineOffset: "-1px",
         transition: "outline-color 120ms linear, outline-width 120ms linear",
       }}
@@ -107,7 +107,7 @@ export function Tile({
       {/*
         §3.11: "Tile dims to 40%, last frame frozen."
         **The media dims; the tile does not.** Putting `opacity: 0.4` on the
-        root takes `--tile-border` from 3.33:1 to 1.50:1 and the name label
+        root takes `--boundary` from 3.93:1 to 1.59:1 and the name label
         from 12.01:1 to 3.56:1 — the dim would delete the boundary that makes
         this a component at all, and fade the label explaining the frozen
         frame, both below their WCAG floors. So the ring and the scrim row
@@ -216,7 +216,7 @@ export function OverflowTile({ count }: { count: number }) {
       // §3.6: a reaction from someone who did not fit in the grid anchors here.
       data-overflow="true"
       className="flex items-center justify-center rounded-xl bg-card"
-      style={{ outline: "1px solid var(--tile-border)", outlineOffset: "-1px" }}
+      style={{ outline: "1px solid var(--boundary)", outlineOffset: "-1px" }}
     >
       <span className="type-h2 tabular-nums text-muted-foreground">
         +{count}

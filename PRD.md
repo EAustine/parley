@@ -171,9 +171,9 @@ Tile aspect ratio is 16:9. Video is `object-fit: cover`. Never letterbox individ
 
 #### Active speaker
 
-LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--tile-border` (3.33:1 against the ground, clearing the 3:1 non-text threshold), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
+LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--boundary` (3.25:1 worst-case against the ground, clearing the 3:1 non-text threshold), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
 
-`--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all, which makes this border the only thing identifying the tile as a component. That brings it under WCAG 1.4.11 at 3:1, which the first replacement value (2.09:1) also missed. `--tile-border` is single-purpose: the room ground, nowhere else.
+`--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all, which makes this border the only thing identifying the tile as a component. That brings it under WCAG 1.4.11 at 3:1, which the first replacement value (2.09:1) also missed. `--boundary` is single-purpose: the room ground, nowhere else.
 
 Rationale for the encoding: hue on the tile edge competes with skin tones and video content, and it fails for colourblind users. Weight and value read at any size against any background.
 
@@ -385,7 +385,7 @@ The ground is a cool graphite, not a tinted black. Cool chrome makes warm skin t
 
 **Hue is rationed.** Primary actions are near-white on dark. Hue is spent on exactly two things: leaving or ending a call, and connection warnings. Everything else — mute state, active speaker, selection, focus — is encoded in weight and value. This follows the same rule as Passable and Hueristic, and here it has a second justification: hue on the tile chrome competes with the video content behind it.
 
-Note the phrasing: **no hue**, not "weight, not colour." The speaking ring changes weight *and* value (1px `--tile-border` → 2px `--foreground`), and several other states change value too. What holds across the whole system is that nothing depends on hue.
+Note the phrasing: **no hue**, not "weight, not colour." The speaking ring changes weight *and* value (1px `--boundary` → 2px `--foreground`), and several other states change value too. What holds across the whole system is that nothing depends on hue.
 
 **Dark**
 
@@ -409,7 +409,7 @@ Note the phrasing: **no hue**, not "weight, not colour." The speaking ring chang
 --border                #242830
 --input                 #2B303A
 --ring                  #F2F4F7
---tile-border           #5D6777   /* room ground only — see §3.4 */
+--boundary           #687284   /* room ground only — see §3.4 */
 ```
 
 State-only, not part of the general palette:
@@ -437,7 +437,7 @@ State-only, not part of the general palette:
 
 **Contrast is verified by script, not by hand.** `CLAUDE.md` carries the permitted-surface table and the generated snapshot; `npm run check:contrast` is the source of truth and `-- --snapshot` emits the markdown. This document deliberately does not duplicate it — four separate rounds of hand-copied ratios going stale is enough evidence that a second copy is a liability rather than a convenience.
 
-The shape of the system, which does belong here: every foreground token declares the surfaces it is permitted on and is verified against those. `--state-critical` is permitted on every dark surface except `--input` (4.34:1); validation errors sit below a field on the ground, never inside the filled input. `--tile-border` is permitted on `--background` alone.
+The shape of the system, which does belong here: every foreground token declares the surfaces it is permitted on and is verified against those. `--state-critical` is permitted on every dark surface except `--input` (4.34:1); validation errors sit below a field on the ground, never inside the filled input. `--boundary` is permitted on `--background` alone.
 
 Note: `#E5484D` on white is 3.91:1 and fails. That is why light mode has a separate, darker destructive.
 

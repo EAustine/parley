@@ -51,7 +51,7 @@ export function ChatMessage({
           {/*
             "One step dimmer" than the name, expressed as weight rather than
             colour. There is no token dimmer than `--muted-foreground` — the
-            next neutral down is `--tile-border`, which CLAUDE.md reserves for
+            next neutral down is `--boundary`, which CLAUDE.md reserves for
             the room ground and permits on no other surface — and dimming with
             alpha would take this under 4.5:1 on `--popover`. Weight 400 against
             the name's 500 is the step the palette can actually carry.

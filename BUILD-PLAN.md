@@ -190,7 +190,7 @@ Tasks:
 - Connect using the token; `<RoomAudioRenderer />` for remote audio
 - Grid implementing every breakpoint in the `PRD.md` §3.4 table
 - Participant tile: video with `object-fit: cover`; avatar fallback is the participant's initial on `--secondary`, **uniform, no per-identity hue**; name on scrim; mic-off indicator
-- Tile boundary: idle 1px `--tile-border` (3.33:1, clears WCAG 1.4.11), speaking 2px `--foreground` (17.29:1). `--card` against `--background` is 1.09:1, so without this the grid structure is invisible.
+- Tile boundary: idle 1px `--boundary` (3.93:1, clears WCAG 1.4.11), speaking 2px `--foreground` (17.29:1). `--card` against `--background` is 1.09:1, so without this the grid structure is invisible.
 - Control bar: mic, camera, leave. Circles at 48px; leave is a wide pill.
 - Auto-hide controls after 4s of pointer inactivity on desktop; always visible on touch
 - Mic and camera state derived from track state, never a parallel boolean

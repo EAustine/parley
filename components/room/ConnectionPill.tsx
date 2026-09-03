@@ -17,7 +17,7 @@ import { TILE_COPY, type TileTreatment } from "@/lib/room/connection";
  * stops delivering what rule 4 is for.
  *
  * So the chip is opaque `--popover`, which measures 8.11:1 and 5.42:1, and
- * carries a `--tile-border` edge to separate it from whatever is behind. That
+ * carries a `--boundary` edge to separate it from whatever is behind. That
  * honours rule 4's intent — the label is not on video — while declining its
  * letter. `ReplacedNotice` and `MuteRequestPrompt` already use this surface,
  * so it is the room's existing answer to the same problem rather than a new
@@ -38,7 +38,7 @@ export function ConnectionPill({ treatment }: { treatment: Exclude<TileTreatment
       className="pointer-events-none absolute left-2 top-2 flex items-center gap-1.5 rounded-full px-2 py-1"
       style={{
         background: "var(--popover)",
-        border: "1px solid var(--tile-border)",
+        border: "1px solid var(--boundary)",
         color: critical ? "var(--state-critical)" : "var(--state-warning)",
       }}
     >

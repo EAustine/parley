@@ -4498,3 +4498,141 @@ token decision, and rule 10 says those get discussed.
 
 **The marketing and sign-in pages are still scanned in light only.** Same gap as
 the dashboard's, one surface family over.
+
+---
+
+## v1.2 close-out, part three — the boundary token, native selects, themes as an axis
+
+Three things the updated documents settle, and one they get wrong.
+
+### `--tile-border` → `--boundary`, and the second role
+
+The rename is the smaller half. `CLAUDE.md`: "The name described its first use
+and then lied about the next three." The value moves with it, `#5D6777` →
+`#687284`, because the old one cleared 3:1 against the room ground and not
+against `--popover` (2.89) or `--muted` (2.76) — fine for a panel edge
+separating from the room, not fine for a form field sitting *on* those.
+
+The larger half is that `check:contrast` now asks two questions instead of one.
+A surface rule asks "is what sits on this readable?"; a boundary rule asks "is
+this line visible against what it separates a component from?". `--input`
+passed the first exhaustively while drawing the border of every field at 1.44:1
+dark and 1.25:1 light. Nothing failed because nothing asked.
+
+So `lib/contrast-rules.ts` grew `BOUNDARY_RULES` — `--boundary` over
+`--background`, `--card`, `--popover`, `--muted` at 3:1 — and the gate evaluates
+both lists. Not `--secondary` or `--accent`: those are button fills, and a
+button's edge is not what identifies it. Not `--input`: that is the field's own
+fill, the *inner* side of the line.
+
+A pairing rule still cannot catch a forbidden *use*, so one scan carries that:
+`FORBIDDEN_BOUNDARY_TOKENS`, one token, named in `CLAUDE.md`. It found **four**
+sites, one more than the documents name — `Input`, the select trigger, the
+outline `Button`'s `dark:border-input`, and an inline `borderColor:
+"var(--input)"` on `ScheduleForm`'s description textarea, which is a raw
+`<textarea>` and not a primitive anyone would have thought to check.
+
+### The constant that drifted twice
+
+`lib/og.tsx` exported `TILE_BORDER = "#5D6777"`. Its own header narrates this
+exact failure happening once before, at `#414954`, and explains why: "no gate
+can see a colour hardcoded in a card". It then happened again — a rename of
+`--tile-border` cannot see a constant called `TILE_BORDER`, and the gate still
+read only `globals.css`. One stale colour on four social cards.
+
+Renamed to `BOUNDARY`, revalued, and **gated**: `check:contrast` now compares
+every literal in that block against the token it names. Mutation: restoring
+`#5D6777` fails with `lib/og.tsx: BOUNDARY is #5D6777 but --boundary is
+#687284`. Twice is a pattern, and a comment asking to be kept in step is not a
+check.
+
+`e2e/media.spec.ts` had the same shape: `const IDLE = [93, 103, 119]` is
+`#5D6777` in decimal, so the speaking-ring test would have failed against
+correct code. The endpoints are read from the page now.
+
+### Native `<select>`, and the guard that could not fail
+
+Five instances — three device selectors behind one `DeviceSelect` in pre-join,
+duration and timezone in schedule — are one native control. Radix's Select is
+gone, and with it the two axe failures that were the reason the open-listbox
+states could not be scanned: `aria-hidden-focus` and
+`scrollable-region-focusable` cannot fire on a control that has no shell.
+
+The bundle argument turned out to be the strongest of the three, and larger than
+`PRD.md` §10 estimated — because §10 was reasoning about swapping Select out of
+`/schedule` *alone*, which deletes no library code. All five does:
+
+| Route | Before | After |
+|---|---|---|
+| `/j/[code]` | 189 kB | **171 kB** |
+| `/schedule` | 279 kB | **263 kB** |
+| shared baseline | 164 kB | 163 kB |
+
+`/schedule` now sits *below* `/dashboard` (268 kB), reversing the gap §10 spends
+a paragraph explaining. `/j/[code]` — the cold load for a stranger on a phone —
+is 59 kB under its budget.
+
+**And the swap exposed a test that was never testing anything.** `schedule()`
+opened the timezone listbox and clicked an option; every caller passed the zone
+its browser context was already in, and the form defaults to `browserTimeZone()`.
+So the control was already on the target value before those lines ran.
+
+Measured, not argued: with the selection removed entirely, **the three existing
+timezone tests still pass** and only the new one fails. `CLAUDE.md`: "Delete the
+guard. If no test fails, the guard is untested."
+
+The new one schedules from Accra *in Berlin's zone* — which the default cannot
+produce — and asserts the stored instant. Under the mutation it fails by exactly
+the two hours the control exists for: `DTSTART:20260915T143000Z` where
+`123000Z` was expected.
+
+### Themes, as an axis rather than a second test
+
+`states.ts` carries `themes` per state — `["light", "dark"]` for the surfaces
+that follow the OS, `["dark"]` for `/j/[code]`, which rule 8b forces. axe
+expands it; the target check does not, because geometry does not change with the
+palette.
+
+This closes the gap by construction. The signed-in states had a dark scan
+because someone wrote a second test; the marketing page, sign-in and the empty
+dashboard stayed light-only because nobody wrote theirs. A field cannot be
+forgotten the way a duplicated test can.
+
+### Two figures in the documents that do not reproduce
+
+Both from `CLAUDE.md`'s new boundary paragraph, and neither changes a decision —
+`#687284` clears 3:1 everywhere it is used either way.
+
+- **"5.1 on the worst light surface"** — the worst light pairing is **4.32** on
+  `--muted`. 4.85, against white, is the *best* one. No arrangement of the light
+  palette produces 5.1.
+- `PRD.md` §3.4's **"3.25:1 worst-case against the ground"** — 3.25 is the worst
+  across surfaces; against the ground (`--background`) it is **3.93**, which is
+  what `CLAUDE.md` rule 5 says.
+
+Verified by computing every documented pair first: `--foreground`/`--background`
+17.29, `--muted-foreground`/`--input` 5.08, white/`--destructive` 4.98, light
+`--destructive`/white 5.54, old `--tile-border`/`--background` 3.33 — all exact.
+
+### Checks
+
+`check:media` **89/89** — 67 app parallel, 22 media serial. `check:contrast`
+25 in both roles, `check:bundle` 10/10, `check:room` 103, `check:a11y` 58.
+Every static check green.
+
+### Left for a decision
+
+- **`CLAUDE.md` rule 8 says `/j/[code]` is `≤ 200 kB`; `PRD.md` §10 says 230**,
+  and `scripts/check-bundle.mjs` enforces §10. Rule 8's own sentence says
+  budgets "live in `PRD.md` §10", so the inline number is the stale copy — but
+  only one of the two is enforced today. The route measures 171 kB, inside both.
+- **`PRD.md` §3.4 and §4.2 still say `--boundary` is "single-purpose: the room
+  ground, nowhere else" and "permitted on `--background` alone"**, which
+  contradicts the permitted-surface table this change implements. §4.2 defers to
+  `CLAUDE.md` for that table, so those two sentences are residue.
+- **`/sign-in` builds at 249 kB with no budget**, heavier than every budgeted
+  route except the two scheduling ones. It is public and it is the first thing a
+  host sees. `/auth/complete` is 235 kB, also unbudgeted.
+- **A screen reader pass on the native selects has not been done**, and
+  BUILD-PLAN asks for one before and after. Nor has the closed state been
+  checked in Safari or Firefox — the suite is Chromium.

@@ -29,7 +29,7 @@ export function ReplacedNotice({
       role="status"
       aria-live="polite"
       className="absolute inset-x-0 top-0 z-30 mx-auto flex w-fit items-center gap-3 rounded-b-xl px-4 py-3"
-      style={{ background: "var(--popover)", border: "1px solid var(--tile-border)" }}
+      style={{ background: "var(--popover)", border: "1px solid var(--boundary)" }}
     >
       <p className="type-small">
         <span className="text-foreground">{by}</span> is now presenting. Your

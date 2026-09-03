@@ -25,6 +25,34 @@ import { generateMeetingCode } from "@/lib/meetings/code";
 /** Well-formed and not in the database, generated rather than typed. */
 export const UNKNOWN_CODE = generateMeetingCode();
 
+export type Theme = "light" | "dark";
+
+/**
+ * **The theme axis is declared, not typed out twice.**
+ *
+ * BUILD-PLAN v1.2: "The state list is states × themes, derived, not
+ * hand-maintained. Marketing and sign-in are currently scanned in light only,
+ * and that gap exists because the list is written by hand and someone has to
+ * remember the second entry."
+ *
+ * That is exactly what happened: the signed-in states got a dark scan because
+ * someone wrote a second test for them, and the three states nobody wrote a
+ * second test for stayed light-only. A field cannot be forgotten the way a
+ * duplicated test can.
+ *
+ * Only axe expands this axis. Geometry does not change with the palette, so the
+ * touch-target check expands viewports instead and reads one theme — measured
+ * rather than assumed: the same nine controls, to the pixel, in both.
+ */
+const RESPONSIVE: readonly Theme[] = ["light", "dark"];
+
+/**
+ * `/j/[code]` and `/room/[code]` carry `.dark` on the route-group wrapper
+ * regardless of preference — rule 8b — so a light scan of them would be
+ * checking a rendering the product cannot produce.
+ */
+const FORCED_DARK: readonly Theme[] = ["dark"];
+
 type Reach<Ctx> = (page: Page, ctx: Ctx) => Promise<void>;
 
 type State<Ctx> = {
@@ -41,6 +69,8 @@ type State<Ctx> = {
    * accepted a page rendering almost nothing.
    */
   atLeast: number;
+  /** Which palettes this surface can actually render in. */
+  themes: readonly Theme[];
   reach: Reach<Ctx>;
 };
 
@@ -58,7 +88,7 @@ const at = (path: string) => async (page: Page) => {
 
 /** Public surfaces: no session, one meeting code from the test's own fixture. */
 export const PUBLIC_STATES: State<string>[] = [
-  { name: "the marketing page", floor: 24, atLeast: 5, reach: at("/") },
+  { name: "the marketing page", floor: 24, atLeast: 5, themes: RESPONSIVE, reach: at("/") },
   /**
    * Pre-join as it lands: the permission prompt, the name field, and Join.
    *
@@ -67,11 +97,11 @@ export const PUBLIC_STATES: State<string>[] = [
    * screen is measured by `prejoin.spec.ts` in the serial `media` project.
    * Three is what this state renders, not a number lowered to make it pass.
    */
-  { name: "pre-join", floor: 44, atLeast: 3, reach: (page, code) => at(`/j/${code}`)(page) },
-  { name: "a meeting that has ended", floor: 44, atLeast: 1, reach: (page) => at(`/j/${endedCode()}`)(page) },
-  { name: "a meeting not yet started", floor: 44, atLeast: 3, reach: (page) => at(`/j/${scheduledCode()}`)(page) },
-  { name: "an unknown code", floor: 44, atLeast: 2, reach: (page) => at(`/j/${UNKNOWN_CODE}`)(page) },
-  { name: "sign-in", floor: 24, atLeast: 5, reach: at("/sign-in") },
+  { name: "pre-join", floor: 44, atLeast: 3, themes: FORCED_DARK, reach: (page, code) => at(`/j/${code}`)(page) },
+  { name: "a meeting that has ended", floor: 44, atLeast: 1, themes: FORCED_DARK, reach: (page) => at(`/j/${endedCode()}`)(page) },
+  { name: "a meeting not yet started", floor: 44, atLeast: 3, themes: FORCED_DARK, reach: (page) => at(`/j/${scheduledCode()}`)(page) },
+  { name: "an unknown code", floor: 44, atLeast: 2, themes: FORCED_DARK, reach: (page) => at(`/j/${UNKNOWN_CODE}`)(page) },
+  { name: "sign-in", floor: 24, atLeast: 5, themes: RESPONSIVE, reach: at("/sign-in") },
 ];
 
 /**
@@ -91,6 +121,7 @@ export const SIGNED_IN_STATES: State<string>[] = [
     name: "the dashboard, with an upcoming and a past meeting",
     floor: 24,
     atLeast: 9,
+    themes: RESPONSIVE,
     reach: async (page) => {
       await at("/dashboard")(page);
       await expect(page.getByRole("heading", { name: "Meetings" })).toBeVisible();
@@ -100,6 +131,7 @@ export const SIGNED_IN_STATES: State<string>[] = [
     name: "the schedule form",
     floor: 24,
     atLeast: 10,
+    themes: RESPONSIVE,
     reach: async (page) => {
       await at("/schedule")(page);
       await expect(page.getByLabel("Title")).toBeVisible();
@@ -109,6 +141,7 @@ export const SIGNED_IN_STATES: State<string>[] = [
     name: "a scheduled meeting",
     floor: 24,
     atLeast: 9,
+    themes: RESPONSIVE,
     reach: async (page, code) => {
       await at(`/schedule/${code}`)(page);
       await expect(page.getByRole("heading", { name: "Meeting link" })).toBeVisible();
@@ -118,6 +151,7 @@ export const SIGNED_IN_STATES: State<string>[] = [
     name: "a scheduled meeting, being edited",
     floor: 24,
     atLeast: 11,
+    themes: RESPONSIVE,
     reach: async (page, code) => {
       await at(`/schedule/${code}`)(page);
       await page.getByRole("button", { name: "Edit" }).click();
@@ -149,6 +183,7 @@ export const EMPTY_DASHBOARD: State<never> = {
   name: "the dashboard, with no meetings yet",
   floor: 24,
   atLeast: 5,
+  themes: RESPONSIVE,
   reach: async (page) => {
     await at("/dashboard")(page);
     await expect(page.getByText("No meetings yet.")).toBeVisible();
