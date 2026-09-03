@@ -1,19 +1,24 @@
 "use client";
 
 /**
- * The input meter.
+ * The input meter — a 4px bar under the preview, per v1.2 D.
  *
  * Weight and fill, no hue — rule 5. A green-to-red meter would be the only
  * chroma on the screen and would mean nothing here: there is no "too loud" to
  * warn about, only "we can hear you", which is a presence signal.
  *
- * Twelve discrete segments rather than a continuous bar. Discrete steps read as
- * movement at a glance where a smooth fill reads as static, and they hold up at
- * the small size this occupies next to the mic button.
+ * This was twelve discrete segments, and the reason given was that "discrete
+ * steps read as movement at a glance where a smooth fill reads as static, and
+ * they hold up at the small size this occupies next to the mic button". That
+ * was true of where it sat. D moves it out from beside the mic button to the
+ * full width of the preview, and at that width a continuous fill is legible on
+ * its own — the argument for segments was an argument about a small box, and
+ * the box is gone.
+ *
+ * No transition on the width. The attack and release live in
+ * `useMediaPreview`, against the real frame delta, so what this draws is the
+ * level as smoothed rather than the level as it was a frame ago — see there.
  */
-
-const SEGMENTS = 12;
-
 export function MicMeter({
   level,
   muted,
@@ -22,27 +27,25 @@ export function MicMeter({
   level: number;
   muted: boolean;
 }) {
-  const lit = muted ? 0 : Math.round(level * SEGMENTS);
+  const filled = muted ? 0 : Math.max(0, Math.min(1, level));
 
   return (
     <div
-      className="flex items-center gap-[3px]"
+      className="h-1 w-full overflow-hidden rounded-full"
+      style={{ background: "var(--input)" }}
       // Not a progress bar to a screen reader: it updates many times a second
       // and says nothing a blind user can act on. The mic button already
       // announces whether the microphone is on, which is the actionable part.
       aria-hidden
+      data-mic-meter={muted ? "muted" : "live"}
     >
-      {Array.from({ length: SEGMENTS }, (_, i) => (
-        <span
-          key={i}
-          className="h-3 w-[3px] rounded-full transition-[background-color] duration-75"
-          style={{
-            backgroundColor:
-              i < lit ? "var(--foreground)" : "var(--tile-border)",
-            opacity: i < lit ? 1 : 0.4,
-          }}
-        />
-      ))}
+      <div
+        className="h-full rounded-full"
+        style={{
+          width: `${filled * 100}%`,
+          background: "var(--foreground)",
+        }}
+      />
     </div>
   );
 }

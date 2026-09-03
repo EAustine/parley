@@ -201,167 +201,188 @@ export function PreJoin({
   const micMissing = media.state === "granted" && !media.hasMicrophone;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-4xl flex-col justify-center gap-8 px-6 py-12">
+    /**
+     * v1.2 D: one centred column, the preview as its hero.
+     *
+     * This was a two-column `md:grid-cols-[1.4fr_1fr]` inside `max-w-4xl`,
+     * which made the preview one of two equal concerns and pushed the device
+     * controls onto a scrim *inside* it. D puts the preview first and
+     * everything else underneath, in the order you deal with it: see yourself,
+     * check you can be heard, fix a device if it is wrong, say who you are,
+     * join.
+     *
+     * Moving the toggles out of the frame also means nothing sits on the video
+     * at all any more, which is a stronger form of rule 4 than a scrim.
+     */
+    <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col justify-center gap-6 px-6 py-12">
       <div className="space-y-1">
         <p className="type-caption text-muted-foreground">You&rsquo;re joining</p>
         <h1 className="type-h1">{meeting.title}</h1>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-[1.4fr_1fr]">
-        {/* --- preview ---------------------------------------------------- */}
-        <div className="space-y-4">
-          <div className="relative aspect-video overflow-hidden rounded-xl border border-tile-border bg-card">
-            {showPreview ? (
-              <video
-                ref={attachPreview}
-                autoPlay
-                playsInline
-                muted
-                // Mirrored here only. §3.3: what you publish is not flipped —
-                // a mirrored preview feels natural, a mirrored broadcast makes
-                // everyone else read your text backwards.
-                className="h-full w-full -scale-x-100 object-cover"
-              />
-            ) : media.state === "granted" ? (
-              <div className="flex h-full items-center justify-center px-8 text-center">
-                <p className="type-small text-balance text-muted-foreground">
-                  {cameraMissing
-                    ? micMissing
-                      ? "No camera or microphone found. You can still join and follow along."
-                      : "No camera found. Your microphone works, so you’ll join with audio only."
-                    : "Your camera is off. You’ll join without video."}
-                </p>
-              </div>
-            ) : (
-              <PermissionNotice state={media.state} onRequest={media.request} />
-            )}
-
-            {/* Controls sit on a scrim, never on raw video — rule 4. */}
-            {media.state === "granted" && (
-              <div
-                className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 p-4"
-                style={{
-                  background:
-                    "linear-gradient(to top, var(--scrim), transparent)",
-                }}
-              >
-                <DeviceToggle
-                  on={media.micOn}
-                  onToggle={media.toggleMic}
-                  onIcon="micOn"
-                  offIcon="micOff"
-                  // Names the action, not the state — accessibility floor. A
-                  // control that can't do anything says why instead.
-                  disabled={micMissing}
-                  label={
-                    micMissing
-                      ? "No microphone found"
-                      : media.micOn
-                        ? "Turn off microphone"
-                        : "Turn on microphone"
-                  }
-                />
-                <DeviceToggle
-                  on={media.cameraOn}
-                  onToggle={media.toggleCamera}
-                  onIcon="cameraOn"
-                  offIcon="cameraOff"
-                  disabled={cameraMissing}
-                  label={
-                    cameraMissing
-                      ? "No camera found"
-                      : media.cameraOn
-                        ? "Turn off camera"
-                        : "Turn on camera"
-                  }
-                />
-                <div className="ml-1">
-                  <MicMeter level={media.level} muted={!media.micOn} />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* --- settings and join ------------------------------------------ */}
-        <div className="space-y-6">
-          {isGuest && (
-            <div className="space-y-2">
-              <Label htmlFor="display-name" className="type-small">
-                Your name
-              </Label>
-              <Input
-                id="display-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ama"
-                maxLength={40}
-                autoComplete="name"
-                autoFocus
-              />
-              <p className="type-caption text-muted-foreground">
-                Shown to everyone in the meeting.
+      {/* --- the preview, and the meter flush beneath it ------------------ */}
+      <div className="space-y-3">
+        <div className="relative aspect-video overflow-hidden rounded-xl border border-tile-border bg-card">
+          {showPreview ? (
+            <video
+              ref={attachPreview}
+              autoPlay
+              playsInline
+              muted
+              // Mirrored here only. §3.3: what you publish is not flipped —
+              // a mirrored preview feels natural, a mirrored broadcast makes
+              // everyone else read your text backwards.
+              className="h-full w-full -scale-x-100 object-cover"
+            />
+          ) : media.state === "granted" ? (
+            <div className="flex h-full items-center justify-center px-8 text-center">
+              <p className="type-small text-balance text-muted-foreground">
+                {cameraMissing
+                  ? micMissing
+                    ? "No camera or microphone found. You can still join and follow along."
+                    : "No camera found. Your microphone works, so you’ll join with audio only."
+                  : "Your camera is off. You’ll join without video."}
               </p>
             </div>
+          ) : (
+            /* §3.3's remaining states, inside the frame — D keeps the eye in
+               one place, and the denied copy is the longest thing on the
+               screen, so anywhere else it reads as a footnote. */
+            <PermissionNotice state={media.state} onRequest={media.request} />
           )}
-
-          <DeviceSelect
-            id="camera"
-            label="Camera"
-            options={media.cameras}
-            value={media.cameraId}
-            onChange={media.setCamera}
-            ready={devicesKnown}
-          />
-          <DeviceSelect
-            id="microphone"
-            label="Microphone"
-            options={media.microphones}
-            value={media.microphoneId}
-            onChange={media.setMicrophone}
-            ready={devicesKnown}
-          />
-          <DeviceSelect
-            id="speaker"
-            label="Speaker"
-            options={media.speakers}
-            value={media.speakerId}
-            onChange={media.setSpeaker}
-            ready={devicesKnown}
-          />
-
-          <div className="space-y-2">
-            <Button size="touch" className="w-full" onClick={() => join()} disabled={!canJoin}>
-              {countdown !== null
-                ? `Joining in ${countdown}s…`
-                : joining
-                  ? "Joining…"
-                  : "Join meeting"}
-            </Button>
-            {countdown !== null && (
-              <p className="type-caption text-muted-foreground" role="status" aria-live="polite">
-                This meeting is busy right now. You&rsquo;ll join automatically —
-                there&rsquo;s nothing to do.
-              </p>
-            )}
-            {/* Joining with both off is allowed, and must not read as a fault.
-                "You can turn them on once you're in" is only true when there
-                is something to turn on — with no hardware it is a promise the
-                room cannot keep. */}
-            {media.state === "granted" && !media.cameraOn && !media.micOn && (
-              <p className="type-caption text-muted-foreground">
-                {cameraMissing && micMissing
-                  ? "You’ll join without a camera or microphone. You’ll still see and hear everyone else."
-                  : "You’ll join with your camera and microphone off. You can turn them on once you’re in."}
-              </p>
-            )}
-            {error && (
-              <p role="alert" className="type-small text-[var(--state-critical)]">
-                {error}
-              </p>
-            )}
-          </div>
         </div>
+
+        {/* A 4px bar, not a number. Only once there is a signal to draw. */}
+        {media.state === "granted" && (
+          <MicMeter level={media.level} muted={!media.micOn} />
+        )}
+      </div>
+
+      {/* --- device controls, beneath the preview rather than on it ------- */}
+      {media.state === "granted" && (
+        <div className="flex items-center justify-center gap-3">
+          <DeviceToggle
+            on={media.micOn}
+            onToggle={media.toggleMic}
+            onIcon="micOn"
+            offIcon="micOff"
+            // Names the action, not the state — accessibility floor. A
+            // control that can't do anything says why instead.
+            disabled={micMissing}
+            label={
+              micMissing
+                ? "No microphone found"
+                : media.micOn
+                  ? "Turn off microphone"
+                  : "Turn on microphone"
+            }
+          />
+          <DeviceToggle
+            on={media.cameraOn}
+            onToggle={media.toggleCamera}
+            onIcon="cameraOn"
+            offIcon="cameraOff"
+            disabled={cameraMissing}
+            label={
+              cameraMissing
+                ? "No camera found"
+                : media.cameraOn
+                  ? "Turn off camera"
+                  : "Turn on camera"
+            }
+          />
+        </div>
+      )}
+
+      {/*
+        --- the three selectors -----------------------------------------------
+        D calls this "a settings row". Stacked rather than three across, and
+        the reason is legibility rather than taste: in a 560px column three
+        selects are about 176px each, and "Default - MacBook Pro Microphone
+        (Built-in)" truncates to somewhere around "Default - MacB" — which is
+        the one thing a device selector exists to tell you.
+      */}
+      <div className="space-y-3">
+        <DeviceSelect
+          id="camera"
+          label="Camera"
+          options={media.cameras}
+          value={media.cameraId}
+          onChange={media.setCamera}
+          ready={devicesKnown}
+        />
+        <DeviceSelect
+          id="microphone"
+          label="Microphone"
+          options={media.microphones}
+          value={media.microphoneId}
+          onChange={media.setMicrophone}
+          ready={devicesKnown}
+        />
+        <DeviceSelect
+          id="speaker"
+          label="Speaker"
+          options={media.speakers}
+          value={media.speakerId}
+          onChange={media.setSpeaker}
+          ready={devicesKnown}
+        />
+      </div>
+
+      {/* --- name and join, one block ------------------------------------- */}
+      <div className="space-y-3">
+        {isGuest && (
+          <div className="space-y-2">
+            <Label htmlFor="display-name" className="type-small">
+              Your name
+            </Label>
+            <Input
+              id="display-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ama"
+              maxLength={40}
+              autoComplete="name"
+              autoFocus
+            />
+            <p className="type-caption text-muted-foreground">
+              Shown to everyone in the meeting.
+            </p>
+          </div>
+        )}
+
+        {/* The only filled-primary button on the screen — D. Everything else
+            here, including the permission request inside the frame, is an
+            outline. */}
+        <Button size="touch" className="w-full" onClick={() => join()} disabled={!canJoin}>
+          {countdown !== null
+            ? `Joining in ${countdown}s…`
+            : joining
+              ? "Joining…"
+              : "Join meeting"}
+        </Button>
+        {countdown !== null && (
+          <p className="type-caption text-muted-foreground" role="status" aria-live="polite">
+            This meeting is busy right now. You&rsquo;ll join automatically —
+            there&rsquo;s nothing to do.
+          </p>
+        )}
+        {/* Joining with both off is allowed, and must not read as a fault.
+            "You can turn them on once you're in" is only true when there
+            is something to turn on — with no hardware it is a promise the
+            room cannot keep. */}
+        {media.state === "granted" && !media.cameraOn && !media.micOn && (
+          <p className="type-caption text-muted-foreground">
+            {cameraMissing && micMissing
+              ? "You’ll join without a camera or microphone. You’ll still see and hear everyone else."
+              : "You’ll join with your camera and microphone off. You can turn them on once you’re in."}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="type-small text-[var(--state-critical)]">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

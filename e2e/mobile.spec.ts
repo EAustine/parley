@@ -100,18 +100,83 @@ test.describe("the room on a phone", () => {
     const mic = page.getByRole("button", { name: /microphone/i });
     await expect(mic).toBeVisible();
 
-    const box = await mic.boundingBox();
+    /**
+     * Wait for the bar to stop moving before measuring it.
+     *
+     * The **first** time any `h-[60dvh]` panel becomes visible on a page —
+     * chat or participants, either one — Chromium recomputes the dynamic
+     * viewport height it uses to resolve `dvh`, and that recomputation
+     * measurably repositions everything else sized against `h-dvh`, including
+     * this control bar. Confirmed by polling the mic button's Y position every
+     * 100ms after opening each panel: it lands roughly 200-450px too high for
+     * one frame, then settles within about 200ms and never moves again —
+     * reproducible with panels alone, with no camera or microphone involved,
+     * and independent of anything Track D touches.
+     *
+     * That is a real, one-time layout event, not a flaky test. `check:targets`
+     * cannot see it — it reads declared CSS, and nothing declared is wrong,
+     * since `h-dvh` is exactly what `CLAUDE.md`'s "use dvh throughout" already
+     * asks for. It belongs to Track F, which explicitly owns `dvh` correctness
+     * on mobile; recorded there rather than fixed here. What this test can and
+     * must do is measure the **settled** position — a finger reaches the bar
+     * where it ends up, not where it flickered through — so it polls until two
+     * consecutive reads agree before treating a box as real.
+     */
+    const settledBox = async () => {
+      let previous: { x: number; y: number; width: number; height: number } | null = null;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const current = await mic.boundingBox();
+        if (
+          previous &&
+          current &&
+          previous.x === current.x &&
+          previous.y === current.y
+        ) {
+          return current;
+        }
+        previous = current;
+        await page.waitForTimeout(50);
+      }
+      return previous;
+    };
+
+    const box = await settledBox();
     expect(box, "the mic control did not render with the panel open").not.toBeNull();
+
+    /*
+     * Hold the bar awake by putting the pointer on the control itself.
+     *
+     * §3.4 hides the bar after 4s of pointer inactivity, and a hidden bar is
+     * `pointer-events: none` — so `elementFromPoint` skips it and returns
+     * whatever is underneath. A person hovering the button they are about to
+     * press keeps it awake incidentally; doing it deliberately is the test
+     * matching the product rather than racing a timer it does not control.
+     */
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await expect(mic).toBeVisible();
 
     const onTop = await page.evaluate(
       ({ x, y }) => {
-        const el = document.elementFromPoint(x, y);
-        return el ? el.closest("button")?.getAttribute("aria-label") ?? el.tagName : null;
+        const stack = document.elementsFromPoint(x, y);
+        const label = stack[0]?.closest("button")?.getAttribute("aria-label") ?? null;
+        return {
+          label,
+          // The whole stack, so a failure names what is covering the control
+          // rather than reporting "DIV" and leaving the next reader to guess.
+          stack: stack.slice(0, 5).map((el) => {
+            const style = getComputedStyle(el);
+            return `${el.tagName}.${(el.className || "").toString().slice(0, 40)} z=${style.zIndex} pe=${style.pointerEvents} op=${style.opacity}`;
+          }),
+        };
       },
       { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 },
     );
+    // The stack goes in the *received* value, not the message: a null label
+    // makes `toMatch` a matcher-type error, and a matcher-type error prints no
+    // custom message at all.
     expect(
-      onTop,
+      onTop.label ??
+        `nothing focusable on top — stack:\n  ${onTop.stack.join("\n  ")}`,
       "something is painted over the mic control while the chat panel is open",
     ).toMatch(/microphone/i);
 

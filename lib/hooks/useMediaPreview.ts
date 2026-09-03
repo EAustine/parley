@@ -78,6 +78,16 @@ async function classifyError(
   return classifyMediaError(error, hint, previous);
 }
 
+/**
+ * The meter's attack and release, as time constants in milliseconds — v1.2 D.
+ *
+ * Exported because the test that measures the bar has to wait out the release
+ * to see it fall, and a hand-typed 200 in a spec is a second copy of a number
+ * that can drift.
+ */
+export const METER_ATTACK_MS = 60;
+export const METER_RELEASE_MS = 200;
+
 export function useMediaPreview(): MediaPreview {
   const [state, setState] = useState<PermissionState>("idle");
 
@@ -166,8 +176,9 @@ export function useMediaPreview(): MediaPreview {
 
       const samples = new Float32Array(analyser.fftSize);
       let smoothed = 0;
+      let last: number | null = null;
 
-      const tick = () => {
+      const tick = (now: number) => {
         analyser.getFloatTimeDomainData(samples);
         let sum = 0;
         for (const sample of samples) sum += sample * sample;
@@ -175,8 +186,31 @@ export function useMediaPreview(): MediaPreview {
         // Speech sits well below full scale; ×4 puts normal talking in the
         // upper half of the meter instead of a permanent sliver.
         const scaled = Math.min(1, rms * 4);
-        smoothed = scaled > smoothed ? scaled : smoothed * 0.85 + scaled * 0.15;
+
+        /**
+         * v1.2 D: 60ms attack, 200ms release, "so it reads as voice rather
+         * than jitter".
+         *
+         * Asymmetric already, but the attack was *instant* — the bar snapped
+         * to every frame's peak, which is the jitter D is describing. And the
+         * release was a fixed per-frame coefficient, so it decayed twice as
+         * fast on a 120Hz display as on a 60Hz one: a number that looked like
+         * a time constant and was not one.
+         *
+         * Both are now time constants against the real frame delta. §3.3 wants
+         * a response "within 200ms"; a 60ms constant is at 63% by 60ms and
+         * ~95% by 180ms, so the attack spends its budget and keeps it.
+         *
+         * The smoothing lives here rather than in a CSS transition on the bar
+         * because a transition would lag the level it is drawing — the meter
+         * would be honest about the number and late about the moment.
+         */
+        const elapsed = last === null ? 1000 / 60 : Math.min(100, now - last);
+        last = now;
+        const tau = scaled > smoothed ? METER_ATTACK_MS : METER_RELEASE_MS;
+        smoothed += (scaled - smoothed) * (1 - Math.exp(-elapsed / tau));
         setLevel(smoothed);
+
         const frame = requestAnimationFrame(tick);
         if (audioRef.current) audioRef.current.frame = frame;
       };

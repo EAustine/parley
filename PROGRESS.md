@@ -3770,3 +3770,94 @@ the one test that is *about* the 429 path intercepts the route itself.
 
 `check:media` **60/60** — 43 app parallel in 2.3m, 17 media serial in 3.1m. All
 375 static checks green.
+
+---
+
+## v1.2 Track D — pre-join
+
+The mapping workflow for this track failed entirely — all four agents hit
+`API Error: 529 Overloaded` and returned nothing. Built from direct reading of
+the code and PRD §3.3, with Mobbin references pulled for the layout (Behance,
+Riverside, Cal.com, Descript pre-join screens) as the plan's closing note
+invites — corroborating rather than reopening the layout already specified.
+
+### Layout
+
+One centred column, `max-w-[560px]`, in the order D asks for: preview, meter,
+device toggles, the three selectors, name and Join. It was a two-column grid
+with the preview as one of two equal concerns and the toggles on a scrim
+*inside* the frame. Moving them out means nothing sits on the video at all now
+— a stronger form of rule 4 than a scrim ever was.
+
+**The three selectors are stacked, not "a row".** D's own word choice, read
+literally against a 560px column: three selects at ~176px each truncate
+"Default - MacBook Pro Microphone (Built-in)" to roughly "Default - MacB" —
+the one thing a selector exists to show. Every Mobbin reference stacks them
+too. Not raised as an ambiguity because the four references settled it before
+it became one.
+
+Verified: Join is the only filled-`--primary` button on the screen — checked
+by walking every button and comparing its computed background against the
+resolved token, not just eyeballing the two spots that use `Button` directly.
+
+### Meter
+
+Was twelve discrete segments beside the mic button, justified as reading
+"as movement at a glance ... at the small size this occupies". D moves it to a
+4px bar the full width of the preview; at that width the argument for segments
+is an argument about a box that no longer exists, so it's a continuous fill now.
+
+**The smoothing was wrong in a way the segments hid.** Attack was instant —
+the bar snapped to every frame's peak — and release was a fixed per-frame
+coefficient, decaying twice as fast on a 120Hz display as on 60Hz: a number
+that looked like a time constant and was not one. Both are now real time
+constants against the frame delta, 60ms attack and 200ms release, exported so
+a test derives them rather than retyping.
+
+### Permission states
+
+Already inside the frame — `PermissionNotice` was already the branch taken
+when `media.state !== "granted"`. D's requirement was already met; nothing to
+move.
+
+### Two defects found in verification, neither in Track D's own code
+
+**A one-time layout jump when a mobile panel opens, pre-existing since Track
+B.** `e2e/mobile.spec.ts`'s panel-coverage test started failing — reproducibly,
+3 times out of 3 — while writing Track D's tests. Bisected by stashing all
+Track D work and running the *original, unmodified* Track C test against
+Track C's own commit: it failed there too, deterministically. Not a Track D
+regression.
+
+Traced with a polling probe: the first time *any* `h-[60dvh]` panel — chat or
+participants, either one — becomes visible on the page, Chromium recomputes
+the dynamic viewport height it resolves `dvh` against, and that recomputation
+measurably repositions the control bar, which is also sized against `h-dvh`.
+The bar lands 200–450px too high for one frame, then settles within about
+200ms and never moves again. Reproduced with no camera or microphone
+involved and with the reaction popover (which uses no `dvh`) as a negative
+control — opening it triggers nothing.
+
+This belongs to Track F, which explicitly owns `dvh` correctness on mobile,
+and is recorded here rather than fixed now. What changed today is the test:
+it was measuring a mid-flicker position and racing a hit-test against it. It
+now polls until two consecutive reads of the same box agree — the settled
+position, which is where a finger actually lands — before doing anything with
+it, and explains in a comment what it is waiting out and why.
+
+**A theme-scope bug in a test I wrote for this track.** The layout test's
+`resolve()` helper read `--primary` from `document.body`. Rule 8b forces
+`.dark` via a wrapper element inside the route group, not on `<html>` or
+`<body>` — the same fact Track A's panel-surface test already depended on
+correctly. Reading from body resolved the light `:root` value while the
+button painted the dark one, so a same-token comparison failed by comparing
+against the wrong scope. Fixed by resolving from an element already inside
+the forced-dark tree. Checked every other `resolve()` in the suite for the
+same mistake — the room and panel ones were already scoped correctly, since
+the room forces `.dark` at the surface they read from.
+
+### Checks
+
+`check:media` **61/61** — 43 app parallel in 2.0m, 18 media serial in 2.9m.
+`check:bundle` 10/10, unchanged — the new layout added no weight to
+`/j/[code]`. All 375 static checks green.
