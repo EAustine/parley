@@ -102,12 +102,12 @@ export function ConnectionBar({
 
         {escapable && (
           <div className="pointer-events-auto flex items-center gap-2">
-            <Button asChild size="sm">
+            <Button asChild size="touch">
               <Link href={`/j/${code}`} onClick={() => rememberName(displayName)}>
                 Rejoin now
               </Link>
             </Button>
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="touch" variant="outline">
               <Link href="/dashboard">Leave</Link>
             </Button>
           </div>

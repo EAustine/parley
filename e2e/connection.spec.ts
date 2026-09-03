@@ -50,7 +50,14 @@ test.describe("connection", () => {
   let participant: Participant;
 
   test.afterEach(async () => {
-    if (participant) await leave(participant).catch(() => {});
+    if (!participant) return;
+    await leave(participant).catch(() => {});
+    // `joinAs` creates the context by hand, so Playwright never reaps it —
+    // every other spec closes it here and these two did not. A context left
+    // open holds its participant in the room long enough for the *next*
+    // spec's `expectParticipants(1)` to see two, which is how a passing suite
+    // starts failing somewhere it was never touched.
+    await participant.context.close().catch(() => {});
   });
 
   test("a ten-second outage recovers without reloading the page", async ({

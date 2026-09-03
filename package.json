@@ -23,6 +23,8 @@
     "check:chat": "node scripts/check-chat.mjs",
     "check:ics": "node scripts/check-ics.mjs",
     "dev:signin": "node --env-file=.env.local scripts/dev-signin.mjs",
+    "check:a11y": "node scripts/check-a11y.mjs",
+    "check:targets": "node scripts/check-targets.mjs",
     "check:connection": "node scripts/check-connection.mjs",
     "check:deps": "node scripts/check-deps.mjs"
   },
@@ -53,6 +55,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",

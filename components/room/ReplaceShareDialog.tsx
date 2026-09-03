@@ -1,6 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /**
  * §3.7: "The confirmation goes to the person taking the action, not the person
@@ -15,6 +21,18 @@ import { Button } from "@/components/ui/button";
  *
  * So the person with the consequence is the person asked, and they are the only
  * one who has to be present for it to resolve.
+ *
+ * **It shipped in Phase 7 as a plain `<div role="dialog" aria-modal="true">`
+ * with one autofocused button and no trap.** The floor now names that exactly:
+ * "the ARIA attribute is what promises a trap, so using it without one is the
+ * lie." A screen reader told the rest of the page was inert would let someone
+ * tab straight out into a room they had been told was not there. This is a
+ * real modal — it is the task, and the meeting behind it can wait for two
+ * words — so it gets the trap rather than losing the attribute.
+ *
+ * Escape cancels, which is the difference from `ConnectionFailedDialog`: that
+ * one has no safe closed state and is deliberately not dismissible, while
+ * cancelling here simply leaves the existing share alone.
  */
 export function ReplaceShareDialog({
   presenter,
@@ -26,35 +44,25 @@ export function ReplaceShareDialog({
   onCancel: () => void;
 }) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Replace the current share"
-      className="absolute inset-0 z-40 flex items-center justify-center px-6"
-      style={{ background: "var(--scrim)" }}
-    >
-      <div
-        className="w-full max-w-sm space-y-4 rounded-xl p-6"
-        style={{ background: "var(--popover)", border: "1px solid var(--tile-border)" }}
-      >
-        <div className="space-y-2">
-          <h2 className="type-h2">{presenter} is presenting</h2>
-          <p className="type-body text-muted-foreground">
-            Sharing will replace theirs. They&rsquo;ll be told you took over.
-          </p>
-        </div>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel}>
+    <Dialog open onOpenChange={(next) => { if (!next) onCancel(); }}>
+      <DialogContent showCloseButton={false} className="dark max-w-sm">
+        <DialogTitle className="type-h2">{presenter} is presenting</DialogTitle>
+        <DialogDescription className="type-body text-muted-foreground">
+          Sharing will replace theirs. They&rsquo;ll be told you took over.
+        </DialogDescription>
+
+        <div className="mt-2 flex justify-end gap-2">
+          <Button size="touch" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
-          {/* Autofocus: this dialog exists because someone pressed a button and
-              is waiting on it, so the default action should be one keystroke
-              away rather than a tab away. */}
-          <Button onClick={onConfirm} autoFocus>
+          {/* This dialog exists because someone pressed a button and is waiting
+              on it, so the default action is one keystroke away rather than a
+              tab away. */}
+          <Button size="touch" onClick={onConfirm} autoFocus>
             Continue
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

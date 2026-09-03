@@ -297,7 +297,7 @@ export function PreJoin({
           />
 
           <div className="space-y-2">
-            <Button className="w-full" onClick={() => join()} disabled={!canJoin}>
+            <Button size="touch" className="w-full" onClick={() => join()} disabled={!canJoin}>
               {countdown !== null
                 ? `Joining in ${countdown}s…`
                 : joining
@@ -376,7 +376,7 @@ function DeviceToggle({
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent className="dark">{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -420,7 +420,7 @@ function DeviceSelect({
         <SelectTrigger id={id} className="w-full">
           <SelectValue placeholder={`Choose a ${label.toLowerCase()}`} />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="dark">
           {options.map((option) => (
             <SelectItem key={option.deviceId} value={option.deviceId}>
               {option.label}

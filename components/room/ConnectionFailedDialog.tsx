@@ -59,7 +59,7 @@ export function ConnectionFailedDialog({
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
-        className="max-w-sm"
+        className="dark max-w-sm"
       >
         <DialogTitle className="type-h2">Couldn&rsquo;t reconnect</DialogTitle>
         <DialogDescription className="type-body text-muted-foreground">
@@ -68,12 +68,12 @@ export function ConnectionFailedDialog({
         </DialogDescription>
 
         <div className="mt-2 flex flex-col gap-2">
-          <Button asChild className="w-full">
+          <Button size="touch" asChild className="w-full">
             <Link href={`/j/${code}`} onClick={() => rememberName(displayName)}>
               Rejoin
             </Link>
           </Button>
-          <Button asChild variant="outline" className="w-full">
+          <Button size="touch" asChild variant="outline" className="w-full">
             <Link href="/dashboard">Leave</Link>
           </Button>
         </div>

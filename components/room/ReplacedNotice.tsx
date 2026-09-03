@@ -35,7 +35,7 @@ export function ReplacedNotice({
         <span className="text-foreground">{by}</span> is now presenting. Your
         share has stopped.
       </p>
-      <Button size="sm" variant="ghost" onClick={onDismiss}>
+      <Button size="touch" variant="ghost" onClick={onDismiss}>
         Dismiss
       </Button>
     </div>

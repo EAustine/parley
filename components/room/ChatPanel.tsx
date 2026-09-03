@@ -154,7 +154,7 @@ export function ChatPanel({
 
       {hasNew && (
         <div className="px-4 pb-2">
-          <Button variant="secondary" size="sm" className="w-full" onClick={jumpToLatest}>
+          <Button variant="secondary" size="touch" className="w-full" onClick={jumpToLatest}>
             New messages
           </Button>
         </div>
@@ -191,9 +191,17 @@ export function ChatPanel({
         <div className="mt-2 flex items-center justify-between gap-3">
           {/* §3.5: the counter appears at 900, not before. A permanent counter
               is a permanent reminder of a limit almost nobody reaches. */}
+          {/*
+            Not a live region.
+
+            It carried `aria-live="polite"` and its text changes every second
+            while the cooldown runs, and on every keystroke past 900 — so it
+            announced a number roughly as fast as someone could type. The
+            character count is a glance affordance; the send button's disabled
+            state is what a screen reader needs, and it has that already.
+          */}
           <span
             className="type-caption tabular-nums text-muted-foreground"
-            aria-live="polite"
           >
             {cooldown !== null
               ? `${cooldown}s`
@@ -202,7 +210,7 @@ export function ChatPanel({
                 : ""}
           </span>
           <Button
-            size="sm"
+            size="touch"
             onClick={submit}
             disabled={draft.trim().length === 0 || cooldown !== null}
           >

@@ -45,8 +45,6 @@ export type RoomConnection = {
   phase: RoomPhase;
   /** Failed attempts so far. Only meaningful while reconnecting. */
   attempts: number;
-  /** What to announce, or null. Already gated to once per change. */
-  announcement: string | null;
   /** §12: the browser refused to play remote audio until someone asks. */
   audioBlocked: boolean;
   allowAudio: () => void;
@@ -63,6 +61,8 @@ export function useRoomConnection(
   retry: RetryCounter,
   /** Supplied by `RoomStage`, which owns the server url and the token. */
   reconnect: () => void,
+  /** The room's shared announcer — see `lib/hooks/useAnnouncer.ts`. */
+  announce: (text: string) => void,
 ): RoomConnection {
   const room = useRoomContext();
   const state = useConnectionState(room) as RoomState;
@@ -91,12 +91,13 @@ export function useRoomConnection(
    * again on any re-render that happened to arrive between two phases.
    */
   const announced = useRef<RoomPhase | null>(null);
-  const [announcement, setAnnouncement] = useState<string | null>(null);
+  const announceRef = useRef(announce);
+  announceRef.current = announce;
 
   useEffect(() => {
     const next = announcementFor(phase, announced.current);
     announced.current = phase;
-    if (next) setAnnouncement(next);
+    if (next) announceRef.current(next);
   }, [phase]);
 
   // A recovered connection starts its next outage from attempt one.
@@ -170,7 +171,6 @@ export function useRoomConnection(
   return {
     phase,
     attempts,
-    announcement,
     audioBlocked,
     allowAudio,
     resumeNeeded,

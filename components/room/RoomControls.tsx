@@ -7,6 +7,17 @@ import { ICONS } from "@/lib/icons";
 import type { Reaction } from "@/lib/room/messages";
 import { ReactionPicker } from "@/components/room/ReactionPicker";
 import { Button } from "@/components/ui/button";
+/**
+ * Tooltip text is `--background`, not `--muted-foreground`.
+ *
+ * shadcn's tooltip is `bg-foreground text-background` — a near-white fill in
+ * the dark theme — so the secondary shortcut text was `--muted-foreground` on
+ * `--foreground`, which axe measured at 1.72:1. `--muted-foreground` declares
+ * the seven opaque *surfaces* it is permitted on and a fill is not one of them.
+ * `--background` at 70% over `--foreground` is 6.89:1.
+ */
+import { usePlatform } from "@/lib/hooks/usePlatform";
+import { chordFor } from "@/lib/room/shortcuts";
 import {
   Tooltip,
   TooltipContent,
@@ -47,6 +58,7 @@ export function RoomControls({
   onReact: (emoji: Reaction) => void;
   onLeave: () => void;
 }) {
+  const platform = usePlatform();
   const {
     localParticipant,
     isMicrophoneEnabled,
@@ -101,7 +113,7 @@ export function RoomControls({
           onIcon="micOn"
           offIcon="micOff"
           label={isMicrophoneEnabled ? "Turn off microphone" : "Turn on microphone"}
-          shortcut="⌘D"
+          shortcut={chordFor("mic", platform)}
           onToggle={() =>
             localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
           }
@@ -111,7 +123,7 @@ export function RoomControls({
           onIcon="cameraOn"
           offIcon="cameraOff"
           label={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
-          shortcut="⌘E"
+          shortcut={chordFor("camera", platform)}
           onToggle={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
         />
 
@@ -147,7 +159,7 @@ export function RoomControls({
                 />
               </button>
             </TooltipTrigger>
-            <TooltipContent>
+            <TooltipContent className="dark">
               {share.sharing ? "Stop sharing your screen" : "Share your screen"}
             </TooltipContent>
           </Tooltip>
@@ -193,9 +205,9 @@ export function RoomControls({
               )}
             </button>
           </TooltipTrigger>
-          <TooltipContent>
+          <TooltipContent className="dark">
             {chatOpen ? "Close chat" : "Open chat"}{" "}
-            <span className="text-muted-foreground">⌘⌥C</span>
+            <span className="text-background/70">{chordFor("chat", platform)}</span>
             {unread > 0 && !chatOpen && (
               <span className="sr-only">
                 , {unread} unread {unread === 1 ? "message" : "messages"}
@@ -233,9 +245,9 @@ export function RoomControls({
               </span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>
+          <TooltipContent className="dark">
             {participantsOpen ? "Close participants" : "Show participants"}{" "}
-            <span className="text-muted-foreground">
+            <span className="text-background/70">
               {participantCount} in the meeting
             </span>
           </TooltipContent>
@@ -244,7 +256,7 @@ export function RoomControls({
         {/* The one non-circular control. §3.4: shape distinguishes it as well
             as colour, so it is unmistakable without relying on hue. */}
         <Button
-          onClick={onLeave}
+          size="touch" onClick={onLeave}
           className="h-12 rounded-full px-6 bg-destructive text-destructive-foreground hover:bg-destructive/90"
         >
           <HugeiconsIcon
@@ -304,8 +316,8 @@ function CircleToggle({
           />
         </button>
       </TooltipTrigger>
-      <TooltipContent>
-        {label} <span className="text-muted-foreground">{shortcut}</span>
+      <TooltipContent className="dark">
+        {label} <span className="text-background/70">{shortcut}</span>
       </TooltipContent>
     </Tooltip>
   );

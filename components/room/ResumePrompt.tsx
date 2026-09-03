@@ -37,7 +37,7 @@ export function ResumePrompt({ onResume }: { onResume: () => void }) {
             Everyone else is still there.
           </p>
         </div>
-        <Button onClick={onResume} className="w-full">
+        <Button size="touch" onClick={onResume} className="w-full">
           Rejoin the meeting
         </Button>
       </div>

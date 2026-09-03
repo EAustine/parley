@@ -685,7 +685,11 @@ Target WCAG 2.1 AA. This is the part of the product that separates it from a wee
 
 The hard problem here is not making the room announce things. It is stopping it.
 
-**Join and leave** go into a `polite` region, batched: more than three events in five seconds collapses to "3 people joined", and above eight participants individual announcements are suppressed entirely. The thresholds are a judgement about attention, not a technical limit — in a ten-person standup where everyone arrives at once, a screen reader user who hears ten separate arrivals has learned nothing and lost thirty seconds.
+**Join and leave** go into a `polite` region. **The first event announces immediately by name; everything else in the following five seconds is held and announced as one aggregate when the window closes.** One further arrival reads as a name, two or more as a count — "3 people joined". Above eight participants, individual announcements are suppressed entirely.
+
+There is no separate collapse threshold, and the earlier wording implied one that could not produce its own example string. First-event-immediate keeps a lone arrival responsive in a quiet meeting, which is the case where a name is worth hearing; window-aggregate handles the burst, which is the case where names are worth nothing. A slow trickle announces each arrival individually, because each one opens a new window — which is correct, and falls out rather than needing a rule.
+
+The judgement here is about attention, not a technical limit. In a ten-person standup where everyone arrives at once, a screen reader user who hears ten separate arrivals has learned nothing and lost thirty seconds.
 
 **Chat** announces the sender and that a message arrived, never the body, and only while the panel is closed. Body content belongs in the panel, where it can be read at the user's pace rather than pushed at them mid-sentence.
 
@@ -698,6 +702,12 @@ Everything here is `polite`. Next mounts its own `role="alert"` route announcer,
 ### Keyboard shortcuts
 
 `Cmd/Ctrl+D` mic, `Cmd/Ctrl+E` camera, `Cmd/Ctrl+Alt+C` chat, `Esc` closes a panel. All suppressed while focus sits in a text input. `?` opens a shortcuts dialog.
+
+**Discoverability is a focus-visible hint, not a control in the bar.** A skip-link-pattern element at the start of the room — hidden until focused, reading "Press ? for keyboard shortcuts" — appears exactly when a keyboard user tabs in, is announced by a screen reader, and is never seen by mouse or touch users. Control-bar tooltips also carry their own shortcut, giving incidental discovery.
+
+An eighth control in the bar was considered and rejected. The bar is the most contested real estate in the product, §3.4 enumerates seven, and a *keyboard* shortcuts dialog is of no use to the touch visitor it would have been added for — a phone has no keys to press. The population that needs this affordance is exactly the population a focus-visible hint reaches.
+
+`ICONS.settings`, `ICONS.more` and `ICONS.user` are declared and used nowhere. Delete them; rule 9 applies to declarations as much as to packages.
 
 ### Ownership
 

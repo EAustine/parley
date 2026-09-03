@@ -1,60 +1,55 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-import { isTyping, type FocusTarget } from "@/lib/room/typing";
+import { matchShortcut, type ShortcutAction } from "@/lib/room/shortcuts";
+import type { FocusTarget } from "@/lib/room/typing";
 
 /**
- * `Cmd/Ctrl + D` mic, `Cmd/Ctrl + E` camera — §9, and §3.4's acceptance list.
+ * §9's shortcuts, dispatched from a pure matcher.
  *
- * Both are browser shortcuts (bookmark, and search-bar focus in some
- * browsers), so both are prevented. That is only defensible because the
- * suppression below is real: taking over Cmd+D while someone is typing a name
- * into a field would be indefensible.
+ * The decision moved to `lib/room/shortcuts.ts` for two reasons. `?` could not
+ * be added here at all — this hook began by returning unless a modifier was
+ * held, before inspecting any key — and the hook had no testable core:
+ * `check:room` tested `isTyping` in isolation while nothing tested that the
+ * handler called it, so deleting the call failed nothing.
  *
- * Suppression is by *what has focus*, not by a flag some panel remembers to
- * set. `isContentEditable` and `role="textbox"` are included because a rich
- * text field is neither an input nor a textarea, and the chat composer in
- * Phase 5 will be exactly that kind of surface.
+ * `Cmd/Ctrl+D` and `Cmd/Ctrl+E` are browser shortcuts, so both are prevented.
+ * That is only defensible because the typing suppression in the matcher is
+ * real: taking over Cmd+D while someone types into a field would swallow a
+ * keystroke they meant.
+ *
+ * `?` is prevented too, and needs to be — it is an ordinary printable
+ * character, so claiming it anywhere near a text field would be worse than
+ * claiming a chord. The matcher refuses it whenever focus is in one.
  */
-export function useRoomShortcuts({
-  onToggleMic,
-  onToggleCamera,
-  onToggleChat,
-}: {
+export function useRoomShortcuts(handlers: {
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleChat: () => void;
+  onShowHelp: () => void;
 }) {
+  // Read inside the listener so a changed handler does not tear down and
+  // re-establish the subscription.
+  const ref = useRef(handlers);
+  ref.current = handlers;
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (isTyping(event.target as FocusTarget)) return;
+      const action = matchShortcut(event, event.target as FocusTarget);
+      if (!action) return;
+      event.preventDefault();
 
-      // §9: `Cmd/Ctrl+Alt+C` opens chat. Alt is what separates it from the two
-      // below, so it is checked first and they require its absence.
-      if (event.altKey) {
-        if (event.key.toLowerCase() === "c" || event.code === "KeyC") {
-          event.preventDefault();
-          onToggleChat();
-        }
-        return;
-      }
-
-      // `event.key` rather than `event.code`: on a Dvorak or AZERTY layout the
-      // physical D key is not where D is, and the shortcut is named after the
-      // letter people see printed on the cap.
-      const key = event.key.toLowerCase();
-      if (key === "d") {
-        event.preventDefault();
-        onToggleMic();
-      } else if (key === "e") {
-        event.preventDefault();
-        onToggleCamera();
-      }
+      const run: Record<ShortcutAction, () => void> = {
+        mic: ref.current.onToggleMic,
+        camera: ref.current.onToggleCamera,
+        chat: ref.current.onToggleChat,
+        help: ref.current.onShowHelp,
+      };
+      run[action]();
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onToggleMic, onToggleCamera, onToggleChat]);
+  }, []);
 }

@@ -469,14 +469,25 @@ check(
 // "Disclosure controls… a noun name plus `aria-expanded` and `aria-controls`."
 // Neither half alone is the pattern: expanded without controls leaves a screen
 // reader knowing something opened and not what.
-const disclosures = interactive.filter((f) => /aria-controls/.test(codeOf(f)));
+//
+// Counted as JSX *attributes*, not as substrings. `RoomStage` restores focus by
+// finding a panel's trigger with `querySelector('[aria-controls="…"]')`, and a
+// bare /aria-controls/ counted that selector as an unpaired control — the check
+// reporting a violation it had invented. A preceding `[` is a CSS selector; an
+// attribute never has one.
+// Fresh each time: a /g regex carries `lastIndex` between `.test()` calls, so
+// reusing one across a filter silently skips every other file.
+const attrControls = () => /(?<!\[)\baria-controls=/g;
+const attrExpanded = () => /(?<!\[)\baria-expanded=/g;
+
+const disclosures = interactive.filter((f) => attrControls().test(codeOf(f)));
 check(disclosures.length > 0, `something uses the disclosure pattern  (${disclosures.length} file)`,
       "no aria-controls found — either the panels changed or this stopped applying");
 
 for (const file of disclosures) {
   const code = codeOf(file);
-  const controls = (code.match(/aria-controls/g) ?? []).length;
-  const expanded = (code.match(/aria-expanded/g) ?? []).length;
+  const controls = (code.match(attrControls()) ?? []).length;
+  const expanded = (code.match(attrExpanded()) ?? []).length;
   check(
     expanded >= controls,
     `${file.replace(/^.*\//, "")} pairs every aria-controls with aria-expanded`,

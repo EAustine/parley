@@ -33,10 +33,10 @@ export function MuteRequestPrompt({
       <p className="type-small">
         <span className="text-foreground">{from}</span> asked you to mute.
       </p>
-      <Button size="sm" onClick={onMute}>
+      <Button size="touch" onClick={onMute}>
         Mute
       </Button>
-      <Button size="sm" variant="ghost" onClick={onDismiss}>
+      <Button size="touch" variant="ghost" onClick={onDismiss}>
         Stay unmuted
       </Button>
     </div>

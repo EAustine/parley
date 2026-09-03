@@ -2712,3 +2712,203 @@ there is no countdown to interrupt yet.
 `check:contrast` 24, `check:rls` 18, `check:deps` 5/5, `check:bundle` 10/10.
 `check:media` **32/32**, up from 29 — green on a full run, which is the only run that counts. Every route inside budget; rule 8 holds
 — `livekit-client` is in no route's first load.
+
+---
+
+## Phase 9 — accessibility
+
+Three live bugs, two new checks, and one finding I would not have reasoned my
+way to.
+
+### A panel a keyboard user could open and not close
+
+`ParticipantsPanel` had no effect moving focus into itself, and its Escape
+handler is `onKeyDown` on its own element — so React never saw the key while
+focus sat on the trigger in the control bar. Opened with a mouse it worked;
+opened with a keyboard it was a trap with no exit.
+
+`ChatPanel` focuses its composer on open, which is exactly why only one of the
+two was broken and why it survived two phases: the panels looked alike and one
+of them worked.
+
+Focus restoration was broken in the same direction. `RoomStage` captured
+`document.activeElement` when a panel opened, and via ⌘⌥C that is `<body>` —
+`body.focus()` is a no-op, so Escape closed the panel and dropped focus to
+nowhere. It now falls back to the control that declares `aria-controls` for
+that panel. The existing test only ever exercised the click path.
+
+### A dialog that promised a trap it did not have
+
+`ReplaceShareDialog` shipped in Phase 7 as a plain `<div role="dialog"
+aria-modal="true">` with one autofocused button. The amended floor names it
+exactly: "the ARIA attribute is what promises a trap, so using it without one
+is the lie." A screen reader told the rest of the page was inert would let
+someone tab straight out into a room it had said was not there.
+
+It is a real Radix dialog now, which is also the right answer on the merits —
+it is the task, and the meeting behind it can wait for two words. Escape
+cancels, which is what distinguishes it from `ConnectionFailedDialog`, where
+there is no safe closed state.
+
+Its accessible name changed as a result, from an `aria-label` only a screen
+reader ever heard to §3.7's own visible copy. `aria-labelledby` wins over
+`aria-label`, so the title *is* the name; the e2e was updated to match rather
+than the component bent to keep a string.
+
+### Every portal in the room was rendering light
+
+Rule 8b forces dark "via a wrapper element in the route-group layout", and
+Radix portals render to `document.body` — outside it. So every tooltip,
+dialog, popover and select in the room and pre-join resolved against the
+**light** palette, since Phase 3.
+
+It hid because it only appears when the viewer's OS is in light mode: otherwise
+`next-themes` puts `.dark` on `<html>` and the portal inherits it anyway.
+Playwright defaults to light, which is why axe found it and six phases of
+looking at the product did not.
+
+Fixing it exposed a second fault underneath. shadcn's tooltip is
+`bg-foreground` — near-white in the dark theme — and the shortcut hint inside
+it was `--muted-foreground`, which measured 1.72:1. `--muted-foreground`
+declares the seven opaque *surfaces* it is permitted on, and a fill is not one
+of them; `--background` at 70% over `--foreground` is 6.89:1.
+
+Both are pinned: `check:a11y` fails if a portalled surface in those directories
+is added without carrying the palette itself.
+
+### The announcement queue, and a bug the Phase 8 comment did not name
+
+Phase 8 merged two sources into one region with last-writer-wins and documented
+that it could drop one on a same-tick collision. The more frequent loss was
+undocumented: **the region held a bare string, so writing the value it already
+held was a React bail-out — the DOM was never touched and nothing was spoken.**
+Two messages in a row from the same sender announced once. Two identical
+reactions announced once.
+
+So the queue carries `{ id, text }` and the region renders a keyed child. The
+region element itself never remounts, because a live region inserted with
+content already in it is not announced at all by most screen readers.
+
+Strict FIFO, no channel priority. §9 does not rank the channels — but the code
+did, by accident: the chat effect was declared after the connection effect, so
+chat silently won a collision. Choosing FIFO is choosing a rule instead of
+keeping a source-order artefact.
+
+### Join and leave, and a hazard no document mentions
+
+§9's amended wording is exact and produces its own example: first event by
+name, everything in the next five seconds held, one held event reads as a name
+and two or more as a count. The earlier wording asked for a separate collapse
+threshold that made "3 people joined" unproducible.
+
+What no document covers is **reconnection**. LiveKit unwinds the room on a
+reconnect — `ParticipantDisconnected` for every remote participant, then
+`ParticipantConnected` for every one again. In a nine-person room that is
+sixteen events from one blip, landing on top of "Connection restored." The
+participant threshold does not save it either: the SDK's map drains as the
+unwind runs, so the count falls past any threshold mid-burst. Presence
+announcements are suppressed while the connection is not healthy and for three
+seconds after it returns, because the re-add burst arrives *after* the state
+flips back.
+
+### Two regions that narrated on a clock
+
+Not in §9's list, and the same flooding through an unenumerated channel. The
+chat cooldown counter carried `aria-live` and its text changes every second —
+and on every keystroke past 900 characters. The join-hold countdown announced
+"9s", then "8s", then "7s", for the whole hold.
+
+Both keep their text visible; neither is live. The sentence is what is worth
+hearing and it does not change.
+
+### `?`, reached the way the people who need it will reach it
+
+An eighth control in the bar was the obvious answer and the wrong one: a
+*keyboard* shortcuts dialog is no use to the touch visitor it would have been
+added for. The population that needs to discover `?` is the population that
+tabs. So it is a skip-link-pattern hint — first focusable thing in the room,
+invisible until focused — and each control's tooltip carries its own chord.
+
+The old hook could not have hosted `?` at all: it returned unless a modifier
+was held, before inspecting any key. It also had no testable core —
+`check:room` tested `isTyping` in isolation while nothing tested that the
+handler called it, so deleting the call failed nothing. `matchShortcut` is a
+pure function now, and it stopped claiming Cmd+Shift+D, which is
+bookmark-all-tabs in several browsers.
+
+`ICONS.settings`, `ICONS.more` and `ICONS.user` are deleted — rule 9 applies to
+declarations as much as to packages.
+
+### Two checks, because a claim that is not a script is not a check
+
+`check:a11y` (58) pins the queue's ordering, gap, staleness and cap; every
+batching boundary including the ninth participant and the mixed-direction
+split; the shortcut matcher across layouts and modifiers; and the source scans
+for portalled palettes and live regions.
+
+`check:targets` (5) measures touch targets **from built CSS**, per the floor's
+new wording. `size="sm"` means nothing until Tailwind has emitted
+`.h-7{height:1.75rem}`, and it is that number the finger meets. The floor is 44
+in the room and pre-join and 24 elsewhere — the blanket 44 was above the
+project's stated conformance target and would have changed density on every
+document surface for no gain. A `size="touch"` variant carries it.
+
+### Two things I fixed in the checkers rather than the code
+
+`check:room` counted `aria-controls` as a substring, so the `querySelector`
+in the new focus-restoration helper read as an unpaired attribute — the check
+reporting a violation it had invented. It counts JSX attributes now.
+
+That fix then introduced a stateful `/g` regex inside a `.test()` filter, which
+silently skipped files. It was caught because the total dropped by one rather
+than by the failure I was expecting, which is the only reason I looked.
+
+### And a correction to what I said about Phase 8's flaky runs
+
+Phase 8's full runs failed intermittently in different places each time —
+schedule once, then media and grid and chat — and I attributed it to Supabase
+rate limiting and machine contention, on the strength of the failures being in
+a test's own sign-in helper and of everything passing in isolation.
+
+That was wrong, or at best incomplete. **`connection.spec.ts` never closed the
+browser contexts it created.** `joinAs` builds them by hand, so Playwright does
+not reap them; every other spec closes them in `afterEach` and that one did
+not. A context left open holds its participant in the room long enough for the
+next spec's `expectParticipants(1)` to see two — which is exactly the shape of
+what I saw: failures that moved between specs, always about something not being
+found, always passing alone.
+
+Phase 9's new spec had the same omission and, being alphabetically first, put
+the residue in front of `chat.spec` where it had never been. That is what
+surfaced it. Both are fixed.
+
+I recorded the earlier diagnosis with the evidence I had and it read as
+plausible; it happened to be about the environment rather than the code, which
+is the comfortable direction to be wrong in.
+
+### What is still unverified, and it is the part that matters
+
+**No screen reader has heard any of this.** Every announcement rule in this
+phase — the queue's ordering, the batching phrasing, the suppression during
+reconnect, whether "2 people joined" lands usefully in a real room — is
+verified as arithmetic and not as sound. BUILD-PLAN is explicit that the real
+deliverable is a keyboard traverse by hand and a VoiceOver-with-Safari session,
+and that green axe with an untested screen reader is a claim rather than a
+fact. It remains a claim.
+
+axe reaches perhaps a third to a half of WCAG and is blind to everything this
+phase is about: it confirms a name exists, not that it means anything; that
+elements are focusable, not that the order is sensible; that a live region is
+present, not that its output is usable.
+
+Also untested: the mobile pager and panel layouts on a real touch device, and
+`prefers-reduced-motion` against the new dialogs.
+
+### Checks
+
+`check:a11y` **58/58** (new), `check:targets` **5/5** (new). All others green:
+`check:room` 96, `check:connection` 72, `check:chat` 73, `check:ics` 69,
+`check:meetings` 68, `check:permissions` 39, `check:contrast` 25, `check:rls`
+18, `check:deps` 5/5, `check:bundle` 10/10, `check:media` **42/42**, up from 32
+and green on a full run — which, this phase more than most, is the only run
+that counts.

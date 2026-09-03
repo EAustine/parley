@@ -47,10 +47,10 @@ export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void
             </button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Send a reaction</TooltipContent>
+        <TooltipContent className="dark">Send a reaction</TooltipContent>
       </Tooltip>
 
-      <PopoverContent side="top" align="center" className="w-auto p-2">
+      <PopoverContent side="top" align="center" className="dark w-auto p-2">
         <div className="flex gap-1">
           {REACTIONS.map((emoji) => (
             <button

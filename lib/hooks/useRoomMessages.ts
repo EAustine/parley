@@ -50,7 +50,7 @@ export type RoomMessages = {
   reactions: ReactionEvent[];
   unread: number;
   /** The last thing worth announcing. Read by one polite live region. */
-  announcement: string;
+
   /**
    * Seconds until this participant may send again, or null. §3.5: the send
    * side disables the input on a brief cooldown, so a flooder sees why nothing
@@ -66,17 +66,34 @@ export type RoomMessages = {
   markRead: () => void;
 };
 
-export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMessages {
+export function useRoomMessages({
+  panelOpen,
+  announce,
+}: {
+  panelOpen: boolean;
+  /**
+   * The room's shared announcer. This hook used to own a `useState` string and
+   * write it directly, which meant two things: chat and connection fought over
+   * one slot with last-writer-wins, and an identical repeat was a React
+   * bail-out that never reached the DOM at all — so two messages from the same
+   * sender announced once. The queue behind this callback fixes both.
+   */
+  announce: (text: string) => void;
+}): RoomMessages {
   const room = useRoomContext();
   const [log, setLog] = useState<LogEntry[]>([]);
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
   const [unread, setUnread] = useState(0);
-  const [announcement, setAnnouncement] = useState("");
 
   // Read inside callbacks that must not be rebuilt when it changes — a new
   // handler identity would tear down and re-establish the subscription.
   const panelOpenRef = useRef(panelOpen);
   panelOpenRef.current = panelOpen;
+
+  // Same reason as above: these callbacks are dependencies of the data-channel
+  // subscription, and rebuilding them tears it down and re-establishes it.
+  const announceRef = useRef(announce);
+  announceRef.current = announce;
 
   const counter = useRef(0);
   const nextId = () => `m${++counter.current}`;
@@ -114,7 +131,7 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
       }, REACTION_LIFETIME_MS);
 
       if (announceGate.current.take(identity, now)) {
-        setAnnouncement(`${name} reacted with ${REACTION_NAMES[emoji]}`);
+        announceRef.current(`${name} reacted with ${REACTION_NAMES[emoji]}`);
       }
     },
     [],
@@ -128,7 +145,7 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
         setUnread((n) => n + 1);
         // §9: the sender and the fact of a message, never the body. The body
         // is in the panel, which is where someone chooses to read it.
-        setAnnouncement(`${entry.name} sent a message`);
+        announceRef.current(`${entry.name} sent a message`);
       }
     },
     [],
@@ -320,7 +337,6 @@ export function useRoomMessages({ panelOpen }: { panelOpen: boolean }): RoomMess
     log,
     reactions,
     unread,
-    announcement,
     chatCooldown,
     muteRequest,
     sendChat,

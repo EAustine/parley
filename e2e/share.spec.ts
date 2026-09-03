@@ -184,9 +184,19 @@ test.describe("screen share", () => {
     // asked; Ama is not interrupted with a dialog she cannot usefully weigh.
     await wakeControls(kwabena.page);
     await kwabena.page.getByRole("button", { name: "Share your screen" }).click();
-    const dialog = kwabena.page.getByRole("dialog", { name: "Replace the current share" });
+    /**
+     * Named by its title, not by an `aria-label`.
+     *
+     * Phase 9 made this a real Radix dialog: it had claimed
+     * `aria-modal="true"` with no trap, which the floor names as the lie —
+     * "the ARIA attribute is what promises a trap". Radix derives the
+     * accessible name from `DialogTitle`, and `aria-labelledby` wins over
+     * `aria-label`, so the name is now §3.7's own copy rather than a separate
+     * string only a screen reader ever heard.
+     */
+    const dialog = kwabena.page.getByRole("dialog", { name: "Ama Serwaa is presenting" });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText("Ama Serwaa is presenting")).toBeVisible();
+    await expect(dialog.getByText("Sharing will replace theirs")).toBeVisible();
     // Nothing has happened yet — asking is not doing.
     await expect(ama.page.getByRole("dialog")).toHaveCount(0);
     await expect(sharingBar(ama)).toBeVisible();
@@ -200,7 +210,7 @@ test.describe("screen share", () => {
     await wakeControls(kwabena.page);
     await kwabena.page.getByRole("button", { name: "Share your screen" }).click();
     await kwabena.page
-      .getByRole("dialog", { name: "Replace the current share" })
+      .getByRole("dialog", { name: "Ama Serwaa is presenting" })
       .getByRole("button", { name: "Continue" })
       .click();
 

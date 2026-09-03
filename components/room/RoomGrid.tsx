@@ -181,7 +181,7 @@ function Pager({
     <div className="flex shrink-0 items-center justify-center gap-4">
       <Button
         variant="ghost"
-        size="sm"
+        size="touch"
         onClick={() => onChange(page - 1)}
         disabled={page === 0}
       >
@@ -192,7 +192,7 @@ function Pager({
       </span>
       <Button
         variant="ghost"
-        size="sm"
+        size="touch"
         onClick={() => onChange(page + 1)}
         disabled={page >= pages - 1}
       >

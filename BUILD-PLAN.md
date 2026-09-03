@@ -323,7 +323,13 @@ Work the full list in `CLAUDE.md`. Specifically:
 - Reaction announcements throttled per participant
 - Connection state announced once per change
 - `?` opens a keyboard shortcuts dialog
-- `axe` clean on every route
+- `axe` clean via `@axe-core/playwright` (dev only, approved under rule 9 on the same grounds as Playwright — it does not ship)
+
+**Run axe against states, not routes.** The acceptance criterion said "every route" and that was too coarse: a route with the chat panel closed and the same route with it open are different accessibility surfaces, and the second is where the focus trap and the live region actually live. The list is states — panel open, modal open, reconnect overlay, each permission failure, the ended and cancelled join pages — not URLs. A green run that never opened a panel has tested the easy half.
+
+**Axe is the regression net, not the deliverable.** Automated tooling reaches perhaps a third to a half of WCAG, and it is blind to everything this phase is actually about: it confirms an accessible name exists, not that it means anything; that elements are focusable, not that the order is sensible; that a live region is present, not that its output is usable. The announcement policy in §9, the batching thresholds, the state-toggle versus disclosure-control split — none of it is visible to axe.
+
+So the real deliverable is a keyboard traverse of every state by hand, and a screen reader session in a room with enough people to make the batching matter. **VoiceOver with Safari** is the pairing to use on macOS: Cmd+F5, and it is the combination most likely to expose a naming or announcement problem that Chrome forgives. Green axe with an untested screen reader is a claim, not a fact.
 
 **Audit what the framework injects before testing our own announcements.** Next mounts its own route announcer as an `role="alert"` live region, which is assertive and interrupts whatever a screen reader is mid-sentence on. Two consequences: every accessibility assertion must be scoped to our tree, or it will match the framework's element and pass without testing anything; and our announcements stay `polite` throughout, since an assertive region already exists and stacking a second one guarantees the flooding §9 is trying to prevent. Check the dev-mode error overlay too — it should not be in the axe run.
 

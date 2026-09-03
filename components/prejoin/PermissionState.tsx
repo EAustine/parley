@@ -132,7 +132,7 @@ export function PermissionNotice({
         </p>
       </div>
       {copy.action && (
-        <Button variant="outline" size="sm" onClick={onRequest}>
+        <Button variant="outline" size="touch" onClick={onRequest}>
           {copy.action.label}
         </Button>
       )}

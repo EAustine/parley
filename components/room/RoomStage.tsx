@@ -15,6 +15,8 @@ import { useControlVisibility } from "@/lib/hooks/useControlVisibility";
 import { useRoomMessages } from "@/lib/hooks/useRoomMessages";
 import { useRoomShortcuts } from "@/lib/hooks/useRoomShortcuts";
 import { useScreenShare } from "@/lib/hooks/useScreenShare";
+import { useAnnouncer } from "@/lib/hooks/useAnnouncer";
+import { usePresence } from "@/lib/hooks/usePresence";
 import { useRoomConnection } from "@/lib/hooks/useRoomConnection";
 import { createRetryCounter, type RetryCounter } from "@/lib/room/retry-counter";
 import { displayNameOf, isHost } from "@/lib/room/participant";
@@ -30,6 +32,8 @@ import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
 import { ReplacedNotice } from "@/components/room/ReplacedNotice";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
+import { ShortcutsDialog } from "@/components/room/ShortcutsDialog";
+import { ShortcutsHint } from "@/components/room/ShortcutsHint";
 import { ScreenShareStage } from "@/components/room/ScreenShareStage";
 import { SharingBar } from "@/components/room/SharingBar";
 import { Button } from "@/components/ui/button";
@@ -242,36 +246,16 @@ function RoomSurface({
   const visible = useControlVisibility();
   const [chatOpen, setChatOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const chatTrigger = useRef<HTMLElement | null>(null);
   const participantsTrigger = useRef<HTMLElement | null>(null);
   const surface = useRef<HTMLDivElement>(null);
 
-  const connection = useRoomConnection(retry, onResume);
-  const messages = useRoomMessages({ panelOpen: chatOpen });
+  const { item: announcement, announce } = useAnnouncer();
+  const connection = useRoomConnection(retry, onResume, announce);
+  const messages = useRoomMessages({ panelOpen: chatOpen, announce });
+  usePresence({ phase: connection.phase, announce });
 
-  /**
-   * The room has one polite live region and two things now want it.
-   *
-   * Last writer wins, which is what the region did before this phase — except
-   * that only chat could write to it, so a connection change had no way in at
-   * all. Both sources now reach it on equal terms.
-   *
-   * It is not a queue, and it can still drop one announcement when two land in
-   * the same tick. §9 does not rank the channels, so there is no principled
-   * winner to pick; a small FIFO is the right answer and it is the same
-   * mechanism Phase 9 needs for batched join and leave announcements, which
-   * are unbuilt. Doing it here would mean building that machinery for one
-   * rare collision and then rebuilding it around the batching rules.
-   */
-  const [live, setLive] = useState("");
-  const connectionAnnouncement = connection.announcement;
-  useEffect(() => {
-    if (connectionAnnouncement) setLive(connectionAnnouncement);
-  }, [connectionAnnouncement]);
-  const messageAnnouncement = messages.announcement;
-  useEffect(() => {
-    if (messageAnnouncement) setLive(messageAnnouncement);
-  }, [messageAnnouncement]);
   const { markRead } = messages;
   const share = useScreenShare();
   const { localParticipant } = useLocalParticipant();
@@ -310,7 +294,7 @@ function RoomSurface({
         participantsTrigger.current?.focus?.();
         return false;
       }
-      participantsTrigger.current = document.activeElement as HTMLElement | null;
+      participantsTrigger.current = triggerFor("participants-panel");
       return true;
     });
   }, []);
@@ -323,7 +307,7 @@ function RoomSurface({
       }
       // Remember what opened it so Escape can hand focus back — a panel you
       // can open from the keyboard and not close from it is a trap.
-      chatTrigger.current = document.activeElement as HTMLElement | null;
+      chatTrigger.current = triggerFor("chat-panel");
       return true;
     });
   }, []);
@@ -365,7 +349,12 @@ function RoomSurface({
       ref={surface}
       className="relative h-dvh w-full overflow-hidden bg-background p-3 pb-24"
     >
-      <Shortcuts onToggleChat={toggleChat} />
+      <Shortcuts onToggleChat={toggleChat} onShowHelp={() => setHelpOpen(true)} />
+
+      {/* First focusable thing in the room — §9's discoverability hint. */}
+      <ShortcutsHint onOpen={() => setHelpOpen(true)} />
+
+      <ShortcutsDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <div
         className={
@@ -465,6 +454,35 @@ function RoomSurface({
 
       <ReactionOverlay reactions={messages.reactions} anchorFor={anchorFor} />
 
+      <RoomControls
+        visible={visible}
+        unread={messages.unread}
+        chatOpen={chatOpen}
+        participantsOpen={participantsOpen}
+        participantCount={participants.length}
+        share={{
+          supported: share.supported,
+          sharing: share.sharing,
+          toggle: () => void (share.sharing ? share.stop() : share.start()),
+        }}
+        onToggleChat={toggleChat}
+        onToggleParticipants={toggleParticipants}
+        onReact={messages.sendReaction}
+        onLeave={onLeave}
+      />
+
+      {/*
+        Panels after the controls, which is both §3.4's stated tab order —
+        "controls → chat panel → participant panel → back to controls" — and
+        the floor's "order the panel in the DOM adjacent to its trigger so
+        tabbing out lands somewhere sensible".
+
+        They rendered before the controls until now, so a Tab traverse met the
+        panels first and, worse, opening participants stranded focus on a
+        trigger *downstream* of the panel it opened: tabbing forward never
+        entered it. Both panels are absolutely positioned, so this changes the
+        order the keyboard sees and nothing the eye does.
+      */}
       <div id="chat-panel">
         <ChatPanel
           open={chatOpen}
@@ -485,23 +503,6 @@ function RoomSurface({
         />
       </div>
 
-      <RoomControls
-        visible={visible}
-        unread={messages.unread}
-        chatOpen={chatOpen}
-        participantsOpen={participantsOpen}
-        participantCount={participants.length}
-        share={{
-          supported: share.supported,
-          sharing: share.sharing,
-          toggle: () => void (share.sharing ? share.stop() : share.start()),
-        }}
-        onToggleChat={toggleChat}
-        onToggleParticipants={toggleParticipants}
-        onReact={messages.sendReaction}
-        onLeave={onLeave}
-      />
-
       {share.error && (
         <p
           role="status"
@@ -514,12 +515,42 @@ function RoomSurface({
       {/* One polite live region for the whole room. §9 and BUILD-PLAN's Phase 9
           note: Next already mounts an assertive one, and a second would
           interrupt rather than wait its turn. */}
-      <p role="status" aria-live="polite" className="sr-only">
-        {live}
+      {/*
+        One polite region for the room, and it never remounts.
+
+        The keyed child is load-bearing rather than tidy: a live region
+        inserted into the document with content already in it is not announced
+        by most screen readers, so the <p> is stable and only its child
+        changes. And the child is keyed by id rather than by text, because an
+        identical repeat used to be a React bail-out that never touched the DOM
+        — two messages from the same sender announced once.
+      */}
+      <p role="status" aria-live="polite" data-live-region className="sr-only">
+        {announcement && <span key={announcement.id}>{announcement.text}</span>}
       </p>
       <span className="sr-only">Meeting code {code}</span>
     </div>
   );
+}
+
+/**
+ * What should get focus back when a panel closes.
+ *
+ * `document.activeElement` alone is wrong for the keyboard path: opening chat
+ * with ⌘⌥C leaves focus on `<body>`, and `body.focus()` is a no-op — so
+ * Escape closed the panel and dropped focus to nowhere, which is worse than
+ * not restoring it at all. The existing test only ever exercised the click
+ * path, where `activeElement` really is the button.
+ *
+ * So: the focused element if it is genuinely one, and otherwise the control
+ * that owns this panel, found by the `aria-controls` it already declares.
+ */
+function triggerFor(panelId: string): HTMLElement | null {
+  const active = document.activeElement as HTMLElement | null;
+  if (active && active !== document.body && typeof active.focus === "function") {
+    return active;
+  }
+  return document.querySelector<HTMLElement>(`[aria-controls="${panelId}"]`);
 }
 
 /** The gap that keeps a rising reaction clear of the name label beneath it. */
@@ -530,13 +561,20 @@ const LABEL_CLEARANCE_PX = 40;
  * rather than the whole room. The handler has to see current state — a stale
  * closure here would toggle the mic to where it already was.
  */
-function Shortcuts({ onToggleChat }: { onToggleChat: () => void }) {
+function Shortcuts({
+  onToggleChat,
+  onShowHelp,
+}: {
+  onToggleChat: () => void;
+  onShowHelp: () => void;
+}) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } =
     useLocalParticipant();
   useRoomShortcuts({
     onToggleMic: () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled),
     onToggleCamera: () => localParticipant.setCameraEnabled(!isCameraEnabled),
     onToggleChat,
+    onShowHelp,
   });
   return null;
 }
@@ -573,10 +611,10 @@ function Left({ code }: { code: string }) {
         </div>
       </div>
       <div className="flex flex-col gap-2">
-        <Button asChild className="w-full">
+        <Button size="touch" asChild className="w-full">
           <Link href={`/j/${code}`}>Rejoin</Link>
         </Button>
-        <Button asChild variant="outline" className="w-full">
+        <Button size="touch" asChild variant="outline" className="w-full">
           <Link href="/dashboard">Back to meetings</Link>
         </Button>
       </div>
@@ -597,7 +635,7 @@ function Failed({ code }: { code: string }) {
           </p>
         </div>
       </div>
-      <Button asChild className="w-full">
+      <Button size="touch" asChild className="w-full">
         <Link href={`/j/${code}`}>Join again</Link>
       </Button>
     </Centred>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useConnectionQualityIndicator,
@@ -42,6 +42,28 @@ export function ParticipantsPanel({
   onRemove: (identity: string) => void;
 }) {
   const participants = useParticipants();
+  const close = useRef<HTMLButtonElement>(null);
+
+  /**
+   * Move focus into the panel when it opens.
+   *
+   * Without this the panel could be opened from the keyboard and not closed.
+   * The Escape handler below is `onKeyDown` on this element, so React only
+   * sees the key when focus is already inside — and nothing put it there.
+   * Focus stayed on the trigger in the control bar, Escape went nowhere, and
+   * the only way out was a mouse.
+   *
+   * `ChatPanel` never had the bug because it focuses its composer on open,
+   * which is also why the fault survived: the two panels looked alike and one
+   * of them worked.
+   *
+   * The close button rather than the list: it is the way out, and §9's floor
+   * wants Escape to return focus to the trigger, so landing on the control
+   * that does the same thing keeps the two consistent.
+   */
+  useEffect(() => {
+    if (open) close.current?.focus();
+  }, [open]);
 
   return (
     <aside
@@ -67,6 +89,7 @@ export function ParticipantsPanel({
           </span>
         </h2>
         <button
+          ref={close}
           type="button"
           onClick={onClose}
           aria-label="Close participants"
@@ -167,7 +190,7 @@ function ParticipantRow({
               never activate — so there is nothing to press once they are. */}
           {participant.isMicrophoneEnabled && (
             <Button
-              size="sm"
+              size="touch"
               variant="ghost"
               onClick={() => onRequestMute(participant.identity)}
             >
@@ -177,7 +200,7 @@ function ParticipantRow({
           {confirmingRemove ? (
             <>
               <Button
-                size="sm"
+                size="touch"
                 variant="ghost"
                 className="text-[var(--state-critical)]"
                 onClick={() => {
@@ -187,7 +210,7 @@ function ParticipantRow({
               >
                 Confirm
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmingRemove(false)}>
+              <Button size="touch" variant="ghost" onClick={() => setConfirmingRemove(false)}>
                 Keep
               </Button>
             </>
@@ -195,7 +218,7 @@ function ParticipantRow({
             // Two steps, because it cannot be undone from here — the person is
             // gone and has to be sent the link again.
             <Button
-              size="sm"
+              size="touch"
               variant="ghost"
               onClick={() => setConfirmingRemove(true)}
               aria-label={`Remove ${name} from the meeting`}

@@ -36,7 +36,7 @@ export function SharingBar({ onStop }: { onStop: () => void }) {
       <span className="type-small text-foreground">
         You&rsquo;re sharing your screen
       </span>
-      <Button size="sm" variant="secondary" onClick={onStop}>
+      <Button size="touch" variant="secondary" onClick={onStop}>
         Stop sharing
       </Button>
     </div>

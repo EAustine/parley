@@ -41,7 +41,7 @@ export function AudioBlockedPrompt({ onEnable }: { onEnable: () => void }) {
         <p className="type-small text-foreground">
           Your browser is blocking the meeting&rsquo;s audio.
         </p>
-        <Button size="sm" onClick={onEnable}>
+        <Button size="touch" onClick={onEnable}>
           Enable audio
         </Button>
       </div>

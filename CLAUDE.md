@@ -315,7 +315,8 @@ All motion answers a user action. No ambient animation. `prefers-reduced-motion:
 Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD.md` §9 owns the announcement policy and the reasoning behind its thresholds, and deliberately does not restate these mechanics. Where the two ever appear to disagree, this file wins and §9 is stale.
 
 - Every control keyboard reachable, `--ring` focus at 2px offset
-- Panels focus-trapped; Escape closes and returns focus to the trigger
+- **Modal surfaces are focus-trapped. Non-modal panels are not.** The reconnect overlay and the shortcuts dialog trap: they are the task, and everything behind them is inert. Chat and participants do not: the meeting continues behind them, and `PRD.md` §3.4 requires the control bar to stay reachable with both open. A trap there makes mute reachable only by shortcut, and mute is a privacy control.
+- Non-modal panel behaviour: focus moves into the panel on open, the room stays tabbable throughout, Escape closes and returns focus to the trigger. Mark them as labelled regions, never `role="dialog"` with `aria-modal` — the ARIA attribute is what promises a trap, so using it without one is the lie. Order the panel in the DOM adjacent to its trigger so tabbing out lands somewhere sensible.
 - **State toggles** (mic, camera) name the action and change with it: "Turn off microphone" → "Turn on microphone". No `aria-pressed` — carrying both an action name and a pressed state announces the same fact twice, in a confusing order
 - **Disclosure controls** (chat, participants) are the other pattern: a noun name plus `aria-expanded` and `aria-controls`. The bar button is "Participants"; the panel's close button is "Close participants". They are different controls doing different things and should not share a name
 
@@ -324,7 +325,8 @@ Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD
 - Chat announces "{name} sent a message" when the panel is closed, never the body
 - Reactions throttled to one announcement per participant per 2s
 - Connection changes announced once, not per retry
-- Touch targets 44px minimum
+- **Touch targets: 44px on the room and pre-join surfaces, 24px minimum elsewhere.** The blanket 44px was above our stated conformance target — WCAG 2.1 AA does not require it, and 2.2 AA sets 24px. Enforcing 44 on desktop dashboard and scheduling screens changes visual density for no accessibility gain. Enforcing it in the room does: those are touch-primary, used one-handed, mid-meeting.
+- `check:targets` measures computed sizes from built CSS and fails below the floor for the surface. The line above used to say "checked every phase" while the work sat in Phase 10 and roughly thirty controls missed it. A claim that is not a script is not a check.
 - Nothing depends on colour alone
 - `axe` clean on every route
 

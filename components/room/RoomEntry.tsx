@@ -208,8 +208,19 @@ export function RoomEntry({ code }: { code: string }) {
     return (
       <Centred>
         <div className="space-y-2">
+          {/*
+            The sentence is announced; the number is not.
+
+            This region ticked once a second for the whole hold, so a screen
+            reader read "This meeting is busy. Joining in 9s…" then 8, then 7 —
+            §9's flooding, through a channel §9 never enumerated. The fact worth
+            hearing is "busy, it will go through on its own", and it does not
+            change. The count stays visible and `aria-hidden`, which is the same
+            division the reconnect bar already uses for its attempt number.
+          */}
           <p className="type-body tabular-nums" role="status" aria-live="polite">
-            This meeting is busy. Joining in {outcome.seconds}s…
+            This meeting is busy. Joining shortly
+            <span aria-hidden> — {outcome.seconds}s</span>
           </p>
           <p className="type-small text-muted-foreground">
             There&rsquo;s nothing to do — it will go through on its own.
@@ -231,7 +242,7 @@ export function RoomEntry({ code }: { code: string }) {
             </p>
           </div>
         </div>
-        <Button asChild className="w-full">
+        <Button size="touch" asChild className="w-full">
           <Link href={outcome.action.href}>{outcome.action.label}</Link>
         </Button>
       </Centred>
