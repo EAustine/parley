@@ -69,7 +69,27 @@ export function ParticipantsPanel({
     <aside
       aria-label="Participants"
       hidden={!open}
-      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-card pb-24 md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
+      // Surface, not content: `--popover` is the plane every other floating
+      // chrome surface in the room already sits on — the mute request, the
+      // replaced notice, the connection bar and pill, the shortcuts hint. This
+      // was `bg-card`, which is the *tile* surface (`Tile`, `ScreenShareStage`),
+      // so the panel was on the wrong plane in the system.
+      //
+      // It is not what makes the boundary. No fill in the set can: the whole
+      // surface ramp lives inside 0.2 of a contrast point against the ground —
+      // card 1.09:1, popover 1.15:1, and even `--secondary`, the lightest
+      // surface token, only 1.29:1. That is what happens when every fill sits
+      // within 22 hex values of `--background`.
+      //
+      // The boundary is the 1px `--tile-border` edge below, at 3.33:1 against
+      // the ground and 2.89:1 against this fill — the only value in the set
+      // that reads as an edge. `--border` would be 1.12:1 against it, invisible.
+      //
+      // Not a shadow. Shadows carry elevation on light grounds by darkening
+      // what is beneath, and on `#0E1013` there is nothing meaningfully darker
+      // to go to; dark interfaces carry elevation with a lighter fill and a
+      // visible edge.
+      className={`${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[60dvh] flex-col rounded-t-xl border-t bg-popover pb-24 md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
       style={{ borderColor: "var(--tile-border)" }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {

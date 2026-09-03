@@ -3244,22 +3244,68 @@ records ~85% empty black — a 360px column of text with no container reads as
 loose text on the room, next to a share region and tiles that *do* have visible
 containers.
 
-The observation was right; the inferred cause was wrong. There is no rendering
-bug to fix, and the treatment is a design decision the plan already assigns to
-Track C, so it is not being picked here — rule 10.
+The observation was right; the inferred cause was wrong.
 
 This is the same figure `CLAUDE.md` already flags for tiles: "`--card` vs
 `--background` is 1.09:1, so they need a boundary `--border` cannot provide at
 1.29:1". Tiles got `--tile-border`. The panels got one hairline of it, which is
 enough to define an edge and not enough to define a surface.
 
-The guard A1 asked for is in `a11y.spec.ts` anyway — it measures the live
-region's rendered box, and asserts the region is carrying text first, so it
+#### What the fill can and cannot do
+
+I proposed raising the fill to `--popover` and quoted it at 1.24:1 against the
+ground. **It is 1.15:1.** Austine caught it, and the correction carries the
+argument: no fill in the palette can carry this boundary. The whole surface ramp
+lives inside 0.2 of a contrast point — card 1.09:1, popover 1.15:1, muted
+1.21:1, and `--secondary`, the lightest surface token, 1.29:1. That is what
+happens when every fill sits within 22 hex values of `--background`.
+
+I also offered a shadow behind an elevation token. Wrong for a different reason:
+shadows convey elevation on light grounds by darkening what is beneath, and on
+`#0E1013` there is nothing meaningfully darker to reach. Dark interfaces carry
+elevation with a lighter fill and a visible edge. The token was not added.
+
+So: **fill to `--popover`, boundary from the 1px `--tile-border` edge, landed in
+Track A rather than deferred to C.** The fill is not what fixes it — it puts the
+panel on the correct plane, matching rule 4's opaque chip. The edge is the fix,
+at 3.33:1 against the ground and 2.89:1 against the fill; `--border` there would
+be 1.12:1 and invisible.
+
+Landing it now rather than in C is the right call for a reason worth recording:
+Track B assesses room layout, and assessing a canvas beside a panel whose
+boundary cannot be seen is the same wasted work Track A exists to prevent.
+
+The codebase had already answered this and the panels had missed it. Every other
+floating surface in the room — `MuteRequestPrompt`, `ReplacedNotice`,
+`ConnectionBar`, `ConnectionPill`, `AudioBlockedPrompt`, `ShortcutsHint` — is
+`--popover` with a `--tile-border` edge. The panels were the only chrome still on
+`bg-card`, which is the *tile* surface (`Tile`, `ScreenShareStage`). This was not
+a new decision; it was an inconsistency.
+
+#### The guard, and which half of it was doing the work
+
+`panels.spec.ts` measures the painted fill and edge, resolving both from the
+room's own custom properties so it asserts the relationship rather than a hex
+value.
+
+The first version put the token-identity check above the ratio checks. Mutating
+the edge to `--border` failed on **the name**, and the ratios never ran — a
+defence being reported as tested while something else did the work. That is the
+`autolink` allow-list mistake in the testing rules, repeated. Reordered so the
+ratios are the gate, re-mutated, and the failure is now "the edge does not read
+against the room ground, expected >= 3". The identity check stays as a
+documented backstop.
+
+The live-region guard A1 asked for is in `a11y.spec.ts` regardless — it measures
+the region's rendered box, and asserts the region is carrying text first, so it
 cannot pass against an empty one.
 
 ### Checks
 
-`check:media` **46/49**. All five new tests pass. Three pre-existing tests fail
+`check:media` **46/49** at the point Track A's first two items landed, then
+`panels.spec.ts` and `a11y.spec.ts` green at 15/15 after the surface fix — axe
+included, which matters because it recomputes contrast against the new fill.
+All six new tests pass. Three pre-existing tests fail
 in the full run and pass in isolation in 4.3s, 5.6s and 28.0s against 2.6m,
 1.7m and 2.0m timeouts — all three at `joinAs`, waiting on the room heading,
 before reaching anything either fix touches, and all three earlier in the run
