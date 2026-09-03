@@ -195,7 +195,11 @@ Fifty serial tests is a ceiling worth attacking rather than accepting, and the c
 
 **Give each test its own meeting code and the suite parallelises.** Turn on `fullyParallel` with workers. Tests that need several participants in one room create several contexts inside one test — that test still owns its room, and different tests own different rooms.
 
-Check LiveKit's concurrent-participant ceiling before setting the worker count. Workers times participants is the number that matters, and a free-tier limit will surface as flakes that look like race conditions.
+Check LiveKit's concurrent-participant ceiling before setting the worker count. Workers times participants is the number that matters, and a limit will surface as flakes that look like race conditions.
+
+**Contention flakes are fixed by removing the contention, not by lowering the worker count.** Real-media tests belong in their own Playwright project at `workers: 1`; everything else — meetings, chat, ics, layout — runs parallel. That keeps the parallelism win on the bulk of the suite while the handful of tests that actually publish tracks run without competing.
+
+A test that fails once under load and passes seven times in isolation has a understood failure mode, which is fine, but it must be made deterministic rather than tolerated. Re-running until green teaches the suite to be ignored, and false comfort is worse than no check.
 
 **Track B's tests mostly do not need a room at all.** Layout is a function of participant count and container size; it is not a function of media. Grid breakpoints, tile geometry, filmstrip arrangement, and the share-region switch can be asserted at component level with synthetic participant data, real rendering, and measured boxes.
 
