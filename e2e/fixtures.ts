@@ -30,6 +30,7 @@ export const test = base.extend<{
   meetingCode: string;
   hostEmail: string;
   hostedMeeting: { code: string; email: string };
+  hostedSchedule: { code: string; email: string };
 }>({
   meetingCode: async ({}, use) => {
     const code = await createMeeting();
@@ -70,6 +71,52 @@ export const test = base.extend<{
    * them, and can never unmute anyone — was covered only from the side that
    * cannot use it.
    */
+  /**
+   * A *scheduled* meeting and the account that owns it.
+   *
+   * `hostedMeeting` is live, because that is what a room test needs. The
+   * signed-in surfaces need the other kind: a scheduled meeting is what puts a
+   * row on the dashboard's upcoming list and what gives `/schedule/[code]`
+   * something to render.
+   *
+   * A week out, relative to the run. A fixed date would age past the window the
+   * dashboard sorts on, which is the failure two scheduling tests already had:
+   * a fixture that is correct on the day it is written and wrong later.
+   */
+  hostedSchedule: async ({}, use) => {
+    const host = await createFixtureHost();
+    const start = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const code = await createMeeting({
+      host: host.id,
+      status: "scheduled",
+      title: "Quarterly review",
+      scheduledStart: start,
+      scheduledEnd: new Date(start.getTime() + 30 * 60 * 1000),
+      timezone: "Africa/Accra",
+    });
+    /*
+     * And one that is over, so the dashboard renders both of its sections.
+     *
+     * `MeetingRow` is a different component in the past: the badges change and
+     * Copy link and Join are gated out, leaving Details alone. A state list that
+     * only ever sees an upcoming row has not seen the row markup that half the
+     * dashboard is made of.
+     */
+    const week = 7 * 24 * 60 * 60 * 1000;
+    await createMeeting({
+      host: host.id,
+      status: "ended",
+      title: "Last month's retro",
+      scheduledStart: new Date(Date.now() - week),
+      scheduledEnd: new Date(Date.now() - week + 30 * 60 * 1000),
+      endedAt: new Date(Date.now() - week + 30 * 60 * 1000),
+      timezone: "Africa/Accra",
+    });
+    await use({ code, email: host.email });
+    // `host_id` is `on delete cascade`, so the meeting goes with the account.
+    await deleteFixtureHost(host.id);
+  },
+
   hostedMeeting: async ({}, use) => {
     const host = await createFixtureHost();
     const code = await createMeeting({ host: host.id });

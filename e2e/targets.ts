@@ -50,6 +50,18 @@ export type Result = { measured: number; undersized: string[]; seen: string[] };
  *   and clips it; the shortcuts hint and the live region are there for a screen
  *   reader and are not pointer targets. Detected by the clip, not by the class
  *   name — the class is what a regression would remove.
+ * - **A link inside a sentence.** WCAG 2.2 SC 2.5.8 excludes a target whose
+ *   "size is otherwise constrained by the line-height of non-target text", and
+ *   the dashboard's empty state — "No meetings yet. Start one now, or *schedule
+ *   for later*." — is exactly that. Padding it to 24px would break the
+ *   sentence to satisfy a criterion that does not ask for it.
+ *
+ *   Narrowly detected, because the exception is narrow: the element must be
+ *   laid out inline **and** its parent must hold text of its own beside it. A
+ *   standalone inline link with no prose around it — `/schedule`'s "Back to
+ *   meetings" — is not in a sentence and is measured. The `<Link>`s in a
+ *   meeting row sit in a flex container with no text in it, and are measured
+ *   too, which matters because they are the row's real actions.
  *
  * Disabled controls are measured. They become enabled without changing shape,
  * and chat's Send is disabled until you type — excluding it would leave the
@@ -81,6 +93,19 @@ export async function measureTargets(page: Page, floor: number): Promise<Result>
 
       // The sr-only signature: clipped away rather than laid out.
       if (style.clipPath !== "none" || style.clip !== "auto") continue;
+
+      // SC 2.5.8's inline exception: laid out inline, with prose beside it in
+      // the same parent. Text in a sibling *element* does not count — a heading
+      // under a back-link is not the sentence the link sits in.
+      if (style.display.startsWith("inline") && style.display !== "inline-flex") {
+        const parent = el.parentElement;
+        const prose = parent
+          ? [...parent.childNodes].some(
+              (n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "",
+            )
+          : false;
+        if (prose) continue;
+      }
 
       const label =
         el.getAttribute("aria-label") ??

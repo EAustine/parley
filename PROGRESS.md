@@ -4377,3 +4377,124 @@ parallel, 22 media serial, clean on a full run rather than on a retry.
 `check:ics` 69, `check:permissions` 39, `check:contrast` 25, `check:codes` 6,
 `check:deps` 5, `check:bundle` 10. `lint` and `typecheck` clean — this time both
 were run.
+
+---
+
+## v1.2 close-out, part two — the two surfaces neither check had seen
+
+The dashboard and the scheduling screens were in no state list: axe had never
+scanned a route behind auth, and the touch-target check inherited the gap when
+it copied axe's list. Both now walk them.
+
+### One list, not two copies
+
+`e2e/states.ts` holds the states; `a11y.spec.ts` and `targets.spec.ts` both
+iterate it. They were "the same list" by transcription before, which is the same
+list right up until someone edits one of them — and the signed-in surfaces are
+exactly what a copy loses.
+
+Five new states, reached in one sign-in each:
+
+| State | Fixture | Controls |
+|---|---|---|
+| the dashboard, upcoming and past | `hostedSchedule` | 9 |
+| the dashboard, no meetings yet | `hostEmail` | 5 |
+| the schedule form | — | 10 |
+| a scheduled meeting | `hostedSchedule` | 9 |
+| a scheduled meeting, being edited | — | 11 |
+
+`hostedSchedule` is new: a host plus a scheduled meeting a week out, plus one
+that ended a week ago so the dashboard renders **both** its sections. `MeetingRow`
+is different markup in the past — the badges change and Copy link and Join are
+gated out — and a list that only ever saw an upcoming row had not seen half of
+what the dashboard is made of.
+
+The `atLeast` figures are measured, not guessed. Four of the public ones were
+still 1 or 2 from the first pass — placeholders that would have accepted a page
+rendering almost nothing. They are now the states' real counts: 5, 3, 1, 3, 2, 5.
+
+### Three findings, in rising order of how much they matter
+
+**The back link was 72×16.** `← Meetings`, on `/schedule` and
+`/schedule/[code]`: a bare inline `<a>` at 13/18 with no box of its own. WCAG 2.2
+AA SC 2.5.8 wants 24. Its inline exception does not cover it — the exception is
+for a target "in a sentence, or … constrained by the line-height of non-target
+text", and this one stands alone above the heading. Now `inline-flex min-h-7`:
+28px rather than exactly 24, because a control that clears a floor by 0.00px
+clears it on rounding, and 28 is the height the small buttons on that surface
+already use.
+
+**The empty state's inline link is the exception, and the check now knows it.**
+"No meetings yet. Start one now, or *schedule for later*." — 118×19, inside a
+sentence, and padding it to 24 would break the sentence to satisfy a criterion
+that does not ask for it. `measureTargets` excludes a target that is laid out
+inline **and** has prose beside it in the same parent. Deliberately narrow: text
+in a sibling *element* does not count, which is why the back link above is still
+measured, and why the `<Link>`s in a meeting row — flex children, no prose around
+them — are measured too.
+
+**The dashboard scrolled sideways, and neither check could see it.** WCAG 2.1
+**AA SC 1.4.10 Reflow**: no horizontal scrolling at 320 CSS pixels. The document
+measured **391px against 320 — and against 375**, the phone width this suite
+already runs at. The header's action group is three `shrink-0` buttons and two
+gaps at 383px inside 327px of content; `flex-wrap` was on the outer container,
+which wraps the group as one unit rather than inside it. One class fixes it.
+
+The target check passes a page like that — the controls keep their size, which
+is all it measures — and axe implements no reflow rule at all. So it is now
+asserted directly, across every state in both lists, at 320px. **The dashboard
+was the only failure**: every other state measures exactly the viewport width.
+
+Mutation: removing `flex-wrap` fails two of the three reflow tests with "the
+dashboard, with an upcoming and a past meeting is 391px wide in a 320px
+viewport". The public states stay green, which is the point — the assertion is
+specific, not a blanket.
+
+### Dark, for the first time outside the room
+
+`/j` and `/room` force `.dark`, so every axe run to date has seen the dark tokens
+only on room markup. The dashboard and the scheduling screens are the routes that
+actually switch — `defaultTheme="system"` — and a person whose OS is dark had
+never had this markup checked at all. `emulateMedia({ colorScheme: "dark" })`
+rather than clicking the toggle: the media query is the state a first-time
+visitor arrives in. Clean, and the geometry is theme-invariant, so the target
+check stays single-pass.
+
+### A retry that is not flake tolerance
+
+Three tests in one run died with `ConnectTimeoutError` reaching Supabase while
+creating fixtures — two of them tests that predate any of this. A later run lost
+26 tests the same way, and `check:rls` passed against the same project minutes
+afterwards. `serviceFetch` now retries once, on a failed connection only.
+
+That is not the thing `CLAUDE.md` forbids. The rule there is about re-running a
+*test* until it passes, which hides contention the suite created. A TCP connect
+that never completed produced no result to judge, and no assertion is retried: an
+HTTP response of any status resolves and is handed straight back to fail on.
+
+### Checks
+
+`check:media` **85/85** — 63 app parallel, 22 media serial. `check:targets` 10/10.
+Every static check green.
+
+### Left open, deliberately
+
+**Opening a Radix `Select` fails axe twice**, so the two listbox states are not in
+the list. `aria-hidden-focus` fires because Radix's `hideOthers()` marks the shell
+`aria-hidden` while 12 focusable elements sit inside it, and
+`scrollable-region-focusable` fires on the select viewport. The shortcuts dialog
+escapes both because axe exempts a subtree behind an open `role="dialog"
+aria-modal="true"`; a `role="listbox"` gets no such exemption. Radix-inherent
+rather than ours, but "scan with the select open" is a decision about how to
+answer axe, not a free addition.
+
+**Form field boundaries are 1.25:1 in light and 1.44:1 in dark**, against SC
+1.4.11's 3:1. `--input` as a border on `bg-transparent` is every `Input` and both
+`SelectTrigger`s. `check:contrast` passes because `scripts/contrast.mjs` treats
+`--input` only as a *surface* for text, never as a boundary against
+`--background` — the same reasoning `CLAUDE.md` already applies to
+`--tile-border`, applied to a surface that has no equivalent token. That is a
+token decision, and rule 10 says those get discussed.
+
+**The marketing and sign-in pages are still scanned in light only.** Same gap as
+the dashboard's, one surface family over.

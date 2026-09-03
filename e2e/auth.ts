@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import { serviceFetch } from "./meeting-admin";
+
 /**
  * Sign a page in, the way `check-meetings.mjs` does: a magic link minted with
  * the service role and consumed through the app's own callback.
@@ -22,7 +24,9 @@ export async function signIn(page: Page, email: string, next = "/dashboard") {
     throw new Error("Run via `npm run check:media`, which loads .env.local.");
   }
 
-  const response = await fetch(`${supabase}/auth/v1/admin/generate_link`, {
+  // `serviceFetch`, for the same reason the fixtures use it: a connect
+  // timeout here fails a test that never reached the page it is about.
+  const response = await serviceFetch(`${supabase}/auth/v1/admin/generate_link`, {
     method: "POST",
     headers: {
       apikey: service,

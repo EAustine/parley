@@ -1,6 +1,7 @@
-import { endedCode, expect, scheduledCode, test } from "./fixtures";
-import { generateMeetingCode } from "@/lib/meetings/code";
+import { expect, test } from "./fixtures";
+import { signIn } from "./auth";
 import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { EMPTY_DASHBOARD, PUBLIC_STATES, SIGNED_IN_STATES } from "./states";
 import { assertFloor } from "./targets";
 
 /**
@@ -19,9 +20,9 @@ import { assertFloor } from "./targets";
  * value back is the mistake this project keeps making; the letterboxed tile
  * declared `aspect-ratio: 16/9` correctly and rendered 1956px into 1337px.
  *
- * The states are `a11y.spec.ts`'s, deliberately. A route with a panel open is a
- * different surface from the same route with it closed, and both are places a
- * control can be squeezed.
+ * The states come from `states.ts`, which axe walks too. They used to be the
+ * same list by copy, which is the same list only until someone edits one of
+ * them; the signed-in surfaces were in neither.
  *
  * **The floor is per surface, not global.** 44px on the room and pre-join —
  * touch-primary, used one-handed, mid-meeting — and WCAG 2.2 AA's 24px
@@ -29,49 +30,25 @@ import { assertFloor } from "./targets";
  * accessibility gain.
  */
 
-/** Well-formed and not in the database, generated rather than typed. */
-const UNKNOWN_CODE = generateMeetingCode();
-
 const DESKTOP = { width: 1280, height: 800 };
 const PHONE = { width: 375, height: 812 };
 
 /**
- * `atLeast` is a vacuity guard, not a count worth maintaining.
+ * Both widths, every state.
  *
- * Every filter in `measureTargets` can silently empty the set — a renamed
- * utility, a selector that stops matching, a page that renders a skeleton
- * because the wait was too short. Without a floor on what was *measured*, all
- * of those report a clean run. It fired on the first run for a good reason:
- * pre-join renders three controls here, not the five I guessed.
+ * A control squeezed by its parent is squeezed at the width where the parent
+ * runs out of room, and that is not always the phone — a fixed-width panel gets
+ * tighter as the window narrows around it, and a wrapping toolbar gets tighter
+ * as it widens into one row.
  */
-const STATES = [
-  { name: "the marketing page", floor: 24, atLeast: 3, path: () => "/" },
-  /**
-   * Pre-join as it lands: the permission prompt, the name field, and Join.
-   *
-   * The device selectors and the mic and camera toggles appear only once
-   * permission is answered, which means real capture — so that half of the
-   * screen is measured by `prejoin.spec.ts` in the serial `media` project.
-   * Three is what this state renders, not a number lowered to make it pass.
-   */
-  { name: "pre-join", floor: 44, atLeast: 3, path: (live: string) => `/j/${live}` },
-  { name: "a meeting that has ended", floor: 44, atLeast: 1, path: () => `/j/${endedCode()}` },
-  { name: "a meeting not yet started", floor: 44, atLeast: 1, path: () => `/j/${scheduledCode()}` },
-  { name: "an unknown code", floor: 44, atLeast: 1, path: () => `/j/${UNKNOWN_CODE}` },
-  { name: "sign-in", floor: 24, atLeast: 2, path: () => "/sign-in" },
-] as const;
+const VIEWPORTS = [DESKTOP, PHONE];
 
 test.describe("touch targets, by state", () => {
-  for (const state of STATES) {
+  for (const state of PUBLIC_STATES) {
     test(`${state.name} clears its ${state.floor}px floor`, async ({ page, meetingCode }) => {
-      // Both widths. A control squeezed by its parent is squeezed at the width
-      // where the parent runs out of room, and that is not always the phone —
-      // a fixed-width panel gets tighter as the window narrows around it.
-      for (const viewport of [DESKTOP, PHONE]) {
+      for (const viewport of VIEWPORTS) {
         await page.setViewportSize(viewport);
-        await page.goto(state.path(meetingCode));
-        await page.waitForLoadState("networkidle");
-
+        await state.reach(page, meetingCode);
         await assertFloor(page, {
           floor: state.floor,
           atLeast: state.atLeast,
@@ -80,6 +57,47 @@ test.describe("touch targets, by state", () => {
       }
     });
   }
+});
+
+/**
+ * The surfaces behind auth, which the 24px floor was written for.
+ *
+ * One sign-in per test rather than one per state: Supabase invalidates the
+ * previous magic link when a new one is minted for the same address, so signing
+ * in repeatedly is both slower and a race waiting to be written. Each state
+ * still navigates for itself.
+ */
+test.describe("touch targets, signed in", () => {
+  test("every signed-in state clears the 24px floor", async ({ page, hostedSchedule }) => {
+    test.setTimeout(180_000);
+    await signIn(page, hostedSchedule.email, "/dashboard");
+
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      for (const state of SIGNED_IN_STATES) {
+        await state.reach(page, hostedSchedule.code);
+        await assertFloor(page, {
+          floor: state.floor,
+          atLeast: state.atLeast,
+          label: `${state.name} at ${viewport.width}px`,
+        });
+      }
+    }
+  });
+
+  test("the empty dashboard clears the 24px floor", async ({ page, hostEmail }) => {
+    await signIn(page, hostEmail, "/dashboard");
+
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      await EMPTY_DASHBOARD.reach(page, undefined as never);
+      await assertFloor(page, {
+        floor: EMPTY_DASHBOARD.floor,
+        atLeast: EMPTY_DASHBOARD.atLeast,
+        label: `${EMPTY_DASHBOARD.name} at ${viewport.width}px`,
+      });
+    }
+  });
 });
 
 test.describe("touch targets, in the room", () => {

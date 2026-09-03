@@ -86,7 +86,14 @@ export default async function DashboardPage() {
             Signed in as {user.email}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* `flex-wrap` on the group, not just on its parent.
+            WCAG 2.1 AA SC 1.4.10 asks for no horizontal scrolling at 320px, and
+            this row was 383px of buttons — Start meeting, Schedule meeting,
+            Sign out, and two gaps — inside 327px of content. Every button
+            carries `shrink-0`, so nothing gave and the whole page scrolled
+            sideways instead: 391px against 320, and against 375. The outer
+            container already wrapped, but it wraps this group as one unit. */}
+        <div className="flex flex-wrap items-center gap-2">
           <StartMeetingButton />
           {/* §3.10's second primary action. The empty state below has invited
               it since Phase 2; this is the button that invitation meant. */}

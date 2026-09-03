@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { type Page } from "@playwright/test";
-import { endedCode, expect, scheduledCode, test } from "./fixtures";
-import { generateMeetingCode } from "@/lib/meetings/code";
+import { expect, test } from "./fixtures";
+import { signIn } from "./auth";
+import { EMPTY_DASHBOARD, PUBLIC_STATES, SIGNED_IN_STATES } from "./states";
 import { PRESENCE_SETTLE_MS } from "@/lib/hooks/usePresence";
 
 import { joinAs, leave, settleAnimations, wakeControls, type Participant } from "./room.helpers";
@@ -25,16 +26,6 @@ import { joinAs, leave, settleAnimations, wakeControls, type Participant } from 
  * traverse and a VoiceOver session, recorded in PROGRESS as not done by this
  * file.
  */
-
-/**
- * Well-formed and not in the database — the unknown-code state, not a 404.
- *
- * Generated rather than typed. A hand-written code is one keystroke away from
- * containing a character outside the alphabet, which `/j/[code]` rejects as
- * malformed *before* any lookup — so the test would render a different state
- * than the one it names and still pass. Conventions, `CLAUDE.md`.
- */
-const UNKNOWN_CODE = generateMeetingCode();
 
 /**
  * What axe is pointed at, and what it is not.
@@ -74,27 +65,125 @@ function expectClean(results: Awaited<ReturnType<typeof scan>>, state: string) {
 
 test.describe("axe, by state", () => {
   /**
-   * The path is a function of the fixtures rather than a literal, because two
-   * of these codes are created per run now and one is created per test. The
-   * pre-join scan is the only entry that needs a live meeting, and it takes the
-   * test's own — the others are read-only states nothing joins.
+   * The list is `states.ts`'s, shared with the touch-target check.
+   *
+   * The pre-join scan is the only entry that needs a live meeting and takes the
+   * test's own; the others are read-only states nothing joins.
    */
-  for (const [state, pathFor] of [
-    ["the marketing page", () => "/"],
-    ["pre-join", (live: string) => `/j/${live}`],
-    ["a meeting that has ended", () => `/j/${endedCode()}`],
-    ["a meeting not yet started", () => `/j/${scheduledCode()}`],
-    ["an unknown code", () => `/j/${UNKNOWN_CODE}`],
-    ["sign-in", () => "/sign-in"],
-  ] as const) {
-    test(`${state} is clean`, async ({ page, meetingCode }) => {
-      await page.goto(pathFor(meetingCode));
-      // Pre-join asks for devices on mount; let the state settle before
-      // scanning, or axe reads a skeleton rather than the screen.
-      await page.waitForLoadState("networkidle");
-      expectClean(await scan(page), state);
+  for (const state of PUBLIC_STATES) {
+    test(`${state.name} is clean`, async ({ page, meetingCode }) => {
+      await state.reach(page, meetingCode);
+      expectClean(await scan(page), state.name);
     });
   }
+});
+
+/**
+ * The surfaces behind auth, which axe had never reached.
+ *
+ * Every state scanned until now was public, so the dashboard and the scheduling
+ * screens — the two places light mode is actually used, and the densest markup
+ * in the product — were outside the net entirely. `signIn` exists now, so the
+ * gap was only ever the state list.
+ *
+ * One sign-in per test: Supabase invalidates the previous magic link when a new
+ * one is minted for the same address.
+ */
+test.describe("axe, signed in", () => {
+  test("every signed-in state is clean", async ({ page, hostedSchedule }) => {
+    test.setTimeout(180_000);
+    await signIn(page, hostedSchedule.email, "/dashboard");
+
+    for (const state of SIGNED_IN_STATES) {
+      await state.reach(page, hostedSchedule.code);
+      expectClean(await scan(page), state.name);
+    }
+  });
+
+  /**
+   * And in dark, which nothing outside the room has ever been scanned in.
+   *
+   * `/j` and `/room` force `.dark`, so every axe run to date has seen these
+   * tokens only on room markup. The dashboard and the scheduling screens are
+   * the routes that actually *switch*: `defaultTheme="system"`, and a person
+   * whose OS is dark has never had this markup checked at all.
+   *
+   * `emulateMedia` rather than clicking the toggle: the toggle writes a
+   * preference and re-renders, while the media query is the state a first-time
+   * visitor arrives in.
+   */
+  test("every signed-in state is clean in dark", async ({ page, hostedSchedule }) => {
+    test.setTimeout(180_000);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await signIn(page, hostedSchedule.email, "/dashboard");
+
+    for (const state of SIGNED_IN_STATES) {
+      await state.reach(page, hostedSchedule.code);
+      expectClean(await scan(page), `${state.name}, in dark`);
+    }
+  });
+
+  test("the empty dashboard is clean", async ({ page, hostEmail }) => {
+    await signIn(page, hostEmail, "/dashboard");
+    await EMPTY_DASHBOARD.reach(page, undefined as never);
+    expectClean(await scan(page), EMPTY_DASHBOARD.name);
+  });
+});
+
+/**
+ * SC 1.4.10 Reflow, which axe has no rule for.
+ *
+ * The criterion is 320 CSS pixels with no horizontal scrolling — 400% zoom on a
+ * 1280px screen, and roughly the narrowest phone. Nothing in the suite measured
+ * it, and adding the dashboard to the state list is what surfaced it: the
+ * document was 391px wide at both 320 and 375, because the header's action
+ * group is three `shrink-0` buttons that had nowhere to wrap.
+ *
+ * A page that scrolls sideways is not a subtle failure. It is the whole layout
+ * sliding under the thumb while you try to press something.
+ */
+test.describe("reflow", () => {
+  const NARROW = { width: 320, height: 812 };
+
+  /** Rendered geometry: the document's own width against the viewport's. */
+  async function sideways(page: Page) {
+    return page.evaluate(() => {
+      const el = document.documentElement;
+      return { scroll: el.scrollWidth, client: el.clientWidth };
+    });
+  }
+
+  test("no public state scrolls sideways at 320px", async ({ page, meetingCode }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(NARROW);
+    for (const state of PUBLIC_STATES) {
+      await state.reach(page, meetingCode);
+      const { scroll, client } = await sideways(page);
+      expect(scroll, `${state.name} is ${scroll}px wide in a ${client}px viewport`)
+        .toBeLessThanOrEqual(client);
+    }
+  });
+
+  test("no signed-in state scrolls sideways at 320px", async ({ page, hostedSchedule }) => {
+    test.setTimeout(120_000);
+    await signIn(page, hostedSchedule.email, "/dashboard");
+    await page.setViewportSize(NARROW);
+    for (const state of SIGNED_IN_STATES) {
+      await state.reach(page, hostedSchedule.code);
+      const { scroll, client } = await sideways(page);
+      expect(scroll, `${state.name} is ${scroll}px wide in a ${client}px viewport`)
+        .toBeLessThanOrEqual(client);
+    }
+  });
+
+  test("nor does the empty dashboard", async ({ page, hostEmail }) => {
+    await signIn(page, hostEmail, "/dashboard");
+    await page.setViewportSize(NARROW);
+    await EMPTY_DASHBOARD.reach(page, undefined as never);
+    const { scroll, client } = await sideways(page);
+    expect(scroll, `the empty dashboard is ${scroll}px wide in a ${client}px viewport`)
+      .toBeLessThanOrEqual(client);
+  });
 });
 
 test.describe("axe, in the room", () => {

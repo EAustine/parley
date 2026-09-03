@@ -36,10 +36,39 @@ function env(name: string): string {
   return value;
 }
 
-const rest = (path: string, init: RequestInit = {}) => {
+/**
+ * One retry, on a failed connection only.
+ *
+ * Three tests in one run died with `ConnectTimeoutError` reaching Supabase
+ * while creating their fixtures — including two that predate this file's last
+ * change. That is the network, not the suite: an HTTP response of any status
+ * still resolves, and is passed straight back to the caller to fail on.
+ *
+ * This is not the flake tolerance `CLAUDE.md` forbids. That rule is about
+ * re-running a *test* until it passes, which hides contention the suite
+ * created. A TCP connect that never completed produced no result to judge, and
+ * nothing about the assertion is being retried.
+ */
+export async function serviceFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (first) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      return await fetch(url, init);
+    } catch {
+      throw first;
+    }
+  }
+}
+
+const rest = (path: string, init: RequestInit = {}): Promise<Response> => {
   const url = env("NEXT_PUBLIC_SUPABASE_URL").replace(/\/$/, "");
   const service = env("SUPABASE_SERVICE_ROLE_KEY");
-  return fetch(`${url}${path}`, {
+  return serviceFetch(`${url}${path}`, {
     ...init,
     headers: {
       apikey: service,
