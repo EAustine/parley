@@ -12,6 +12,34 @@ export type Participant = { context: BrowserContext; page: Page; name: string };
  * display-name handoff between the two screens is a thing that has broken
  * before, and a test that skipped pre-join would not have caught it.
  */
+/**
+ * A distinct client address per participant.
+ *
+ * §7 rate-limits the token endpoint per IP, and `clientIp` falls back to the
+ * literal `"unknown"` when no proxy headers are present — which behind
+ * `next start` on localhost is every request. So every browser context in every
+ * worker shared one 60/min bucket, and the suite was quietly spending a budget
+ * meant for one network.
+ *
+ * It finally bit: `grid.spec`'s seventeen-participant sweep, running beside
+ * three other workers, exhausted the bucket and the pre-join screen did exactly
+ * what §7 asks — held, and retried with backoff — for ten minutes, until the
+ * test timed out with the Join button correctly disabled.
+ *
+ * Giving each participant its own address is not weakening the guard; it is
+ * making the harness resemble production, where seventeen people joining from
+ * seventeen laptops are seventeen addresses. The limiter still runs, per IP,
+ * unchanged. The one test that is *about* the 429 path intercepts the route
+ * itself (`media.spec.ts`) and is unaffected by any of this.
+ */
+let clientSeq = 0;
+function nextClientIp(): string {
+  clientSeq += 1;
+  // Worker-unique via the pid, participant-unique via the counter.
+  const worker = process.pid % 251;
+  return `10.${worker}.${Math.floor(clientSeq / 254)}.${(clientSeq % 254) + 1}`;
+}
+
 export async function joinAs(
   browser: Browser,
   name: string,
@@ -39,6 +67,7 @@ export async function joinAs(
 ): Promise<Participant> {
   const context = await browser.newContext({
     permissions: ["camera", "microphone"],
+    extraHTTPHeaders: { "x-real-ip": nextClientIp() },
     // Phase 10 checks the room at phone width. Set on the context rather than
     // resized afterwards, so the first paint is the one being measured — the
     // control bar's overflow was a first-paint problem.

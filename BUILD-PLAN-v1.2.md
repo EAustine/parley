@@ -86,7 +86,9 @@ Hover: 1.04 scale and a background lift over 120ms. Press: 0.96, 80ms. Both supp
 
 Width 360px on desktop. Slide in over 180ms on the standard easing.
 
-Message typography carries the hierarchy: sender name at caption weight in `--muted-foreground`, timestamp beside it at the same weight and one step dimmer, body at 15/22 in `--foreground`. 4px between name and body, 16px between message groups, 24px between a group and a system message.
+Message typography carries the hierarchy: sender name at caption weight in `--muted-foreground`, timestamp beside it at 12/16 weight 400 against the name's 500, body at 15/22 in `--foreground`.
+
+"One step dimmer" was wrong in the first draft — nothing in the set is dimmer than `--muted-foreground`, and it was solving a problem that does not exist. Name and timestamp are peers; both are metadata. The hierarchy that carries meaning is **metadata against body**, not name against timestamp. The weight step is a nice touch and is not load-bearing; identical treatment would also be correct. 4px between name and body, 16px between message groups, 24px between a group and a system message.
 
 **System messages are visually quieter and structurally different** — centred, 12px, `--muted-foreground`, no name, no timestamp. Right now they compete with real messages.
 

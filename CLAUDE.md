@@ -184,7 +184,11 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 | `--muted-foreground` | all | 4.5 | 5.08 |
 | `--state-warning` | all | 4.5 | 6.49 |
 | `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
-| `--tile-border` | `--background` only — the room ground | 3.0 | 3.33 |
+| `--tile-border` | boundary use only: the room ground, and the panel edge on `--popover` | 3.0 | 3.33 |
+
+`--tile-border` is the boundary colour for a surface that has no usable fill contrast against what it sits on — which in this palette is every surface, since the whole ramp spans 0.2 of a contrast point. Tiles and panels both qualify. It is never a text colour.
+
+For a boundary, the pairing that matters is the edge against **the thing it separates the surface from**: 3.33:1 against `--background`, which clears the 3:1 non-text threshold. The 2.89:1 figure is the edge against the panel's own fill — the inner side of the line — and does not need to clear 3:1 independently.
 | — | `scrim-over-white` permits `--foreground` only | 4.5 | 7.01 |
 
 **`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` currently computes foreground against opaque tokens only, so the one rule the room chrome depends on is enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
@@ -302,11 +306,18 @@ Radius `0.5rem`. Tiles `0.75rem`. Call controls are circles: 48px for mic, camer
 |---|---|---|
 | State toggle | 120ms | `cubic-bezier(0.2, 0, 0, 1)` |
 | Speaking ring | 120ms | linear |
-| Panel open/close | 180ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Panel open | 180ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Panel close | instant, by design | — |
 | Grid reflow | 200ms | `cubic-bezier(0.2, 0, 0, 1)` |
 | Reaction lifespan | 2400ms | ease-out |
 
 All motion answers a user action. No ambient animation. `prefers-reduced-motion: reduce` removes travel, keeps opacity.
+
+**Panels animate in and snap out, deliberately.** The closed state is the `hidden` attribute, and our own base layer makes that `display: none !important` — declared there precisely so the guarantee does not rest on a third-party reset. Nothing transitions out of `display: none`, and that is an acceptable trade rather than a limitation to engineer around.
+
+Entrance motion tells you where something came from. Exit motion mostly tells you something is leaving, which the user already knows because they clicked to close it. The swap case is better instant too: 180ms total rather than a 360ms sequential close-then-open, which C3's no-simultaneous-transition rule would otherwise force.
+
+If the snap ever reads as abrupt in use, `@starting-style` with `transition-behavior: allow-discrete` is the upgrade path — it keeps `[hidden]` intact and degrades to instant on browsers that lack it. Judge that in a browser, not on paper.
 
 ---
 

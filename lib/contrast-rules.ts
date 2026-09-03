@@ -67,7 +67,7 @@ export const RULES: ContrastRule[] = [
     token: "--tile-border",
     surfaces: ["--background"],
     threshold: NON_TEXT,
-    note: "The room ground only. A camera-off tile has no fill contrast to fall back on (--card on --background is 1.09:1), so this border is the only thing identifying the tile as a component — which puts it under WCAG 1.4.11.",
+    note: "boundary use only — the room ground, and the panel edge on --popover",
   },
   { token: "--ring", surfaces: ALL_SURFACES, threshold: NON_TEXT },
   {

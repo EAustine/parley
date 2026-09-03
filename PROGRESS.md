@@ -3710,3 +3710,63 @@ during a swap, which a cross-fade would break.
 
 `check:media` **60/60** — 43 app parallel, 17 media serial. All 375 static
 checks green.
+
+### The documents answered two of the three questions differently
+
+**Panel close stays instant.** I had asked, and been told, to add exit motion via
+`@starting-style`; `CLAUDE.md` then settled it the other way — "Panel close |
+instant, by design" — with the reasoning that makes it obviously right:
+"Entrance motion tells you where something came from. Exit motion mostly tells
+you something is leaving, which the user already knows because they clicked to
+close it." And the swap is better instant too: 180ms rather than the 360ms
+sequential close-then-open that C3's no-simultaneous-transition rule would
+otherwise force. `@starting-style` is recorded as the upgrade path if the snap
+ever reads as abrupt — "judge that in a browser, not on paper". Nothing was
+built, which is the only reason this cost nothing.
+
+**"One step dimmer" was withdrawn as wrong.** Not adjudicated between my three
+options — the premise was rejected: "nothing in the set is dimmer than
+`--muted-foreground`, and it was solving a problem that does not exist. Name and
+timestamp are peers; both are metadata. The hierarchy that carries meaning is
+**metadata against body**." The weight step stays as a nice touch and is
+explicitly not load-bearing.
+
+So my test was wrong in the way this project cares about: it asserted
+`timeWeight < nameWeight` as a gate, which would have failed a legitimate future
+change to identical treatment. It now allows identical and pins the pairing that
+does carry meaning, which the assertions above it already covered.
+
+**`--tile-border` is now "boundary use only".** The table records the room ground
+and the panel edge on `--popover`, and — the part I had not worked out — that for
+a boundary the pairing that matters is the edge against *what it separates the
+surface from*. 3.33:1 against `--background` is the figure; the 2.89:1 inner side
+against the panel's own fill does not need to clear 3:1 independently. So
+`surfaces` stays `["--background"]` and only the label and note changed.
+
+`scripts/contrast.mjs` and `lib/contrast-rules.ts` carry the same rules twice and
+cross-check each other at run time, so both needed the edit. The generated
+snapshot row now matches CLAUDE.md's row character for character.
+
+### The rate-limit bucket stopped being theoretical
+
+Recorded after the parallelisation as a ceiling with "smaller headroom than the
+worker count implies". It bit: `grid.spec`'s seventeen-participant sweep,
+running beside three other workers, exhausted §7's 60/min bucket and the
+pre-join screen did exactly what §7 asks — held, and retried with backoff — for
+**ten minutes**, until the test timed out with the Join button correctly
+disabled. The product was right; the harness was wrong.
+
+`clientIp` falls back to the literal `"unknown"` when no proxy headers are
+present, which behind `next start` on localhost is every request. So every
+context in every worker shared one bucket. `joinAs` now sets a distinct
+`x-real-ip` per participant, which is not weakening the guard — it is making the
+harness resemble production, where seventeen people joining from seventeen
+laptops are seventeen addresses. The limiter still runs, per IP, unchanged, and
+the one test that is *about* the 429 path intercepts the route itself.
+
+`grid.spec` went from a ten-minute timeout back to its usual minute.
+
+### Checks
+
+`check:media` **60/60** — 43 app parallel in 2.3m, 17 media serial in 3.1m. All
+375 static checks green.

@@ -11,8 +11,14 @@
  * regenerate them from `npm run check:contrast -- --snapshot`, do not hand-edit.
  *
  * Why permitted surfaces rather than "check everything": chasing every surface
- * would push --state-critical so light it stops reading as red, and --tile-border
- * is single-purpose — it belongs to the room ground and nowhere else.
+ * would push --state-critical so light it stops reading as red.
+ *
+ * --tile-border is the boundary colour for a surface with no usable fill
+ * contrast against what it sits on — which in this palette is every surface,
+ * since the whole ramp spans 0.2 of a contrast point. Tiles and panels both
+ * qualify. It is never a text colour. The pairing checked below is the edge
+ * against *what it separates the surface from*; the inner side of the line,
+ * against the panel's own fill, does not need to clear 3:1 independently.
  */
 
 import { execFileSync } from "node:child_process";
@@ -90,8 +96,8 @@ const RULES = [
     token: "--tile-border",
     surfaces: ["--background"],
     threshold: NON_TEXT,
-    note: "the room ground only; single-purpose",
-    label: "`--background` only — the room ground",
+    note: "boundary use only — the room ground, and the panel edge on --popover",
+    label: "boundary use only: the room ground, and the panel edge on `--popover`",
   },
   // Foreground-on-fill pairs, checked directly rather than against surfaces.
   {

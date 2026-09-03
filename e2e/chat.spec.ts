@@ -328,12 +328,16 @@ test.describe("chat", () => {
     expect(m.bodySize).toBe(15);
     expect(m.bodyLine).toBe(22);
 
-    // "One step dimmer" as weight, since no token is dimmer than
-    // --muted-foreground and alpha would break the contrast floor.
-    expect(m.timeSize, "the timestamp is a different size from the name").toBe(m.nameSize);
-    expect(Number(m.timeWeight), "the timestamp is not a step lighter").toBeLessThan(
-      Number(m.nameWeight),
-    );
+    /*
+     * Name and timestamp are peers — both metadata. C1's first draft asked for
+     * the timestamp "one step dimmer", and the plan has since withdrawn that:
+     * nothing in the set is dimmer than `--muted-foreground`, and the hierarchy
+     * that carries meaning is metadata against body, which the assertions above
+     * pin. The weight step is a nice touch and explicitly not load-bearing, so
+     * this allows identical treatment rather than requiring the step.
+     */
+    expect(m.timeSize, "the timestamp is not a peer of the name").toBe(m.nameSize);
+    expect(Number(m.timeWeight)).toBeLessThanOrEqual(Number(m.nameWeight));
 
     expect(m.headerToBody, "4px between name and body").toBeGreaterThanOrEqual(2);
     expect(m.headerToBody).toBeLessThanOrEqual(6);
