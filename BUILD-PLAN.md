@@ -313,21 +313,16 @@ Tasks:
 
 ## Phase 9 — Accessibility
 
-Work the full list in `CLAUDE.md`. Specifically:
+**Build to `CLAUDE.md`'s accessibility floor and `PRD.md` §9's announcement policy. Those are authoritative and are not restated here.**
 
-- Full keyboard traverse of every route with visible focus
-- Focus trapping and restoration on both panels
-- Accessible names phrased as the action, changing with it: "Turn off microphone" → "Turn on microphone"
+This list used to enumerate them, and by the time Phase 9 started three of its nine lines contradicted the documents they were summarising — focus trapping on non-modal panels, `aria-pressed` on state toggles, and a `>=3` collapse threshold that §9 had already removed. None of the three was enforced by anything. It is the same duplication that drifted in the contrast table and in §9's own mechanics, and it gets the same fix: one copy, pointed at.
 
-  **`aria-pressed` struck.** This line asked for it and `CLAUDE.md`'s floor forbids it — carrying both an action name and a pressed state announces the same fact twice, in a confusing order. The floor is the authoritative copy of the per-control mechanics, `scripts/check-room.mjs` asserts there is no `aria-pressed` anywhere, and `e2e/media.spec.ts` asserts it on the mic button by name. Following this line would have broken two passing gates to undo a decision `CLAUDE.md` explains.
+What belongs to this phase and nowhere else:
 
-  It survived the Phase 7 ownership split because that split reconciled `CLAUDE.md` and `PRD.md` §9 and never brought this document into it. `check:room` now reads all three.
-- Batched join/leave announcements — 3+ events in 5s collapse; suppressed above 8 participants
-- Chat announces sender only when the panel is closed
-- Reaction announcements throttled per participant
-- Connection state announced once per change
-- `?` opens a keyboard shortcuts dialog
-- `axe` clean via `@axe-core/playwright` (dev only, approved under rule 9 on the same grounds as Playwright — it does not ship)
+- Set up `@axe-core/playwright` (dev only, approved under rule 9 on the same grounds as Playwright — it does not ship)
+- The manual keyboard traverse of every state
+- The screen reader session
+- The framework live-region audit below
 
 **Run axe against states, not routes.** The acceptance criterion said "every route" and that was too coarse: a route with the chat panel closed and the same route with it open are different accessibility surfaces, and the second is where the focus trap and the live region actually live. The list is states — panel open, modal open, reconnect overlay, each permission failure, the ended and cancelled join pages — not URLs. A green run that never opened a panel has tested the easy half.
 
@@ -345,9 +340,10 @@ So the real deliverable is a keyboard traverse of every state by hand, and a scr
 
 Tasks:
 - Mobile layouts for grid, controls, chat sheet, participants sheet
-- Touch targets at 44px minimum
+- Touch targets to `CLAUDE.md`'s floor — 44px on room and pre-join, 24px elsewhere, measured by `check:targets`
+
+  **Not a blanket 44.** This line said so, and the floor now doesn't: the blanket figure was above the stated conformance target, and enforcing it on desktop document screens changes density for no accessibility gain. Phase 9 shipped the split and the check; building this line as written would undo both.
 - iOS Safari viewport handling (`dvh`, not `vh`)
-- Landing page
 - Error routes: unknown code, ended meeting, browser unsupported
 
   **"Meeting full" struck.** No capacity limit exists in the schema, the token contract's six error codes, LiveKit config, or the PRD — so building the screen would have meant inventing the concept first, in the final phase. The 429 "This meeting is busy" copy already in pre-join is what that line was reaching for.
@@ -357,9 +353,15 @@ Tasks:
 - **Landing page: code field and sign-in.** `/` currently renders zero interactive elements in production, and `JoinCodeForm` is mounted only on the unknown-code dead end — so §2's flow C works only *after* a failed join. That is a specified entry point reachable exclusively by failure.
 
   Scope is the two real entry points plus the wordmark and tagline that already exist as brand assets. Not a design exercise: `/` has no PRD section to build against, and inventing one in the last phase is how final phases go wrong. But someone arriving without a link is a peer or a recruiter, not a participant, and they should be told what this is in one line that is already written.
-- Per-meeting OG variant for `/j/[code]` showing meeting title and host, so a pasted invite renders meaningfully in Slack and iMessage
-- Optional: live favicon — swap `app/icon.svg` for an all-four-cells-filled variant while in an active call
-- Bundle check: dashboard route under 180KB gzipped, `livekit-client` absent from it
+- OG card for `/j/[code]` per `BRAND.md` — **no meeting data in it**
+
+  **"title and host" struck.** The host half reversed §3.2's decision against exposing host identity to link-holders, and `get_meeting_by_code` returns no host field, so reaching it meant a service-role read on a public route. The title half was subtler and is the real reason: an unfurl discloses on *paste*, not on *open*, which widens §3.2's set from link-holders to everyone who can see the channel. `BRAND.md` carries the argument.
+- ~~Live favicon~~ — **considered and declined**, see `BRAND.md` §8
+
+  Filling the fourth cell is forbidden by `BRAND.md`'s misuse list, `CLAUDE.md`'s rule and the kickoff prompt below, so the proposal made every brand document contradict itself. It was also unbuildable as described: `app/icon.svg` is a build-time convention, pre-join reaches the room by `router.push` with no document load, and iOS Safari renders no tab favicon at all.
+- Bundle check: every route inside `PRD.md` §10's budgets, and `livekit-client` absent from all of them
+
+  **"under 180KB" struck.** §10's table sets `/dashboard` at ≤ 280 kB and the route measures 267; 180 is 20 kB above the shared baseline and was never reachable. The rule-8 half of this line stands and is what `check:bundle` enforces by route.
 
 **Done when:** the whole flow works on iPhone Safari and Android Chrome, including backgrounding the tab mid-call and returning.
 

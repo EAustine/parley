@@ -542,15 +542,27 @@ check(
  * split between two of three documents is not a split; it is a smaller
  * contradiction.
  *
- * Asserted as an absence rather than a marker, because that is the failure
- * that actually happened: the task list quietly restating a mechanic the floor
- * owns.
+ * Scoped to **task bullets**, not to the whole file.
+ *
+ * The first version forbade the string anywhere, and the very next edit to
+ * BUILD-PLAN broke it — by adding a paragraph explaining that `aria-pressed`
+ * had been removed and why. That note is the kind of record this project keeps
+ * deliberately, and a check that forbids describing a mistake would push the
+ * next person to delete the explanation rather than the requirement.
+ *
+ * What must not come back is a *requirement*: a line in the task list asking
+ * for it. Prose about the history is welcome.
  */
-check(
-  !/aria-pressed/.test(buildPlan.replace(/\*\*`aria-pressed` struck\.\*\*[\s\S]*?\n\n/g, "")),
-  "BUILD-PLAN asks for no aria-pressed of its own",
-  "its task list is restating a mechanic CLAUDE.md's floor owns, which is how it drifted before",
-);
+{
+  const asks = buildPlan
+    .split("\n")
+    .filter((line) => /^\s*[-*]\s/.test(line) && /aria-pressed/.test(line));
+  check(
+    asks.length === 0,
+    "no BUILD-PLAN task asks for aria-pressed",
+    `${asks.map((l) => l.trim()).join(" | ")} — CLAUDE.md's floor owns this mechanic`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Hiding, owned rather than inherited
