@@ -12,6 +12,7 @@ import { TILE_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
 
 import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
+import { SheetHandle } from "@/components/room/SheetHandle";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -43,6 +44,7 @@ export function ParticipantsPanel({
 }) {
   const participants = useParticipants();
   const close = useRef<HTMLButtonElement>(null);
+  const sheet = useRef<HTMLElement>(null);
 
   /**
    * Move focus into the panel when it opens.
@@ -81,6 +83,7 @@ export function ParticipantsPanel({
 
   return (
     <aside
+      ref={sheet}
       aria-label="Participants"
       hidden={!open}
       // Surface, not content: `--popover` is the plane every other floating
@@ -112,6 +115,8 @@ export function ParticipantsPanel({
         }
       }}
     >
+      <SheetHandle onDismiss={onClose} sheet={sheet} />
+
       <header
         className="flex shrink-0 items-center justify-between border-b px-4 py-3"
         style={{ borderColor: "var(--tile-border)" }}

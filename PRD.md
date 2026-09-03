@@ -155,7 +155,9 @@ Write these before writing layout code.
 
 Overflow ordering: most recent speaker first, then join order. The person talking is never the person hidden.
 
-Screen share active: shared content takes the main area, participants collapse to a filmstrip (desktop: right edge; mobile: top strip, 3 visible).
+Screen share active: shared content takes the main area, participants collapse to a filmstrip (desktop: right edge; mobile: top strip).
+
+**"3 visible" in an earlier draft described the viewport, not a capacity.** The mobile strip scrolls through everyone up to the same 16 the desktop grid holds, with a "+N" cell beyond that — same rule, same ordering, most recent speaker first. At 96px tall a 16:9 tile is ~171px wide, so roughly two and a bit fit a 375pt screen; the partial third is useful, since a clipped tile is the affordance that says the strip scrolls.
 
 Tile aspect ratio is 16:9. Video is `object-fit: cover`. Never letterbox individual tiles inside the grid — it looks broken.
 

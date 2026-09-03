@@ -10,11 +10,13 @@ import {
   Cancel01Icon,
   Clock01Icon,
   Copy01Icon,
+  FullScreenIcon,
   GoogleIcon,
   HappyIcon,
   Link01Icon,
   Loading03Icon,
   Mail01Icon,
+  MinimizeScreenIcon,
   Mic02Icon,
   MicOff02Icon,
   Moon02Icon,
@@ -66,6 +68,23 @@ export const ICONS = {
     icon: ScreenShareOffIcon,
     export: "ScreenShareOffIcon",
     label: "Stop sharing",
+  },
+  /*
+   * v1.2 F2. Not in §4.3's icon list, which predates the decision: fullscreen
+   * is what makes a shared laptop screen readable on a phone — rotate and it
+   * takes the whole viewport, which no amount of pinching inside a letterboxed
+   * region recovers. Export names resolved against the installed package
+   * rather than remembered.
+   */
+  fullscreen: {
+    icon: FullScreenIcon,
+    export: "FullScreenIcon",
+    label: "View full screen",
+  },
+  exitFullscreen: {
+    icon: MinimizeScreenIcon,
+    export: "MinimizeScreenIcon",
+    label: "Exit full screen",
   },
   chat: { icon: BubbleChatIcon, export: "BubbleChatIcon", label: "Chat" },
   participants: {

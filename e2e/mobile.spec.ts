@@ -246,4 +246,135 @@ test.describe("the room on a phone", () => {
       "the control bar is painted over the chat Send button",
     ).toBe("Send");
   });
+
+  /**
+   * v1.2 F2 and F3, measured on a phone while someone else shares.
+   *
+   * A6's complaint was that the shared screen renders "at unusable scale
+   * inside a container with large dead margins". The scale was not the defect —
+   * `object-fit: contain` letterboxes *inside* the element, so the picture was
+   * right and the box around it was four times too tall, taking the border,
+   * the rounding and the label with it.
+   */
+  test("the share region hugs its content, and the strip is a 96px rail", async ({
+    browser,
+    meetingCode,
+  }) => {
+    participant = await joinAs(browser, "Ama Serwaa", {
+      code: meetingCode,
+      viewport: IPHONE,
+      withMedia: false,
+    });
+    const sharer = await joinAs(browser, "Kwabena Osei", {
+      code: meetingCode,
+      withMedia: false,
+    });
+
+    try {
+      await wakeControls(sharer.page);
+      await sharer.page.getByRole("button", { name: "Share your screen" }).click();
+
+      const { page } = participant;
+      await expect(page.getByText("Kwabena Osei is sharing")).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.waitForTimeout(500);
+
+      const measured = await page.evaluate(() => {
+        const video = [...document.querySelectorAll<HTMLVideoElement>("video")].find(
+          (v) => getComputedStyle(v).objectFit === "contain",
+        );
+        if (!video) return null;
+        const frame = video.parentElement!;
+        const strip = [...document.querySelectorAll<HTMLElement>("h2")]
+          .find((h) => /^Participants, \d+$/.test(h.textContent?.trim() ?? ""))
+          ?.parentElement;
+        const box = (el: Element | null | undefined) =>
+          el ? el.getBoundingClientRect() : null;
+        return {
+          frame: box(frame)!,
+          intrinsic: video.videoWidth / video.videoHeight,
+          strip: box(strip),
+          stripTiles: strip
+            ? [...strip.querySelectorAll<HTMLElement>("[data-participant], [data-overflow]")].map(
+                (t) => {
+                  const r = t.getBoundingClientRect();
+                  return +(r.width / r.height).toFixed(2);
+                },
+              )
+            : [],
+        };
+      });
+
+      expect(measured, "no shared surface on the viewer's phone").not.toBeNull();
+
+      /*
+       * The frame's own shape is the picture's shape. Before this it was the
+       * region's shape, and the difference was the dead margin.
+       */
+      expect(
+        measured!.frame.width / measured!.frame.height,
+        `frame ${Math.round(measured!.frame.width)}x${Math.round(measured!.frame.height)} against a ${measured!.intrinsic.toFixed(2)} picture`,
+      ).toBeCloseTo(measured!.intrinsic, 1);
+
+      // F2: fullscreen lives on the region, not in the room bar — §9 rejected
+      // an eighth persistent control, and this one only exists while sharing.
+      const fullscreen = page.getByRole("button", { name: "View full screen" });
+      await expect(fullscreen).toBeVisible();
+      const size = await fullscreen.boundingBox();
+      expect(size!.width, "the fullscreen control is under the 44px floor").toBeGreaterThanOrEqual(44);
+      expect(size!.height).toBeGreaterThanOrEqual(44);
+
+      // F3: a 96px rail of 16:9 tiles, not a 2-up grid.
+      expect(measured!.strip, "no filmstrip on the phone").not.toBeNull();
+      expect(measured!.strip!.height, "the strip is not 96px tall").toBeCloseTo(96, 0);
+      for (const ratio of measured!.stripTiles) {
+        expect(ratio, "a strip tile is not 16:9").toBeCloseTo(1.78, 1);
+      }
+    } finally {
+      await sharer.context.close().catch(() => {});
+    }
+  });
+
+  /**
+   * v1.2 F1's drag handle: swipe the sheet down to dismiss it.
+   *
+   * Driven as a real pointer drag rather than by dispatching events, so it
+   * exercises the same path a thumb takes — including the `touch-action: none`
+   * without which the browser claims the gesture for scrolling and the
+   * `pointermove` handlers never run.
+   */
+  test("the sheet can be swiped down to dismiss", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Efua Sutherland", {
+      code: meetingCode,
+      viewport: IPHONE,
+      withMedia: false,
+    });
+    const { page } = participant;
+
+    await wakeControls(page);
+    await page.getByRole("button", { name: "Chat" }).click();
+    const panel = page.getByRole("complementary", { name: "Meeting chat" });
+    await expect(panel).toBeVisible();
+    await page.waitForTimeout(300);
+
+    const handle = await page.evaluate(() => {
+      const sheet = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const grip = sheet.firstElementChild as HTMLElement;
+      const box = grip.getBoundingClientRect();
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2, touch: getComputedStyle(grip).touchAction };
+    });
+
+    // Without `touch-action: none` the drag never reaches the handler.
+    expect(handle.touch, "the handle lets the browser take the gesture").toBe("none");
+
+    await page.mouse.move(handle.x, handle.y);
+    await page.mouse.down();
+    // Past the quarter-height threshold, in steps so the move handler runs.
+    await page.mouse.move(handle.x, handle.y + 80, { steps: 8 });
+    await page.mouse.move(handle.x, handle.y + 200, { steps: 8 });
+    await page.mouse.up();
+
+    await expect(panel, "the sheet survived a full swipe down").toBeHidden();
+  });
 });

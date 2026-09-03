@@ -235,17 +235,42 @@ check(filmstripLayout(4, "desktop").orientation === "vertical",
   "desktop puts the strip on the right edge, so it runs vertically");
 check(filmstripLayout(4, "mobile").orientation === "horizontal",
   "mobile puts it across the top");
-check(FILMSTRIP_CAPACITY.mobile === 3,
-  "mobile shows three, as §3.4 specifies", `${FILMSTRIP_CAPACITY.mobile}`);
+/*
+ * The invariant worth gating is not a magic number — v1.2 F3.
+ *
+ * This asserted `FILMSTRIP_CAPACITY.mobile === 3`, which encoded §3.4's
+ * "3 visible" as a capacity when it described the viewport. What actually
+ * matters, on either surface, is that nobody vanishes silently: if there are
+ * more people than places, the last place says so.
+ */
+for (const viewport of ["desktop", "mobile"]) {
+  const capacity = FILMSTRIP_CAPACITY[viewport];
+  const full = filmstripLayout(capacity, viewport);
+  check(full.tiles === capacity && full.overflow === 0,
+    `${viewport} filmstrip shows everyone at its capacity`,
+    `${full.tiles} tiles, +${full.overflow}`);
+
+  const over = filmstripLayout(capacity + 3, viewport);
+  check(over.overflow === (capacity + 3) - over.tiles,
+    `${viewport} filmstrip accounts for everyone it cannot show`,
+    `${over.tiles} tiles, +${over.overflow} of ${capacity + 3}`);
+  check(over.overflow > 0,
+    `${viewport} filmstrip never hides anyone without saying so`,
+    `+${over.overflow}`);
+}
 
 for (const [people, viewport, tiles, overflow] of [
   [1, "desktop", 1, 0],
   [5, "desktop", 5, 0],
   [6, "desktop", 4, 2],
   [20, "desktop", 4, 16],
+  // v1.2 F3: the mobile strip scrolls through everyone up to the desktop
+  // grid's own ceiling, rather than capping at the three §3.4 said were
+  // *visible*. Four people are four tiles now, not two and a "+2".
   [3, "mobile", 3, 0],
-  [4, "mobile", 2, 2],
-  [17, "mobile", 2, 15],
+  [4, "mobile", 4, 0],
+  [16, "mobile", 16, 0],
+  [17, "mobile", 15, 2],
 ]) {
   const l = filmstripLayout(people, viewport);
   check(l.tiles === tiles && l.overflow === overflow,

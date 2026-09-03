@@ -70,6 +70,7 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
    * "+4" changes nothing geometric but "+0" becoming "+1" adds a cell.
    */
   const grid = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
   useGridFlip(
     grid,
     [
@@ -92,9 +93,41 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
     return ref?.publication?.track ?? undefined;
   };
 
+  /**
+   * v1.2 F3: "The active speaker auto-scrolls into view."
+   *
+   * Horizontal strip only. The desktop rail is a fixed column that shows its
+   * whole capacity, so there is nothing to scroll to; the mobile strip fits
+   * about two and a bit tiles of the sixteen it now holds, so whoever is
+   * talking can easily be off-screen.
+   *
+   * Reduced motion gets the same scroll without the travel — the participant
+   * still needs to be visible, and `scroll-behavior: auto` is the honest way
+   * to say "put them there" rather than skipping it. `app/globals.css` already
+   * forces that under the preference; this passes it explicitly so the
+   * behaviour does not depend on a blanket rule reaching here.
+   */
+  const speaking = participants.find((p) => p.isSpeaking)?.identity ?? null;
+  useEffect(() => {
+    if (!filmstrip || strip.orientation !== "horizontal" || !speaking) return;
+    const column = stripRef.current;
+    const tile = column?.querySelector<HTMLElement>(
+      `[data-participant="${CSS.escape(speaking)}"]`,
+    );
+    if (!column || !tile) return;
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    tile.scrollIntoView({
+      behavior: reduce ? "auto" : "smooth",
+      inline: "nearest",
+      block: "nearest",
+    });
+  }, [filmstrip, speaking, strip.orientation]);
+
   if (filmstrip) {
     return (
       <div
+        ref={stripRef}
         /*
          * v1.2 B2: a fixed 220px column, tiles stacked from the top at 16:9
          * with an 8px gutter, scrolling when they do not fit.
@@ -108,7 +141,7 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
         className={
           strip.orientation === "vertical"
             ? "flex h-full w-[220px] shrink-0 flex-col gap-2 overflow-y-auto"
-            : "flex h-[110px] w-full shrink-0 gap-2 overflow-x-auto"
+            : "flex h-24 w-full shrink-0 gap-2 overflow-x-auto"
         }
       >
         <h2 className="sr-only">

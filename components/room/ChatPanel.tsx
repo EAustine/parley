@@ -7,6 +7,7 @@ import { ICONS } from "@/lib/icons";
 import { isPinnedToBottom, startsGroup, type LogEntry } from "@/lib/room/chat";
 import { CHAT_COUNTER_AT, CHAT_MAX_LENGTH } from "@/lib/room/messages";
 import { ChatMessage } from "@/components/room/ChatMessage";
+import { SheetHandle } from "@/components/room/SheetHandle";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -41,6 +42,7 @@ export function ChatPanel({
   const [hasNew, setHasNew] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const sheet = useRef<HTMLElement>(null);
   const pinned = useRef(true);
 
   // Focus the composer on open. Someone who opened the chat means to type.
@@ -106,6 +108,7 @@ export function ChatPanel({
 
   return (
     <aside
+      ref={sheet}
       // Not `role="dialog"`: this is a complementary region beside the room,
       // and the room stays live behind it.
       aria-label="Meeting chat"
@@ -149,6 +152,8 @@ export function ChatPanel({
         }
       }}
     >
+      <SheetHandle onDismiss={onClose} sheet={sheet} />
+
       <header className="flex shrink-0 items-center justify-between border-b px-4 py-3"
               style={{ borderColor: "var(--tile-border)" }}>
         <h2 className="type-h2">Chat</h2>

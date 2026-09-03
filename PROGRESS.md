@@ -4160,3 +4160,77 @@ replacing the dim transition §3.11 depends on.
 `overflow-hidden` on the room surface is now `overflow-clip`, which does not
 create a scroll container at all — the structural close on the class of defect
 `preventScroll` fixed one instance of.
+
+### F2 — the dead margins were the defect, not the scale
+
+A6 read as "the shared screen renders at unusable scale". The scale was never
+wrong: `object-fit: contain` letterboxes *inside* the element, so the picture
+was correct and the box around it was four times too tall — taking the border,
+the rounding and the label with it. The mutation names the old state exactly:
+
+> frame 351x548 against a 1.78 picture
+
+A 16:9 picture at 351px wide is 197px tall. The other 351px was the dead margin.
+
+The frame now hugs the picture, sized by `min(100cqw, calc(100cqh * ratio))`
+against a size container — the same construction `RoomGrid` already uses for the
+letterboxed single tile, and for the same reason recorded there: fitting a ratio
+inside a box needs whichever dimension is tighter to win. The ratio comes from
+the track's own `videoWidth`/`videoHeight`, re-read on `resize`, because a
+shared window changes shape when the sharer resizes it mid-call.
+
+**Pinch-to-zoom is deferred and fullscreen is why** — rotating to landscape and
+going fullscreen gives the content the whole viewport, which no amount of
+pinching inside a letterboxed region recovers.
+
+It also avoided a mistake I was about to make. I had offered keyboard shortcuts
+as a way to satisfy WCAG 2.5.1 for pinch; the plan corrected it — **the
+criterion says single *pointer*, not single input**, so shortcuts do not
+discharge it. A button never raises the question.
+
+The control sits on the share region, not the room bar. §9 rejected an eighth
+control in the *persistent* bar; this one exists only while someone is sharing.
+`FullScreenIcon` and `MinimizeScreenIcon` were resolved against the installed
+package rather than remembered — §4.3's icon list predates the decision and does
+not carry them.
+
+### F3 — a cap that contradicted the thing it was capping
+
+The strip was already horizontal, already scrollable, already 16:9, already
+above the share region. Three of F3's four clauses were built. What was wrong
+was `h-[110px]` and the capacity.
+
+`FILMSTRIP_CAPACITY.mobile` was 3, and `check:room` gated it as a hard equality
+citing §3.4's "3 visible". That read a description of the viewport as a
+capacity: at 96px tall a 16:9 tile is ~171px wide, so about two and a bit fit a
+375pt screen whatever the number says. A scrollable strip capped at three
+scrolls through almost nothing and still hides people.
+
+Now 16, matching the desktop grid, with the same "+N" beyond. **The check
+changed shape rather than changing its number**: it asserts the invariant that
+matters — no participant is hidden without an overflow indicator, on either
+viewport — instead of a magic constant. That is worth more than the number was.
+
+The active speaker scrolls into view on the horizontal strip only; the desktop
+rail shows its whole capacity, so there is nothing to scroll to.
+
+### F1's handle
+
+A drag handle and swipe-down, bound to the handle rather than the sheet: the
+message log is a scroll container, and a sheet-wide drag would compete with it
+for every downward swipe — the gesture would work and reading the conversation
+would not.
+
+The gesture adds no accessibility obligation, which is what makes it available
+at all: dismissal already has three non-gesture paths, all tested — Escape,
+the header's close button, and the control-bar toggle. The handle is
+`aria-hidden`; announcing a fourth, unlabelled way to do the same thing is the
+noise §9 exists to prevent.
+
+`touch-action: none` is load-bearing and the test asserts it: without it the
+browser claims the vertical drag for scrolling and `pointermove` never fires.
+
+### Checks
+
+`check:media` **69/69** — 48 app parallel, 21 media serial. `check:room` 103,
+`check:bundle` 10/10. All static checks green.

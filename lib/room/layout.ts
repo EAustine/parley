@@ -132,7 +132,20 @@ export type FilmstripLayout = {
   overflow: number;
 };
 
-export const FILMSTRIP_CAPACITY = { desktop: 5, mobile: 3 } as const;
+/**
+ * Mobile is 16, not 3 — v1.2 F3.
+ *
+ * §3.4 said "top strip, 3 visible", and that described the viewport rather
+ * than a capacity: at 96px tall a 16:9 tile is ~171px wide, so roughly two and
+ * a bit fit a 375pt screen whatever this number says. Read as a cap it made a
+ * *scrollable* strip that scrolls through almost nothing and still hides
+ * people — the worst of both. It now matches the desktop grid's ceiling, with
+ * the same "+N" cell beyond and the same speaking-recency ordering.
+ *
+ * Desktop stays 5: that rail is a fixed column beside the shared content, and
+ * it does not scroll to reveal more.
+ */
+export const FILMSTRIP_CAPACITY = { desktop: 5, mobile: 16 } as const;
 
 export function filmstripLayout(
   count: number,

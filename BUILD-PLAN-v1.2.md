@@ -181,11 +181,25 @@ Use `dvh` throughout, never `vh` — iOS Safari's toolbar makes `vh` wrong at ex
 
 ### F2. Viewing a share on mobile
 
-The A6 fix. Shared content fills the available width with `object-fit: contain`, and gets **pinch-to-zoom plus double-tap-to-fit**. A tap-to-fullscreen affordance in the corner. Someone reading a shared screen on a phone is the case this has to serve, and it currently does not.
+The A6 fix, narrowed. Two things ship: shared content **fits its region with no dead margins**, and a **fullscreen control** in the corner of the share region.
+
+Pinch-to-zoom is deferred, and fullscreen is why. Rotating to landscape and going fullscreen gives the shared content the entire viewport — more than any amount of pinching inside a letterboxed region can recover. It is the real answer to reading a laptop screen on a phone, and it is one button.
+
+It also sidesteps a requirement cleanly. Pinch is a multipoint gesture, so WCAG 2.5.1 (Level A) demands a single-pointer equivalent — and **keyboard shortcuts do not satisfy it**, because the criterion says single *pointer*, not single input. A button never raises the question. If pinch still looks wanted once fullscreen is in use on a real phone, it arrives alongside +/− controls in the same corner cluster and is compliant by construction.
+
+Double-tap-to-fit can stay. It is single-point and not path-based, so 2.5.1 does not reach it.
+
+**The controls sit on the share region, not in the room bar.** §9 rejected an eighth control in the persistent bar; these are contextual to a surface that only sometimes exists, so that reasoning does not transfer. Visible only while someone is sharing.
 
 ### F3. Participant tiles while someone shares
 
 Not a 2-up grid consuming the top third. A **horizontally scrollable strip, 96px tall**, tiles at 16:9, above the share region. The active speaker auto-scrolls into view.
+
+**The strip scrolls through everyone, capped at 16 to match the desktop grid, with a "+N" cell beyond.** PRD §3.4's "3 visible" described the viewport and was read as a capacity; it is reworded. A strip that scrolls *and* caps at three is the worst of both — it scrolls through almost nothing and still hides people.
+
+At 96px tall a tile is ~171px wide, so roughly two and a bit fit a 375pt screen. That is fine: the clipped third tile is the affordance that says the strip scrolls.
+
+`check:room` should stop asserting `FILMSTRIP_CAPACITY.mobile === 3`. The invariant worth gating is the one that matters — **no participant is hidden without an overflow indicator** — not a magic number.
 
 ### F4. Control bar
 
