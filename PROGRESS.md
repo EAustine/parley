@@ -4826,3 +4826,85 @@ It changes no decision — the value clears 3:1 everywhere it is used in both
 themes — so this is a sentence to correct rather than a value to revisit.
 Third time recorded; the maths was validated against every other documented
 pair first, and all of those reproduce exactly.
+
+---
+
+## v1.2 close-out, part six — both resolutions landed work
+
+Each of the two flags came back with something to build.
+
+### `--secondary` joins the permitted boundary surfaces
+
+The 5.1 figure is explained rather than only corrected: "The 5.1 figure in an
+earlier draft belonged to the old value and survived the change — the same edit
+that raised the value left the sentence describing it." That is the `og.tsx`
+failure again, in prose: a number that outlived what it described.
+
+The correction carries a change with it. The permitted set is now
+`--background`, `--card`, `--popover`, `--muted`, **`--secondary`** — and
+`--secondary` is the tightest of them at **3.05**. My first version left it out
+on the grounds that a button's fill identifies it rather than its edge, which
+was reasoning its way to a looser number. `--secondary` is a surface; a boundary
+drawn on it has to be visible.
+
+`--input` stays excluded at 2.73, and now says why in the rule's own note: it is
+the field's own fill, the inner side of the line.
+
+Both worst cases are snapshotted, because they differ and the document quotes
+both: **3.05 dark on `--secondary`**, **4.32 light on `--muted`**. Regenerated,
+not typed — they match `CLAUDE.md`'s table and its pairs exactly.
+
+Mutation: putting `#5D6777` back fails four ways, and the tightest is the new
+one — `--boundary on --secondary is 2.58:1, below 3:1`. The old value would not
+have cleared the widened set, which is the point of widening it.
+
+### `check:bundle --snapshot`
+
+§10 is budgets only now: "Earlier drafts carried the current size of each route
+beside its budget, and every commit that changed a bundle made this table wrong
+— four figures went stale in a single batch of Track F work." The four were the
+ones recorded here two entries ago.
+
+So the flag §10 points at exists. `npm run check:bundle -- --snapshot` emits the
+measured figures as markdown, and says in its own header that they are not for
+pasting back into §10 — a budget is a decision and belongs in a document, a
+measurement is a fact about the current commit and belongs in the tool. Same
+split as `check:contrast --snapshot`, §9's mechanics, and §4.4's motion table.
+
+Today's reading:
+
+| Route | Measured | Budget |
+|---|---|---|
+| Shared baseline | 163 kB | ≤ 180 kB |
+| `/` | 159 kB | ≤ 190 kB |
+| `/sign-in` | 166 kB | ≤ 190 kB |
+| `/j/[code]` | 171 kB | ≤ 230 kB |
+| `/room/[code]` | 160 kB | ≤ 250 kB |
+| `/dashboard` | 268 kB | ≤ 280 kB |
+| `/schedule` | 263 kB | ≤ 290 kB |
+| `/schedule/[code]` | 269 kB | ≤ 290 kB |
+
+`/sign-in`'s budget row is filled in at ≤ 190 kB, which is the last thing §10
+was waiting on.
+
+### What the new rule catches that the table edit did not
+
+§10's prose still carries measured figures, and three are now wrong:
+
+- "The two scheduling routes are measured at 273 kB and 264 kB" — 263 and 269.
+- "`/schedule` sits ~10 kB above `/dashboard`" — it is 263 against 268, five
+  below. Radix's Select left and took the scroll-lock family with it, which is
+  what that paragraph predicted and then declined to do.
+- "The shared baseline … at 160 kB" — 163.
+
+The paragraphs are reasoning, not a table, so they are left as written rather
+than rewritten around a number. But the rule that just retired the table's
+measured column reaches them too, and `--snapshot` is now the place that answers
+the question they were answering.
+
+### Checks
+
+`check:contrast` 25 in both roles, with the boundary rule now over five
+surfaces. `check:bundle` 11/11 and a working `--snapshot`. Every static check
+green. No application code changed, so the browser suite is unaffected — 95/95
+stands from the previous commit.

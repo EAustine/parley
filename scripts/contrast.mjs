@@ -148,20 +148,22 @@ const RULES = [
  * asked — which is how `--input` drew every field's border at 1.44:1 dark and
  * 1.25:1 light while the matrix reported 25/25.
  *
- * Not `--secondary` or `--accent`: those are button fills, and a button's edge
- * is not what identifies it. Not `--input`: that is the field's own fill, the
- * inner side of the line, and a boundary need not clear what it encloses as
- * well as what it separates that from.
+ * `--secondary` is the tightest permitted surface at 3.05, and it was left out
+ * of the first version of this list on the grounds that a button's fill
+ * identifies it rather than its edge — reasoning its way to a looser number.
+ * Not `--input`: that is the field's own fill, the inner side of the line at
+ * 2.73, and a boundary need not clear what it encloses as well as what it
+ * separates that from.
  */
-const BOUNDARY_SURFACES = ["--background", "--card", "--popover", "--muted"];
+const BOUNDARY_SURFACES = ["--background", "--card", "--popover", "--muted", "--secondary"];
 
 const BOUNDARY_RULES = [
   {
     token: "--boundary",
     surfaces: BOUNDARY_SURFACES,
     threshold: NON_TEXT,
-    label: "boundary use only: tile edges, panel edges, form-field borders — any surface with no usable fill contrast",
-    note: "Tile edges, panel edges, form-field borders. Never a text colour.",
+    label: "tile edges, panel edges, form-field borders — on `--background`, `--card`, `--popover`, `--muted`, `--secondary`. **Not on `--input`** (2.73).",
+    note: "Tile edges, panel edges, form-field borders. Never a text colour. Not --input (2.73) — the inner side of the line.",
   },
 ];
 
@@ -370,7 +372,8 @@ const SNAPSHOT_PAIRS = [
   { label: "`--muted-foreground` / worst permitted", theme: "dark", fg: "--muted-foreground", worstOf: "--muted-foreground" },
   { label: "`--state-critical` / worst permitted", theme: "dark", fg: "--state-critical", worstOf: "--state-critical" },
   { label: "`--state-warning` / worst permitted", theme: "dark", fg: "--state-warning", worstOf: "--state-warning" },
-  { label: "`--boundary` / worst permitted", theme: "dark", fg: "--boundary", worstOf: "--boundary" },
+  { label: "`--boundary` / worst permitted dark", theme: "dark", fg: "--boundary", worstOf: "--boundary" },
+  { label: "`--boundary` / worst permitted light", theme: "light", fg: "--boundary", worstOf: "--boundary" },
   { label: "`--foreground` (speaking, 2px) / `--background`", theme: "dark", fg: "--foreground", bg: "--background" },
   { label: "white / `--destructive` (dark)", theme: "dark", fg: "#FFFFFF", bg: "--destructive" },
   { label: "Light `--muted-foreground` / white", theme: "light", fg: "--muted-foreground", bg: "--background" },

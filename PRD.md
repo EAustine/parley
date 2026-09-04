@@ -743,16 +743,20 @@ The video grid carries a heading and a participant count, so the shape of the ro
 
 All figures are **First Load JS totals, gzipped** — the units Next reports, and inclusive of the shared baseline. Verify that unit assumption once per major Next upgrade rather than trusting it.
 
-| Route | Budget | Route-specific headroom |
-|---|---|---|
-| Shared baseline | ≤ 180 kB | — |
-| `/` marketing | ≤ 190 kB | ~15 kB |
-| `/j/[code]` pre-join | ≤ 230 kB | ~55 kB |
-| `/room/[code]` | ≤ 250 kB before the dynamic import | ~75 kB |
-| `/dashboard` | ≤ 280 kB | ~105 kB |
-| `/sign-in` | ≤ 190 kB | ~24 kB |
-| `/schedule` | ≤ 290 kB | ~115 kB |
-| `/schedule/[code]` | ≤ 290 kB | ~115 kB |
+| Route | Budget |
+|---|---|
+| Shared baseline | ≤ 180 kB |
+| `/` marketing | ≤ 190 kB |
+| `/j/[code]` pre-join | ≤ 230 kB |
+| `/room/[code]` | ≤ 250 kB before the dynamic import |
+| `/dashboard` | ≤ 280 kB |
+| `/sign-in` | ≤ 190 kB |
+| `/schedule` | ≤ 290 kB |
+| `/schedule/[code]` | ≤ 290 kB |
+
+**Budgets only. Measured figures are not recorded here.** Earlier drafts carried the current size of each route beside its budget, and every commit that changed a bundle made this table wrong — four figures went stale in a single batch of Track F work. `check:bundle` knows the real numbers and enforces the budgets; a `--snapshot` flag can emit them when someone wants a reading. A budget is a decision and belongs in a document. A measurement is a fact about the current commit and belongs in the tool.
+
+Same split as the contrast table, §9's mechanics, and §4.4's motion table.
 
 **`/sign-in` had no budget and should have.** It builds at 249 kB — heavier than every budgeted route but the two scheduling ones — and it is public, cold-load, and the first thing a host sees. That is the same error as the original table budgeting `/dashboard` instead of `/j/[code]`: the principle was right and the route list was wrong. **Budgets belong on public cold-load routes**, and `/sign-in` is one.
 
@@ -765,8 +769,6 @@ It is now declined rather than left floating. On `/dashboard` the bundle argumen
 Sign-in is different on both counts: the route is public, cold-load, and currently carries the SDK for no other reason.
 
 Refactor, measure, then set the budget with headroom. Setting it first is how 180 kB landed on the dashboard and 200 kB on `/j/[code]`, both of which were guesses that later had to move.
-
-**Done, and set at 190 kB.** Both calls are server actions in `app/(auth)/sign-in/actions.ts`, and the route measures **166 kB** — `supabase-js` is out of the bundle. 190 rather than a number invented for it: the route is now the same shape as `/`, a public cold-load page that is a form and nothing else, so it takes the same budget. `scripts/check-bundle.mjs` enforces it.
 
 The two scheduling routes are measured at 273 kB and 264 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
 

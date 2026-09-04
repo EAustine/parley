@@ -184,13 +184,13 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 | `--muted-foreground` | all | 4.5 | 5.08 |
 | `--state-warning` | all | 4.5 | 6.49 |
 | `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
-| `--boundary` | boundary use only: tile edges, panel edges, form-field borders — any surface with no usable fill contrast | 3.0 | 3.25 |
+| `--boundary` | tile edges, panel edges, form-field borders — on `--background`, `--card`, `--popover`, `--muted`, `--secondary`. **Not on `--input`** (2.73). | 3.0 | 3.05 |
 
 `--boundary` is the boundary colour for any surface with no usable fill contrast against what it sits on — which in this palette is every surface, since the whole ramp spans 0.2 of a contrast point. Tiles, panels, and form fields all qualify. It is never a text colour.
 
 **Renamed from `--tile-border`.** The name described its first use and then lied about the next three. A token named for a component will keep lying every time it earns a new one; a token named for its purpose tells the next person whether their case qualifies.
 
-**Value raised from `#5D6777` to `#687284`.** The old value cleared 3:1 against `--background` but not against `--popover` (2.89) or `--muted` (2.76), which is fine for a panel edge separating from the room and not fine for a form field sitting *on* those surfaces. `#687284` clears 3:1 on every dark surface — worst case 3.25 on `--muted` — and 5.1 on the worst light surface.
+**Value raised from `#5D6777` to `#687284`.** The old value cleared 3:1 against `--background` but not against `--popover` (2.89) or `--muted` (2.76), which is fine for a panel edge separating from the room and not fine for a form field sitting *on* those surfaces. `#687284` clears 3:1 on every permitted surface in both themes: worst case **3.05 dark** on `--secondary`, **4.32 light** on `--muted`. The 5.1 figure in an earlier draft belonged to the old value and survived the change — the same edit that raised the value left the sentence describing it.
 
 `--input` is not a boundary token and must not be used as one. At 1.44:1 dark and 1.25:1 light it was failing SC 1.4.11 on every `Input` and every `SelectTrigger`, invisibly, because `check:contrast` only ever evaluated it as a surface for text.
 
@@ -213,7 +213,8 @@ Snapshot of the load-bearing pairs. Regenerate with `npm run check:contrast`; do
 | `--muted-foreground` / worst permitted (`--input`) | 5.08:1 |
 | `--state-critical` / worst permitted (`--secondary`) | 4.84:1 |
 | `--state-warning` / worst permitted (`--input`) | 6.49:1 |
-| `--boundary` / worst dark surface (`--muted`) | 3.25:1 |
+| `--boundary` / worst permitted dark (`--secondary`) | 3.05:1 |
+| `--boundary` / worst permitted light (`--muted`) | 4.32:1 |
 | `--foreground` (speaking, 2px) / `--background` | 17.29:1 |
 | white / `--destructive` (dark) | 4.98:1 |
 | Light `--muted-foreground` / white | 6.06:1 |

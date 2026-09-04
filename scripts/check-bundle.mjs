@@ -94,6 +94,41 @@ const record = (pass, name, detail) => {
   console.log(`${pass ? "✔" : "✘"} ${name}${detail ? `  — ${detail}` : ""}`);
 };
 
+/**
+ * `--snapshot`: emit the measured figures as markdown, and stop.
+ *
+ * `PRD.md` §10 now says budgets only: "Earlier drafts carried the current size
+ * of each route beside its budget, and every commit that changed a bundle made
+ * this table wrong — four figures went stale in a single batch of Track F work.
+ * `check:bundle` knows the real numbers and enforces the budgets; a
+ * `--snapshot` flag can emit them when someone wants a reading."
+ *
+ * Same split as `check:contrast --snapshot`: a budget is a decision and belongs
+ * in a document, a measurement is a fact about the current commit and belongs
+ * in the tool. This is how you take the reading.
+ */
+if (process.argv.includes("--snapshot")) {
+  const at = new Date().toISOString().slice(0, 10);
+  console.log(`Measured on ${at}. First Load JS, gzipped — Next's own figures.`);
+  console.log("Not for pasting into PRD §10: budgets live there, measurements live here.\n");
+  console.log("| Route | Measured | Budget |");
+  console.log("|---|---|---|");
+  console.log(`| Shared baseline | ${shared} kB | ≤ ${SHARED_BUDGET} kB |`);
+  for (const [route, budget] of Object.entries(BUDGETS)) {
+    const value = measured.get(route);
+    console.log(
+      `| \`${route}\` | ${value === undefined ? "not built" : `${value} kB`} | ≤ ${budget} kB |`,
+    );
+  }
+  for (const [route, value] of [...measured].filter(
+    ([r]) => !(r in BUDGETS) && !r.startsWith("/api"),
+  )) {
+    console.log(`| \`${route}\` | ${value} kB | — |`);
+  }
+  console.log();
+  process.exit(0);
+}
+
 console.log("First Load JS, gzipped — Next's own figures\n");
 record(shared <= SHARED_BUDGET, "shared baseline", `${shared} kB / ${SHARED_BUDGET} kB`);
 

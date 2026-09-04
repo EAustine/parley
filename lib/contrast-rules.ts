@@ -92,18 +92,22 @@ export const RULES: ContrastRule[] = [
  * since the whole ramp spans 0.2 of a contrast point.
  *
  * The surface list is where a bordered component actually sits: the ground, a
- * card, a panel, and `--muted`. Not `--secondary` or `--accent` — those are
- * button fills, and a button's edge is not what identifies it. Not `--input`
- * either: that is the field's own fill, the *inner* side of the line, and a
- * boundary does not have to clear the thing it encloses as well as the thing it
- * separates that from. The same reasoning applied to the panel edge before this
- * token had a second use.
+ * card, a panel, `--muted`, and `--secondary`. `--secondary` is the tightest of
+ * them at 3.05 — an earlier version of this list left it out on the grounds
+ * that a button's fill identifies it rather than its edge, which was reasoning
+ * its way to a looser number. `--secondary` is a surface; a boundary drawn on
+ * it has to be visible.
+ *
+ * Not `--input`: that is the field's own fill, the *inner* side of the line
+ * (2.73), and a boundary does not have to clear the thing it encloses as well
+ * as the thing it separates that from. `CLAUDE.md` carries the exclusion.
  */
 export const BOUNDARY_SURFACES = [
   "--background",
   "--card",
   "--popover",
   "--muted",
+  "--secondary",
 ] as const;
 
 export const BOUNDARY_RULES: ContrastRule[] = [
@@ -111,8 +115,8 @@ export const BOUNDARY_RULES: ContrastRule[] = [
     token: "--boundary",
     surfaces: BOUNDARY_SURFACES,
     threshold: NON_TEXT,
-    label: "boundary use only: tile edges, panel edges, form-field borders — any surface with no usable fill contrast",
-    note: "Tile edges, panel edges, form-field borders. Never a text colour.",
+    label: "tile edges, panel edges, form-field borders — on `--background`, `--card`, `--popover`, `--muted`, `--secondary`. **Not on `--input`** (2.73).",
+    note: "Tile edges, panel edges, form-field borders. Never a text colour. Not --input (2.73) — the inner side of the line.",
   },
 ];
 
