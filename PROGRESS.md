@@ -6260,3 +6260,87 @@ status rather than a pipeline's. `check:room` 107/107 (one new),
 `check:contrast` 28, `check:chat` 73/73, `check:deps` 5/5, `check:codes` 6/6,
 typecheck, lint. Verified in a browser: both tabs, the copy row, the two device
 icons, and the composer's edge and send button.
+
+---
+
+## v1.3 C4 — the sharing surfaces
+
+Three confirmed gaps, all small, on top of a branch that was already right: the
+sharer genuinely gets no share region, which is B1's hard part and was built
+correctly.
+
+### The sharing bar was a band over the video, not a bar in it
+
+`absolute inset-x-0 top-0` with a `--scrim` background, and the stage padded
+itself `pt-16` to compensate — a hard-coded 64px standing in for another
+element's height. That is the shape that put Send under the control bar in v1.2,
+and it is why the bar now takes its own row in a flex column and the number is
+gone.
+
+Two things follow from moving it into flow.
+
+**It stops covering the video it is about.** An absolute band sits over the top
+of the grid, which on a two-person call is somebody's forehead — the space B1
+exists to give back.
+
+**It stops being a scrim surface at all.** Text on `--scrim` is governed by rule
+4 and has to use the on-scrim pair; on an opaque `--popover` chip the question
+does not arise. That is the same reasoning that already sends `ConnectionPill`,
+`ConnectionBar` and the device-error message to this exact surface.
+
+A centred pill above 900px, a full-width bar below — as a pill it sized to its
+content and the button's label wrapped. The Stop button stays 44px against the
+design's 34: the fourth time this pass the floor has beaten the design file.
+
+### Two thresholds that disagreed, for a real window
+
+The stack direction was a CSS `md:flex-row` — 768px, any orientation — while the
+filmstrip's orientation *and* capacity both came from `useViewport`, which is
+`(max-width: 767px) and (orientation: portrait)`.
+
+At 700px wide in landscape those disagree: `useViewport` says desktop and
+renders a 220px **vertical** column, while `md:` is false and stacks it *under*
+the content. A vertical rail laid out horizontally.
+
+`useViewport` moved to `lib/hooks/` and `RoomStage` now reads the same signal, so
+stack direction, filmstrip orientation and strip height come from one decision.
+
+**The design's 900px was not adopted, and that is deliberate.** A static HTML
+mockup cannot test orientation, so its single `max-width: 900px` query is a
+convenience; §3.4's own table is headed "Desktop | Mobile **portrait**". The
+build already had the faithful signal — what it lacked was using it in both
+places. Changing the number would also move when the grid starts paging, which
+is §3.4's behaviour and not C4's to touch.
+
+### And the gutter
+
+8px between the shared content and the filmstrip, matching `.shareview{gap:8px}`
+and the grid's own gutter. It was 12.
+
+### Checks
+
+`check:contrast` 28, `check:room` 107/107, `check:deps` 5/5, typecheck, lint.
+`grid.spec` still reads 1→17 correctly with the stage restructured into a flex
+column — 16 tiles reflow in 72 frames, worst 9ms, none over 32.
+
+### And the ended screen, which Austine caught
+
+The host's end-of-meeting screen was still rendering `Lockup variant="stacked"`
+— the mark **and** the wordmark at display size — which is exactly what E1
+removed from sign-in, and for the reason E1 gives: on a screen whose whole job is
+one message, the wordmark is the loudest element saying the least. Mark alone at
+34px, matching screen 5 of `design/02-room.html`.
+
+The buttons were wrong in two ways, and one of them was mine from B1.
+`<StartMeetingButton />` was rendered with no props at all, so it took its
+intrinsic width and *default* height while the button beneath it was `touch` —
+two controls in one column at two sizes. It needed telling to fill the column,
+which is now a `size`/`className`/`variant` it accepts.
+
+And the order follows the design: **Back to meetings leads**, starting a new one
+follows. The meeting just ended; the likely next move is the list of the rest,
+not another meeting immediately.
+
+`Left` and `Failed` took the same mark treatment. They are one family rendered by
+the same wrapper, and leaving two of the three with a display-size wordmark would
+have been a worse inconsistency than the one being fixed.

@@ -37,12 +37,13 @@ import { DeviceChangePrompt } from "@/components/room/DeviceChangePrompt";
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
+import { useViewport } from "@/lib/hooks/useViewport";
 import { ShortcutsDialog } from "@/components/room/ShortcutsDialog";
 import { ShortcutsHint } from "@/components/room/ShortcutsHint";
 import { ScreenShareStage } from "@/components/room/ScreenShareStage";
 import { SharingBar } from "@/components/room/SharingBar";
 import { Button } from "@/components/ui/button";
-import { Lockup } from "@/components/brand/Lockup";
+import { Mark } from "@/components/brand/Mark";
 
 /**
  * The room itself, and the only module in the product that imports
@@ -388,6 +389,8 @@ function RoomSurface({
   const share = useScreenShare();
   const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
+  // C4: the one signal the whole share layout follows — see the branch below.
+  const viewport = useViewport();
   const localIsHost = isHost(localParticipant);
 
   const removeParticipant = useCallback(
@@ -507,7 +510,10 @@ function RoomSurface({
 
       <div
         className={[
-          "h-full",
+          // A flex column, so C4's sharing bar can take its own row above the
+          // content instead of being laid over it. `gap-2` is the design's 8px
+          // `.stagearea` gutter.
+          "flex h-full flex-col gap-2",
           chatOpen || participantsOpen ? "md:pr-[360px]" : "",
           /*
            * v1.2 F1: "with the video area shrinking above rather than being
@@ -525,11 +531,15 @@ function RoomSurface({
            * finished and asserted.
            */
           chatOpen || participantsOpen ? "max-md:pb-[55dvh]" : "",
-          // The sharing bar is `absolute top-0`, so the stage has to make room
-          // for it the way `pb-24` already makes room for the control bar.
-          // Overlaying it would cover the top of the grid, which B1 exists to
-          // give back.
-          share.sharing ? "pt-16" : "",
+          /*
+           * No `pt-16` any more — v1.3 C4.
+           *
+           * The bar used to be `absolute top-0`, so the stage padded itself by
+           * a hard-coded 64px to avoid being covered: a number standing in for
+           * another element's height, which is the shape that put Send under
+           * the control bar in v1.2. In flow it simply takes the height it
+           * takes.
+           */
         ]
           .filter(Boolean)
           .join(" ")}
@@ -557,10 +567,43 @@ function RoomSurface({
             "padding-bottom 180ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms cubic-bezier(0.2, 0, 0, 1)",
         }}
       >
+        {/*
+          §3.7: persistent, and deliberately not tied to the auto-hiding control
+          bar — what it says is that other people can see your screen.
+
+          C4 moves it into the stage's own column, above the content, which is
+          where the design puts it: `.stagearea` is a flex column and
+          `.sharebar` is a `flex:none` child of it. It was an absolute band over
+          the top of the room.
+        */}
+        {share.sharing && <SharingBar onStop={share.stop} />}
+
+        <div className="min-h-0 flex-1">
         {share.presenter && !share.presenter.isLocal ? (
           // §3.4: shared content takes the main area, participants collapse to
           // a filmstrip — right edge on desktop, a top strip on mobile.
-          <div className="flex h-full flex-col gap-3 md:flex-row">
+          /*
+           * v1.3 C4: **one signal for the whole share layout.**
+           *
+           * The stack direction was a CSS `md:flex-row` (768px, any
+           * orientation) while the filmstrip's orientation *and* its capacity
+           * came from `useViewport` — `(max-width: 767px) and (orientation:
+           * portrait)`. The two disagreed for a real window: at 700px wide in
+           * landscape, `useViewport` says desktop and renders a 220px vertical
+           * column, while `md:` is false and stacks it under the content. A
+           * vertical rail laid out horizontally.
+           *
+           * The design drives all of it from one `max-width: 900px` query. The
+           * *number* is a mockup convenience — a static HTML page cannot test
+           * orientation — and §3.4's own table is headed "Desktop | Mobile
+           * **portrait**", so the signal the build already had is the faithful
+           * one. What was missing was using it in both places.
+           */
+          <div
+            className={`flex h-full gap-2 ${
+              viewport === "mobile" ? "flex-col" : "flex-row"
+            }`}
+          >
             {/*
               §9: "The video grid carries a heading and a participant count, so
               the shape of the room is available without seeing it." `RoomGrid`
@@ -573,7 +616,7 @@ function RoomSurface({
               Meeting, {participants.length}{" "}
               {participants.length === 1 ? "participant" : "participants"}
             </h1>
-            <div className="min-h-0 flex-1 order-last md:order-first">
+            <div className={`min-h-0 flex-1 ${viewport === "mobile" ? "order-last" : "order-first"}`}>
               <ScreenShareStage
                 presenter={share.presenter}
                 track={share.remoteTrack}
@@ -594,11 +637,8 @@ function RoomSurface({
            */
           <RoomGrid />
         )}
+        </div>
       </div>
-
-      {/* §3.7: persistent, and deliberately not tied to the auto-hiding
-          control bar — what it says is that other people can see your screen. */}
-      {share.sharing && <SharingBar onStop={share.stop} />}
 
       {/* §3.11's local-user bar. Sits below §3.7's sharing bar rather than
           displacing it: both can be true at once, and neither is optional. */}
@@ -856,7 +896,7 @@ function Left({ code }: { code: string }) {
   return (
     <Centred>
       <div className="flex flex-col items-center gap-6">
-        <Lockup variant="stacked" markSize={40} />
+        <Mark size={34} aria-hidden />
         <div className="space-y-2">
           <h1 className="type-h1">You left the meeting</h1>
           <p className="type-body text-balance text-muted-foreground">
@@ -897,7 +937,7 @@ function Ended({ byMe, minutes }: { byMe: boolean; minutes: number | null }) {
   return (
     <Centred>
       <div className="flex flex-col items-center gap-6">
-        <Lockup variant="stacked" markSize={40} />
+        <Mark size={34} aria-hidden />
         <div className="space-y-2">
           {/* The host who pressed the button knows who did it. Telling them
               "the host ended the meeting" would read as someone else having
@@ -923,17 +963,33 @@ function Ended({ byMe, minutes }: { byMe: boolean; minutes: number | null }) {
         rule, and it is the same control the dashboard uses.
       */}
       <div className="flex w-full flex-col gap-2">
-        {byMe ? (
-          <>
-            <StartMeetingButton />
-            <Button size="touch" asChild variant="outline" className="w-full">
-              <Link href="/dashboard">Back to meetings</Link>
-            </Button>
-          </>
-        ) : (
-          <Button size="touch" asChild className="w-full">
-            <Link href="/dashboard">Back to meetings</Link>
-          </Button>
+        {/*
+          Back to meetings leads, and starting a new one follows — the design's
+          order. The meeting just ended; the likely next move is the list of the
+          rest, not another meeting immediately.
+        */}
+        <Button size="touch" asChild className="w-full">
+          <Link href="/dashboard">Back to meetings</Link>
+        </Button>
+        {byMe && (
+          /*
+            Only for the host who ended it. Creating a meeting needs an account,
+            so for a guest this is a button that exists to return 401 — they get
+            the one action that works.
+
+            `StartMeetingButton` rather than a link to `/dashboard` wearing the
+            label: the name says what happens, which is the copy rule, and it is
+            the same control the dashboard uses. It has to be *told* to fill the
+            column — it renders at its intrinsic width and default height
+            otherwise, which is why it came out shorter than the button beneath
+            it.
+          */
+          <StartMeetingButton
+            size="touch"
+            variant="outline"
+            className="w-full"
+            label="Start a new meeting"
+          />
         )}
       </div>
     </Centred>
@@ -944,7 +1000,7 @@ function Failed({ code }: { code: string }) {
   return (
     <Centred>
       <div className="flex flex-col items-center gap-6">
-        <Lockup variant="stacked" markSize={40} />
+        <Mark size={34} aria-hidden />
         <div className="space-y-2">
           <h1 className="type-h1">The connection dropped</h1>
           <p className="type-body text-balance text-muted-foreground">

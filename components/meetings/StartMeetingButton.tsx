@@ -18,6 +18,7 @@ export function StartMeetingButton({
   className,
   size,
   label = "Start meeting",
+  variant = "default",
 }: {
   /**
    * v1.3 E3 renders this full-width inside the landing page's card, where it
@@ -35,6 +36,12 @@ export function StartMeetingButton({
    * way: it is a **meeting**, and it is **started**.
    */
   label?: string;
+  /**
+   * The room's ended screen renders this as the *secondary* action beneath
+   * "Back to meetings" — the design's order there. Everywhere else it is the
+   * primary one, so `default` stays the default.
+   */
+  variant?: "default" | "outline";
 } = {}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -65,7 +72,7 @@ export function StartMeetingButton({
   }
 
   return (
-    <Button onClick={start} disabled={busy} className={className} size={size}>
+    <Button onClick={start} disabled={busy} className={className} size={size} variant={variant}>
       <HugeiconsIcon
         icon={ICONS.plus.icon}
         size={20}
