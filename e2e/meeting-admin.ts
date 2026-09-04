@@ -122,6 +122,70 @@ export async function deleteFixtureHost(id: string): Promise<void> {
 }
 
 /**
+ * Fixture hosts left behind by runs that did not finish — v1.3 A4.
+ *
+ * `globalTeardown` deletes this run's host and cascades away everything it
+ * created, and that is the right first line. It has one hole: it only runs when
+ * the run *completes*. Ctrl-C, a crashed worker, a killed process — and the
+ * host survives, with every meeting its tests made, invisible to everything.
+ * `seed-dev.mjs` will not touch them either; it deliberately excludes
+ * `@example.com` accounts when choosing whose dashboard to seed, so the litter
+ * it leaves is exactly the litter that script cannot clean.
+ *
+ * Cleaning at *setup* rather than at teardown is the point: teardown is the
+ * thing that did not run. The next run repairs the previous one.
+ *
+ * **Age-gated, and that is not caution — it is correctness.** `check:media`
+ * runs two Playwright invocations back to back (the parallel projects, then the
+ * serial media ones), so a second global setup fires while nothing guarantees
+ * the first has torn down. Deleting every fixture host on sight would let one
+ * run destroy the other's host mid-suite, which is precisely the failure that
+ * moved these fixtures off `seed:dev` in the first place.
+ *
+ * The timestamp is already in the address: `createFixtureHost` names them from
+ * `process.hrtime.bigint()`, so `created_at` needs no parsing and no schema.
+ */
+export const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Pure, and separated from the deleting on purpose.
+ *
+ * The dangerous direction here is a false *positive*: deleting a host a running
+ * suite is still using. That is unrecoverable mid-run and would look like a
+ * flake somewhere unrelated. A predicate that only ever gets exercised by
+ * actually deleting accounts cannot be tested in the direction that matters, so
+ * it is a function of its inputs and `e2e/fixture-sweep.spec.ts` puts the cases
+ * to it directly.
+ */
+export function isStaleFixtureHost(
+  user: { email?: string; created_at?: string },
+  now: number,
+): boolean {
+  // Only the addresses `createFixtureHost` mints. A real account that happens
+  // to be an @example.com is not in scope, and neither is any other fixture.
+  if (!/^e2e-host-\d+@example\.com$/.test(user.email ?? "")) return false;
+  const created = user.created_at ? Date.parse(user.created_at) : NaN;
+  // An unparseable or missing date is not evidence of staleness. Leave it.
+  if (!Number.isFinite(created)) return false;
+  return created < now - STALE_AFTER_MS;
+}
+
+export async function deleteStaleFixtureHosts(): Promise<number> {
+  const response = await rest("/auth/v1/admin/users?per_page=500");
+  if (!response.ok) return 0;
+
+  const { users = [] } = (await response.json()) as {
+    users?: { id: string; email?: string; created_at?: string }[];
+  };
+
+  const now = Date.now();
+  const stale = users.filter((user) => isStaleFixtureHost(user, now));
+
+  for (const user of stale) await deleteFixtureHost(user.id);
+  return stale.length;
+}
+
+/**
  * Insert one meeting and return its code.
  *
  * `live` by default because that is what a room test needs: `get_meeting_by_code`

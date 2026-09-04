@@ -2,6 +2,7 @@ import {
   createFixtureHost,
   createMeeting,
   deleteFixtureHost,
+  deleteStaleFixtureHosts,
 } from "./meeting-admin";
 
 /**
@@ -26,8 +27,26 @@ import {
  * workers after global setup returns, so they inherit whatever it set.
  */
 export default async function globalSetup() {
+  /**
+   * Repair the last run before starting this one — A4.
+   *
+   * `globalTeardown` only runs when a run finishes, so an interrupted one
+   * leaves its fixture host and every meeting its tests made. Nothing else
+   * cleans them: `seed-dev.mjs` skips `@example.com` accounts by design.
+   * Doing it here rather than there is the whole idea — teardown is the step
+   * that did not happen.
+   */
+  const swept = await deleteStaleFixtureHosts();
+  if (swept > 0) {
+    console.log(`swept ${swept} fixture host(s) left by an interrupted run`);
+  }
+
   const host = await createFixtureHost();
   process.env.PARLEY_E2E_HOST_ID = host.id;
+  // Published so `fixture-sweep.spec.ts` can assert the sweep's pattern still
+  // matches what `createFixtureHost` mints — a rename there must fail a test,
+  // not silently turn the sweep into a no-op.
+  process.env.PARLEY_E2E_HOST_EMAIL = host.email;
 
   try {
     const days = (n: number) => new Date(Date.now() + n * 86_400_000);

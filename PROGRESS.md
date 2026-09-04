@@ -5366,3 +5366,91 @@ element.
 
 Full suite: **76 app + select, 23 media, 99 passing.** `check:partition` 20/20,
 `check:webhook` 5/5, `check:contrast` 28/28, `check:deps` 5/5, typecheck, lint.
+
+---
+
+## v1.3 A4 — the litter was not the seed script
+
+### The diagnosis A4 gives is wrong, and the real one matters more
+
+A4: "The seed script was specified as idempotent and evidently is not. Fix the
+idempotency, wipe, reseed."
+
+`seed-dev.mjs` **is** idempotent. It deletes every meeting belonging to its
+target host and inserts three fixed-code fixtures, so running it a hundred times
+leaves three rows. And "Quarterly planning" is not one of its titles — its three
+are Design review, Roadmap planning, Sprint retro.
+
+What was actually in the database:
+
+| rows | title | owner |
+|---|---|---|
+| 18 | Quarterly planning | **the real account** |
+| 18 | Winter planning | **the real account** |
+| 3 | Meeting | the real account |
+| 1 each | Test with wifey, Test App | the real account |
+| 1 each | Design review, Roadmap planning, Sprint retro | the seed |
+| 1 | Toast probe | an orphaned e2e fixture host |
+
+"Quarterly planning" and "Winter planning" appear in exactly one place in the
+repo: `e2e/schedule.spec.ts`. **36 of the 45 rows were test residue sitting on
+the host's own account**, created 2–3 September — before the suite moved to a
+per-run fixture host. Today's runs are clean; the mechanism was fixed, and
+nobody went back for what it had already left.
+
+So the dashboard was not showing bad seed data. It was showing a year of the
+test suite, and the fix A4 proposed — making an already-idempotent script
+idempotent — would have changed nothing.
+
+### The hole that is still open, and closing it
+
+`globalTeardown` deletes the run's fixture host and cascades away every meeting
+its tests made. It has one hole: **it only runs when the run completes.** Ctrl-C,
+a crashed worker, a killed process — and the host survives with everything it
+created. Nothing else collects it either: `seed-dev.mjs` skips `@example.com`
+accounts by design when choosing whose dashboard to seed, so the residue it
+leaves is precisely the residue that script cannot reach.
+
+`globalSetup` now sweeps stale fixture hosts, because **setup is the step that
+does run**. The next run repairs the last one. It fired on its first real
+invocation and collected the orphan holding "Toast probe".
+
+### The age gate is the load-bearing part
+
+Six hours, and not out of caution. `check:media` invokes Playwright **twice**
+back to back — the parallel projects, then the serial media ones — so a second
+global setup fires with no guarantee the first has torn down. A sweep that
+deleted every fixture host on sight would have one run destroy the other's host
+mid-suite, which is exactly the failure that moved these fixtures off `seed:dev`
+in the first place.
+
+The dangerous direction is therefore the false *positive*, and a predicate only
+ever exercised by deleting accounts cannot be tested in that direction. So
+`isStaleFixtureHost` is pure and `e2e/fixture-sweep.spec.ts` puts inputs to it:
+both sides of the boundary to the millisecond, a host minutes old spared, real
+addresses and the other check scripts' fixtures untouched, and a missing or
+unreadable date treated as *not* stale.
+
+Plus a vacuity guard, because every one of those cases is synthetic and would
+pass against a pattern that no longer resembles anything: the last test asserts
+the sweep would collect **the address this very run's host was minted with**. A
+rename in `createFixtureHost` now fails a test instead of quietly turning the
+sweep into a no-op that collects nothing forever.
+
+### The cleanup was targeted, not a wipe
+
+A4 says wipe and reseed. `npm run seed:dev` would have done that — and taken
+"Test with wifey", "Test App" and three "Meeting" rows with it, which are the
+host's own and not litter at all. The instruction was written believing all of
+it was seed output.
+
+So: only rows titled exactly "Quarterly planning" or "Winter planning" and
+created before 4 September. Those strings exist nowhere but the test suite.
+Dry-run first — 36 rows, both titles, 2 September 15:15 to 3 September 11:04 —
+then applied. **45 meetings → 8**, one account, no fixture accounts, no orphans.
+Nothing of the host's was touched, and the three seed fixtures still stand.
+
+### Checks
+
+Full suite **82 + 23 = 105 passing** (six new). `check:partition` 20/20,
+`check:webhook` 5/5, `check:contrast` 28/28, `check:deps` 5/5, typecheck, lint.
