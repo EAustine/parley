@@ -31,7 +31,15 @@ export function MicMeter({
 
   return (
     <div
-      className="h-1 w-full overflow-hidden rounded-full"
+      /*
+       * v1.3 E2: "a 4px bar directly under the frame, so it reads as voice
+       * rather than as a widget."
+       *
+       * Flush, and square where the frame is square — below 900px the preview
+       * runs edge to edge with no radius, and a rounded bar under a square
+       * frame reads as a second object rather than as the frame's own edge.
+       */
+      className="h-1 w-full overflow-hidden min-[900px]:rounded-b-full"
       style={{ background: "var(--input)" }}
       // Not a progress bar to a screen reader: it updates many times a second
       // and says nothing a blind user can act on. The mic button already
@@ -40,7 +48,7 @@ export function MicMeter({
       data-mic-meter={muted ? "muted" : "live"}
     >
       <div
-        className="h-full rounded-full"
+        className="h-full min-[900px]:rounded-full"
         style={{
           width: `${filled * 100}%`,
           background: "var(--foreground)",

@@ -206,205 +206,306 @@ export function PreJoin({
   const cameraMissing = media.state === "granted" && !media.hasCamera;
   const micMissing = media.state === "granted" && !media.hasMicrophone;
 
+  /**
+   * The join button's name changes when there is nothing to join *with*.
+   *
+   * E2: the denied state "offers 'Join without camera or mic' rather than
+   * dead-ending. Someone blocked at their office should still be able to
+   * listen." A button reading "Join meeting" beside an explanation of why the
+   * camera is blocked reads as the thing that is blocked; naming the outcome is
+   * what makes it obviously still available.
+   */
+  const blocked =
+    media.state === "denied" ||
+    media.state === "dismissed" ||
+    media.state === "no-device" ||
+    media.state === "in-use";
+  const joinLabel =
+    countdown !== null
+      ? `Joining in ${countdown}s…`
+      : joining
+        ? "Joining…"
+        : blocked
+          ? "Join without camera or mic"
+          : "Join meeting";
+
+  const joinButton = (
+    /* The only filled-primary button on the screen. Everything else here,
+       including the permission request inside the frame, is an outline. */
+    <Button size="touch" className="w-full" onClick={() => join()} disabled={!canJoin}>
+      {joinLabel}
+    </Button>
+  );
+
   return (
     /**
-     * v1.2 D: one centred column, the preview as its hero.
+     * v1.3 E2: "Split layout: preview left, meeting title and panel right.
+     * Better use of horizontal space than a centred column."
      *
-     * This was a two-column `md:grid-cols-[1.4fr_1fr]` inside `max-w-4xl`,
-     * which made the preview one of two equal concerns and pushed the device
-     * controls onto a scrim *inside* it. D puts the preview first and
-     * everything else underneath, in the order you deal with it: see yourself,
-     * check you can be heard, fix a device if it is wrong, say who you are,
-     * join.
+     * **This reverses v1.2 D, deliberately and with its reasoning noted.** D
+     * made the preview a hero in one 560px column and moved the device toggles
+     * out of the frame, on the grounds that "nothing sits on the video at all
+     * any more, which is a stronger form of rule 4 than a scrim". E2 puts them
+     * back on the preview because that is "where attention already is" — and
+     * rule 4 is satisfied properly now rather than avoided: the toggles sit on
+     * a gradient of `--scrim` and draw themselves in `--on-scrim`, the
+     * theme-invariant pair added for exactly this.
      *
-     * Moving the toggles out of the frame also means nothing sits on the video
-     * at all any more, which is a stronger form of rule 4 than a scrim.
+     * Below 900px it is one column, edge to edge, with Join pinned to the
+     * bottom — see the sticky block at the end. 900 rather than a Tailwind
+     * breakpoint because that is the number the design uses, and a split layout
+     * needs the width it needs.
      */
-    <div className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col justify-center gap-6 px-6 py-12">
-      <div className="space-y-1">
-        <p className="type-caption text-muted-foreground">You&rsquo;re joining</p>
-        <h1 className="type-h1">{meeting.title}</h1>
-      </div>
+    <div className="mx-auto flex min-h-dvh w-full flex-col min-[900px]:max-w-[1080px] min-[900px]:justify-center min-[900px]:px-6 min-[900px]:py-10">
+      <div className="flex min-h-0 flex-1 flex-col min-[900px]:grid min-[900px]:flex-none min-[900px]:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] min-[900px]:items-start min-[900px]:gap-8">
+        {/* --- left: the preview, and the meter flush beneath it ---------- */}
+        <div className="flex-none">
+          <div
+            /*
+             * A state card can be taller than 16:9 on a narrow screen, and the
+             * copy is the whole point of the state — so the ratio is dropped
+             * rather than the explanation clipped. The design does the same
+             * with `.stage:has(.stage-state)`.
+             */
+            className={`relative overflow-hidden border-y border-boundary bg-card min-[900px]:rounded-xl min-[900px]:border ${
+              media.state === "granted"
+                ? "aspect-video"
+                : "min-h-[min(56vw,240px)] min-[900px]:aspect-video"
+            }`}
+          >
+            {showPreview ? (
+              <video
+                ref={attachPreview}
+                autoPlay
+                playsInline
+                muted
+                // Mirrored here only. §3.3: what you publish is not flipped —
+                // a mirrored preview feels natural, a mirrored broadcast makes
+                // everyone else read your text backwards.
+                className="h-full w-full -scale-x-100 object-cover"
+              />
+            ) : media.state === "granted" ? (
+              <div className="flex h-full items-center justify-center px-8 text-center">
+                <p className="type-small text-balance text-muted-foreground">
+                  {cameraMissing
+                    ? micMissing
+                      ? "No camera or microphone found. You can still join and follow along."
+                      : "No camera found. Your microphone works, so you’ll join with audio only."
+                    : "Your camera is off. You’ll join without video."}
+                </p>
+              </div>
+            ) : (
+              /* E2: "Every permission state renders inside the preview frame —
+                 the denied state is where the video would be, not a banner
+                 elsewhere, so the eye never hunts for the explanation." */
+              <PermissionNotice state={media.state} onRequest={media.request} />
+            )}
 
-      {/* --- the preview, and the meter flush beneath it ------------------ */}
-      <div className="space-y-3">
-        <div className="relative aspect-video overflow-hidden rounded-xl border border-boundary bg-card">
-          {showPreview ? (
-            <video
-              ref={attachPreview}
-              autoPlay
-              playsInline
-              muted
-              // Mirrored here only. §3.3: what you publish is not flipped —
-              // a mirrored preview feels natural, a mirrored broadcast makes
-              // everyone else read your text backwards.
-              className="h-full w-full -scale-x-100 object-cover"
-            />
-          ) : media.state === "granted" ? (
-            <div className="flex h-full items-center justify-center px-8 text-center">
-              <p className="type-small text-balance text-muted-foreground">
-                {cameraMissing
-                  ? micMissing
-                    ? "No camera or microphone found. You can still join and follow along."
-                    : "No camera found. Your microphone works, so you’ll join with audio only."
-                  : "Your camera is off. You’ll join without video."}
-              </p>
-            </div>
-          ) : (
-            /* §3.3's remaining states, inside the frame — D keeps the eye in
-               one place, and the denied copy is the longest thing on the
-               screen, so anywhere else it reads as a footnote. */
-            <PermissionNotice state={media.state} onRequest={media.request} />
+            {/*
+              E2: the toggles, on the preview.
+
+              Rule 4, met rather than sidestepped: a bottom gradient of
+              `--scrim`, and every mark on it drawn in `--on-scrim` /
+              `--on-scrim-muted`, which are theme-invariant because the scrim
+              is. `--foreground` is not permitted here — in light mode it lands
+              at 2.30:1 on a surface that does not flip with it.
+            */}
+            {media.state === "granted" && (
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 flex h-24 items-end justify-center gap-3 pb-4"
+                style={{
+                  background:
+                    "linear-gradient(to top, var(--scrim) 0%, rgba(14, 16, 19, 0) 100%)",
+                }}
+              >
+                <DeviceToggle
+                  on={media.micOn}
+                  onToggle={media.toggleMic}
+                  onIcon="micOn"
+                  offIcon="micOff"
+                  // Names the action, not the state — accessibility floor. A
+                  // control that can't do anything says why instead.
+                  disabled={micMissing}
+                  label={
+                    micMissing
+                      ? "No microphone found"
+                      : media.micOn
+                        ? "Turn off microphone"
+                        : "Turn on microphone"
+                  }
+                />
+                <DeviceToggle
+                  on={media.cameraOn}
+                  onToggle={media.toggleCamera}
+                  onIcon="cameraOn"
+                  offIcon="cameraOff"
+                  disabled={cameraMissing}
+                  label={
+                    cameraMissing
+                      ? "No camera found"
+                      : media.cameraOn
+                        ? "Turn off camera"
+                        : "Turn on camera"
+                  }
+                />
+              </div>
+            )}
+          </div>
+
+          {/*
+            E2: "The level meter is a 4px bar directly under the frame, so it
+            reads as voice rather than as a widget." Flush — no gap, and square
+            on mobile where the frame is square, so the two read as one object.
+          */}
+          {media.state === "granted" && (
+            <MicMeter level={media.level} muted={!media.micOn} />
           )}
         </div>
 
-        {/* A 4px bar, not a number. Only once there is a signal to draw. */}
-        {media.state === "granted" && (
-          <MicMeter level={media.level} muted={!media.micOn} />
-        )}
-      </div>
+        {/* --- right: what you are joining, and how ----------------------- */}
+        <div className="flex min-h-0 flex-1 flex-col px-4 pt-5 pb-6 min-[900px]:flex-none min-[900px]:p-0">
+          <p className="type-caption text-muted-foreground">You&rsquo;re joining</p>
+          <h1 className="type-h1">{meeting.title}</h1>
+          {/* Mono, and the only place the code appears on this screen — a code
+              is read aloud and typed, which is what the mono face is for. */}
+          <p className="mt-1.5 font-mono type-small tracking-[0.06em] text-muted-foreground">
+            {meeting.code}
+          </p>
 
-      {/* --- device controls, beneath the preview rather than on it ------- */}
-      {media.state === "granted" && (
-        <div className="flex items-center justify-center gap-3">
-          <DeviceToggle
-            on={media.micOn}
-            onToggle={media.toggleMic}
-            onIcon="micOn"
-            offIcon="micOff"
-            // Names the action, not the state — accessibility floor. A
-            // control that can't do anything says why instead.
-            disabled={micMissing}
-            label={
-              micMissing
-                ? "No microphone found"
-                : media.micOn
-                  ? "Turn off microphone"
-                  : "Turn on microphone"
-            }
-          />
-          <DeviceToggle
-            on={media.cameraOn}
-            onToggle={media.toggleCamera}
-            onIcon="cameraOn"
-            offIcon="cameraOff"
-            disabled={cameraMissing}
-            label={
-              cameraMissing
-                ? "No camera found"
-                : media.cameraOn
-                  ? "Turn off camera"
-                  : "Turn on camera"
-            }
-          />
+          <div className="mt-5 rounded-xl border border-boundary bg-popover p-5">
+            {isGuest && (
+              <div className="space-y-2">
+                <Label htmlFor="display-name" className="type-small">
+                  Your name
+                </Label>
+                <Input
+                  id="display-name"
+                  size="touch"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ama"
+                  maxLength={40}
+                  autoComplete="name"
+                  autoFocus
+                />
+                <p className="type-caption text-muted-foreground">
+                  Shown to everyone in the meeting.
+                </p>
+              </div>
+            )}
+
+            {/*
+              E2, on mobile: "device selects behind a disclosure (one camera and
+              one mic on a phone; the join button should not sit four fields
+              down)".
+
+              A `<details>` at every width rather than only below 900px. On a
+              phone it is the difference between joining and scrolling; on a
+              desktop the three selects are still the least likely thing to be
+              touched, and a disclosure that changes into a stack at a
+              breakpoint is two components pretending to be one.
+            */}
+            <details className="mt-4 border-t border-border pt-1">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between type-small font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                Camera, microphone and speaker
+                <HugeiconsIcon
+                  icon={ICONS.chevronDown.icon}
+                  size={16}
+                  strokeWidth={1.5}
+                  color="currentColor"
+                  aria-hidden
+                  className="shrink-0 transition-transform duration-[120ms] [details[open]>summary_&]:rotate-180"
+                />
+              </summary>
+              <div className="space-y-3 pt-2 pb-1">
+                <DeviceSelect
+                  id="camera"
+                  label="Camera"
+                  options={media.cameras}
+                  value={media.cameraId}
+                  onChange={media.setCamera}
+                  ready={devicesKnown}
+                />
+                <DeviceSelect
+                  id="microphone"
+                  label="Microphone"
+                  options={media.microphones}
+                  value={media.microphoneId}
+                  onChange={media.setMicrophone}
+                  ready={devicesKnown}
+                />
+                {/*
+                  v1.3 B2: "Speaker selection needs `HTMLMediaElement.setSinkId`,
+                  unsupported in Safari. Feature-detect and hide rather than
+                  showing a control that does nothing."
+
+                  It had always done nothing on those browsers. `RoomStage`
+                  calls `switchActiveDevice("audiooutput", …)` and catches the
+                  rejection, so the *room* degraded correctly from the start —
+                  what nothing could do was stop this screen offering a choice
+                  that would be silently discarded. Hidden rather than disabled,
+                  like screen share under §3.7: a disabled control invites
+                  someone to keep trying.
+                */}
+                {speakerChoosable && (
+                  <DeviceSelect
+                    id="speaker"
+                    label="Speaker"
+                    options={media.speakers}
+                    value={media.speakerId}
+                    onChange={media.setSpeaker}
+                    ready={devicesKnown}
+                  />
+                )}
+              </div>
+            </details>
+
+            {/* Desktop keeps Join in the panel, where the eye finishes. Below
+                900px it is pinned to the bottom instead — see the end. */}
+            <div className="mt-4 hidden min-[900px]:block">{joinButton}</div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {countdown !== null && (
+              <p className="type-caption text-muted-foreground" role="status" aria-live="polite">
+                This meeting is busy right now. You&rsquo;ll join automatically —
+                there&rsquo;s nothing to do.
+              </p>
+            )}
+            {/* Joining with both off is allowed, and must not read as a fault.
+                "You can turn them on once you're in" is only true when there
+                is something to turn on — with no hardware it is a promise the
+                room cannot keep. */}
+            {media.state === "granted" && !media.cameraOn && !media.micOn && (
+              <p className="type-caption text-muted-foreground">
+                {cameraMissing && micMissing
+                  ? "You’ll join without a camera or microphone. You’ll still see and hear everyone else."
+                  : "You’ll join with your camera and microphone off. You can turn them on once you’re in."}
+              </p>
+            )}
+            {blocked && (
+              <p className="type-caption text-muted-foreground">
+                You can still join and listen. Others won&rsquo;t see or hear you
+                until access is allowed.
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="type-small text-[var(--state-critical)]">
+                {error}
+              </p>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {/*
-        --- the three selectors -----------------------------------------------
-        D calls this "a settings row". Stacked rather than three across, and
-        the reason is legibility rather than taste: in a 560px column three
-        selects are about 176px each, and "Default - MacBook Pro Microphone
-        (Built-in)" truncates to somewhere around "Default - MacB" — which is
-        the one thing a device selector exists to tell you.
+        E2, on mobile: "Join sticky at the bottom with a safe-area inset."
+        `env(safe-area-inset-bottom)` because `dvh` describes the viewport, not
+        the part of it that is safe to put a control in — the same reason the
+        room's control bar carries it.
       */}
-      <div className="space-y-3">
-        <DeviceSelect
-          id="camera"
-          label="Camera"
-          options={media.cameras}
-          value={media.cameraId}
-          onChange={media.setCamera}
-          ready={devicesKnown}
-        />
-        <DeviceSelect
-          id="microphone"
-          label="Microphone"
-          options={media.microphones}
-          value={media.microphoneId}
-          onChange={media.setMicrophone}
-          ready={devicesKnown}
-        />
-        {/*
-          v1.3 B2: "Speaker selection needs `HTMLMediaElement.setSinkId`,
-          unsupported in Safari. Feature-detect and hide rather than showing a
-          control that does nothing."
-
-          It has always done nothing on those browsers. `RoomStage` calls
-          `switchActiveDevice("audiooutput", …)` and catches the rejection, so
-          the *room* degraded correctly from the start — what nothing could do
-          was stop this screen offering a choice that would be silently
-          discarded. Hidden rather than disabled, like screen share under §3.7:
-          a disabled control invites someone to keep trying.
-        */}
-        {speakerChoosable && (
-          <DeviceSelect
-            id="speaker"
-            label="Speaker"
-            options={media.speakers}
-            value={media.speakerId}
-            onChange={media.setSpeaker}
-            ready={devicesKnown}
-          />
-        )}
-      </div>
-
-      {/* --- name and join, one block ------------------------------------- */}
-      <div className="space-y-3">
-        {isGuest && (
-          <div className="space-y-2">
-            <Label htmlFor="display-name" className="type-small">
-              Your name
-            </Label>
-            <Input
-              id="display-name"
-              // 44px: a field is a target, and this is a pre-join surface.
-              className="h-11"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ama"
-              maxLength={40}
-              autoComplete="name"
-              autoFocus
-            />
-            <p className="type-caption text-muted-foreground">
-              Shown to everyone in the meeting.
-            </p>
-          </div>
-        )}
-
-        {/* The only filled-primary button on the screen — D. Everything else
-            here, including the permission request inside the frame, is an
-            outline. */}
-        <Button size="touch" className="w-full" onClick={() => join()} disabled={!canJoin}>
-          {countdown !== null
-            ? `Joining in ${countdown}s…`
-            : joining
-              ? "Joining…"
-              : "Join meeting"}
-        </Button>
-        {countdown !== null && (
-          <p className="type-caption text-muted-foreground" role="status" aria-live="polite">
-            This meeting is busy right now. You&rsquo;ll join automatically —
-            there&rsquo;s nothing to do.
-          </p>
-        )}
-        {/* Joining with both off is allowed, and must not read as a fault.
-            "You can turn them on once you're in" is only true when there
-            is something to turn on — with no hardware it is a promise the
-            room cannot keep. */}
-        {media.state === "granted" && !media.cameraOn && !media.micOn && (
-          <p className="type-caption text-muted-foreground">
-            {cameraMissing && micMissing
-              ? "You’ll join without a camera or microphone. You’ll still see and hear everyone else."
-              : "You’ll join with your camera and microphone off. You can turn them on once you’re in."}
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="type-small text-[var(--state-critical)]">
-            {error}
-          </p>
-        )}
+      <div className="sticky bottom-0 z-10 mt-auto border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] min-[900px]:hidden">
+        {joinButton}
       </div>
     </div>
   );
@@ -444,12 +545,25 @@ function DeviceToggle({
            * `:hover` — so "No microphone found" lifted 1.04 as though it were
            * pressable the moment the shared motion was applied here.
            */
-          className={`flex size-12 items-center justify-center rounded-full border disabled:pointer-events-none disabled:opacity-50 ${CONTROL_MOTION}`}
+          className={`pointer-events-auto flex size-12 items-center justify-center rounded-full border disabled:pointer-events-none disabled:opacity-50 ${CONTROL_MOTION}`}
+          /*
+           * v1.3 E2: these now sit **on** the preview, over a gradient of
+           * `--scrim`, so every colour here is one of the theme-invariant pair.
+           *
+           * `--foreground` is not permitted on a scrim. It flips with the theme
+           * and the scrim does not — in light mode it is `#16181D` on a surface
+           * that composites to `#515355`, which is **2.30:1**. `--on-scrim` is
+           * 7.01:1 and fixed, so this reads the same whichever way the rest of
+           * the page is painted.
+           *
+           * Off is a fill change, not a hue change — rule 5. `--secondary` is
+           * opaque, which is what makes the off state legible against bright
+           * video where the scrim alone would not be.
+           */
           style={{
-            // Off is a fill change, not a hue change — rule 5.
-            backgroundColor: on ? "transparent" : "var(--secondary)",
-            borderColor: on ? "var(--boundary)" : "var(--secondary)",
-            color: "var(--foreground)",
+            backgroundColor: on ? "var(--scrim)" : "var(--secondary)",
+            borderColor: on ? "var(--on-scrim-muted)" : "var(--secondary)",
+            color: on ? "var(--on-scrim)" : "var(--foreground)",
           }}
         >
           <HugeiconsIcon

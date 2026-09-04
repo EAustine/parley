@@ -75,10 +75,27 @@ test.describe("the pre-join preview", () => {
    * concerns and the device controls on a scrim *inside* it. D puts the preview
    * first and everything else underneath, in the order you deal with it.
    */
-  test("the preview is the hero, and everything else sits under it", async ({
+  /**
+   * v1.3 E2's layout, which **reverses v1.2 D** — deliberately, and this test
+   * was rewritten with it rather than deleted.
+   *
+   * D made the preview a hero in one centred 560px column and moved the device
+   * toggles *out* of the frame, on the grounds that "nothing sits on the video
+   * at all any more, which is a stronger form of rule 4 than a scrim". This
+   * test asserted that order, item by item, and would have gone on passing
+   * against a layout the specification no longer wants — so its assertions are
+   * the specification's, not the layout's.
+   *
+   * E2: "Split layout: preview left, meeting title and panel right. Better use
+   * of horizontal space than a centred column." And the toggles go back on the
+   * preview, "which puts them where attention already is" — rule 4 met with
+   * `--on-scrim` rather than avoided by moving things off the video.
+   */
+  test("the preview leads, and the controls sit on it", async ({
     page,
     meetingCode,
   }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/j/${meetingCode}`);
     await page.getByRole("button", { name: "Allow camera and microphone" }).click();
     await expect(page.locator("video")).toBeVisible({ timeout: 20_000 });
@@ -87,19 +104,19 @@ test.describe("the pre-join preview", () => {
       const video = document.querySelector<HTMLVideoElement>("video")!;
       const frame = video.parentElement!;
       const meter = document.querySelector<HTMLElement>("[data-mic-meter]");
-      const mic = document.querySelector<HTMLElement>('[aria-label*="microphone" i]');
+      const mic = document.querySelector<HTMLElement>('[aria-label*="microphone" i]')!;
+      const heading = document.querySelector<HTMLElement>("h1")!;
       const join = [...document.querySelectorAll<HTMLElement>("button")].find((b) =>
         /Join meeting/i.test(b.textContent ?? ""),
       );
-      const camera = document.querySelector<HTMLElement>('[id="camera"], [aria-labelledby*="camera"]');
       const box = (el: Element | null | undefined) => (el ? el.getBoundingClientRect() : null);
+
       /**
        * `frame`, not `document.body` — rule 8b forces `.dark` via a wrapper
-       * element inside the route group, not on `<html>` or `<body>`. Reading
-       * the custom property from body resolved the *light* `:root` value
-       * (`#16181D`) while the button actually painted the dark one
-       * (`#F2F4F7`), so a same-token comparison failed by comparing against
-       * the wrong scope. `frame` is already inside the forced-dark tree.
+       * element inside the route group, not on `<html>` or `<body>`. Reading a
+       * custom property from body resolves the *light* `:root` value while the
+       * control paints the dark one, so a same-token comparison fails by
+       * comparing against the wrong scope.
        */
       const resolve = (name: string) => {
         const probe = document.createElement("span");
@@ -109,7 +126,8 @@ test.describe("the pre-join preview", () => {
         probe.remove();
         return value;
       };
-      // How many buttons are filled with --primary? D: Join is the only one.
+
+      // How many buttons are filled with --primary? Join is the only one.
       const primary = resolve("--primary");
       const filled = [...document.querySelectorAll<HTMLElement>("button")]
         .filter((b) => b.getBoundingClientRect().width > 0)
@@ -120,12 +138,14 @@ test.describe("the pre-join preview", () => {
         frame: box(frame),
         meter: box(meter),
         mic: box(mic),
-        camera: box(camera),
+        heading: box(heading),
         join: box(join),
         radius: parseFloat(getComputedStyle(frame).borderTopLeftRadius),
+        micColour: getComputedStyle(mic).color,
+        onScrim: resolve("--on-scrim"),
+        foreground: resolve("--foreground"),
         // Both, because Tailwind v4 compiles `-scale-x-100` to the individual
-        // `scale` property and leaves `transform: none` — the same shape that
-        // caught the panel slide's `translate` in Track C.
+        // `scale` property and leaves `transform: none`.
         transform: getComputedStyle(video).transform,
         scale: getComputedStyle(video).scale,
         meterHeight: meter ? meter.getBoundingClientRect().height : null,
@@ -134,20 +154,49 @@ test.describe("the pre-join preview", () => {
       };
     });
 
-    // 16:9, up to about 560px, centred in the viewport.
-    expect(layout.frame!.width).toBeLessThanOrEqual(560);
+    // --- split: preview left, everything about the meeting right ---------
+    expect(
+      layout.heading!.left,
+      "the title is not to the right of the preview — this is still one column",
+    ).toBeGreaterThan(layout.frame!.right);
+    // 16:9, and the wider of the two columns.
     expect(layout.frame!.width / layout.frame!.height).toBeCloseTo(1.78, 1);
-    const centre = layout.frame!.x + layout.frame!.width / 2;
-    expect(Math.abs(centre - layout.viewport / 2)).toBeLessThan(2);
-    // 0.75rem — CLAUDE.md's tile radius, which B3 corrected from 0.7rem.
+    expect(layout.frame!.width).toBeGreaterThan(layout.viewport - layout.frame!.width);
+    // 0.75rem — CLAUDE.md's tile radius.
     expect(layout.radius).toBeCloseTo(12, 0);
-    /*
-     * §3.3: "Preview is mirrored; published video is not."
+
+    // --- the toggles are ON the preview, not under it --------------------
+    expect(
+      layout.mic!.top >= layout.frame!.top && layout.mic!.bottom <= layout.frame!.bottom + 1,
+      `mic ${JSON.stringify(layout.mic)} is not inside frame ${JSON.stringify(layout.frame)}`,
+    ).toBe(true);
+
+    /**
+     * And drawn in `--on-scrim`, which is the half of E2 that has nothing to do
+     * with position.
      *
-     * A negative horizontal scale, expressed either as a matrix or as the
-     * individual `scale` property — Tailwind v4 uses the latter, so reading
-     * only `transform` returned "none" and the assertion failed against a
-     * preview that was mirrored correctly.
+     * `--foreground` flips with the theme and the scrim does not: in light mode
+     * it lands at **2.30:1** on a surface that composites to `#515355`. The two
+     * tokens are the same value in dark, so the assertion is that it is *not*
+     * the theme-dependent one — a same-value check would pass either way here
+     * and fail nowhere until someone opened this screen in light mode.
+     */
+    expect(layout.micColour, "the mic toggle is not --on-scrim").toBe(layout.onScrim);
+
+    // --- the meter, flush under the frame --------------------------------
+    expect(layout.meter!.top, "the meter is not under the preview").toBeGreaterThanOrEqual(
+      layout.frame!.bottom - 1,
+    );
+    expect(layout.meterHeight, "the meter is not a 4px bar").toBeCloseTo(4, 0);
+    expect(layout.meter!.width, "the meter is not the width of the preview").toBeCloseTo(
+      layout.frame!.width,
+      0,
+    );
+
+    /*
+     * §3.3: "Preview is mirrored; published video is not." A negative
+     * horizontal scale, expressed either as a matrix or as the individual
+     * `scale` property — Tailwind v4 uses the latter.
      */
     const mirrored =
       /^matrix\(\s*-/.test(layout.transform) || /^-/.test(layout.scale ?? "");
@@ -156,29 +205,82 @@ test.describe("the pre-join preview", () => {
       `transform: ${layout.transform}, scale: ${layout.scale}`,
     ).toBe(true);
 
-    // The order D asks for: preview, meter, toggles, selectors, name and join.
-    expect(layout.meter!.top, "the meter is not under the preview").toBeGreaterThanOrEqual(
-      layout.frame!.bottom - 1,
-    );
-    expect(layout.mic!.top, "the device toggles are not under the meter").toBeGreaterThanOrEqual(
-      layout.meter!.bottom - 1,
-    );
-    expect(
-      layout.camera!.top,
-      "the selectors are not under the device toggles",
-    ).toBeGreaterThanOrEqual(layout.mic!.bottom - 1);
-    expect(layout.join!.top, "Join is not the last thing").toBeGreaterThan(layout.camera!.bottom);
-
-    // A 4px bar, not a number and not twelve segments.
-    expect(layout.meterHeight, "the meter is not a 4px bar").toBeCloseTo(4, 0);
-    expect(layout.meter!.width, "the meter is not the width of the preview").toBeCloseTo(
-      layout.frame!.width,
-      0,
-    );
-
     // "Join is the only filled-primary button on the screen."
     expect(layout.filled, `filled-primary buttons: ${layout.filled.join(" | ")}`).toHaveLength(1);
     expect(layout.filled[0]).toMatch(/Join meeting/i);
+  });
+
+  /**
+   * E2 on a phone: "preview edge-to-edge … Join sticky at the bottom with a
+   * safe-area inset."
+   *
+   * A separate test rather than a second viewport in the one above, because
+   * these are different claims: the split layout is about proportion, and this
+   * is about the two edges of the screen. Measured, because "edge to edge" is a
+   * rendered fact and `border-radius: 0` at a breakpoint is a declaration.
+   */
+  test("on a phone the preview runs edge to edge and Join is pinned", async ({
+    page,
+    meetingCode,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.goto(`/j/${meetingCode}`);
+    await page.getByRole("button", { name: "Allow camera and microphone" }).click();
+    await expect(page.locator("video")).toBeVisible({ timeout: 20_000 });
+
+    const phone = await page.evaluate(() => {
+      const video = document.querySelector<HTMLVideoElement>("video")!;
+      const frame = video.parentElement!;
+      /**
+       * The **visible** Join, not the first one in the DOM.
+       *
+       * There are two: the panel's, shown from 900px up, and the pinned one
+       * below it. `display: none` gives the desktop button a zero-sized rect
+       * at the origin, so a plain `.find()` reported Join sitting 780px from
+       * the bottom of a 780px viewport — which is what this measured before the
+       * filter, and would have been just as wrong in the other direction.
+       */
+      const join = [...document.querySelectorAll<HTMLElement>("button")]
+        .filter((b) => b.checkVisibility())
+        .find((b) => /Join meeting/i.test(b.textContent ?? ""))!;
+      const selects = [...document.querySelectorAll<HTMLSelectElement>("select")];
+      return {
+        frame: frame.getBoundingClientRect(),
+        radius: parseFloat(getComputedStyle(frame).borderTopLeftRadius),
+        join: join.getBoundingClientRect(),
+        viewport: { width: innerWidth, height: innerHeight },
+        /**
+         * The disclosure is shut, so the selectors are not on screen — E2: "the
+         * join button should not sit four fields down".
+         *
+         * **`checkVisibility()`, not a rect.** Chrome no longer hides a closed
+         * `<details>` with `display: none`; it uses `content-visibility`, so
+         * the subtree stays laid out and `getBoundingClientRect()` returns a
+         * full-height box for a control nobody can see. The first version of
+         * this test read 2 visible selects inside a disclosure it had just
+         * asserted was closed.
+         */
+        selectsVisible: selects.filter((s) => s.checkVisibility()).length,
+        detailsOpen: document.querySelector("details")?.open ?? null,
+      };
+    });
+
+    expect(phone.frame.left, "the preview is inset from the left edge").toBe(0);
+    expect(phone.frame.width, "the preview is not the full width").toBeCloseTo(
+      phone.viewport.width,
+      0,
+    );
+    expect(phone.radius, "the preview is still rounded on a phone").toBe(0);
+
+    expect(phone.detailsOpen, "the device disclosure starts open").toBe(false);
+    expect(phone.selectsVisible, "the device selectors are not behind the disclosure").toBe(0);
+
+    // Pinned: the button's bottom sits at the bottom of the viewport, within
+    // the safe-area padding.
+    expect(
+      phone.viewport.height - phone.join.bottom,
+      `Join is ${phone.viewport.height - phone.join.bottom}px from the bottom`,
+    ).toBeLessThan(24);
   });
 
   /**

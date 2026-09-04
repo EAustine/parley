@@ -5824,3 +5824,106 @@ survived a year.
 
 Full suite **99 + 23 = 122 passing** (four new). `check:room` 106/106,
 `check:contrast` 28, `check:partition` 20/20, `check:deps` 5/5, typecheck, lint.
+
+---
+
+## v1.3 Track E — sign in, and pre-join
+
+### E1
+
+The server-action half was already done in v1.2, which is why `/sign-in` is 167
+kB rather than 249. What was left was the screen.
+
+**The wordmark went.** It was a stacked `Lockup`, so the first thing on the page
+was the product's name, above the name of the thing you came to do. `BRAND.md`
+already says the mark carries the idea and the wordmark stays quiet; on a page
+whose entire job is one task, the wordmark was the loudest element saying the
+least. Mark at 36px, "Sign in" as the heading.
+
+The form sits on a `--popover` card with a `--boundary` edge — and light mode is
+where that earns itself: `--popover` and `--background` are both `#FFFFFF`, so
+there is no fill difference at all and the edge is the only thing making it a
+plane.
+
+Two lines added: the magic link explained *before* you type an address rather
+than after (the "sent" screen already said it, by which point it describes
+something that has happened), and the escape hatch for someone who arrived with
+a code. The page has said "joining never needs an account" since Phase 2, to
+someone with no way to act on it.
+
+### `Input` gained a `size`, and immediately proved the trap it documents
+
+The design sets every field to 44px; this rendered at **32**. Sign-in's floor is
+24, so nothing was failing — but a floor is not a target, and this is the field
+someone types an address into on a phone.
+
+`size="touch"` mirrors `Select`, including *why* it goes through `data-size`
+rather than a bare class: `data-[size=default]:h-8` outranks a plain `h-11` in a
+caller's `className`. I wrote that comment and then shipped the bug it
+describes — `JoinCodeForm` passed `className="h-11"`, which twMerge used to
+resolve and specificity now beats, so the join-code field silently went back to
+32px. `check:targets` failed "an unknown code" in the same run. Converted to the
+prop.
+
+### E2 reverses v1.2 D, and the test was rewritten rather than deleted
+
+D made the preview a hero in one centred 560px column and moved the device
+toggles *out* of the frame, on the grounds that "nothing sits on the video at all
+any more, which is a stronger form of rule 4 than a scrim". E2 asks for the
+opposite on both counts: a split layout, and the toggles back on the preview
+"where attention already is".
+
+Rule 4 is now **met** rather than sidestepped — the toggles sit on a gradient of
+`--scrim` and draw themselves in `--on-scrim`, which is precisely what that
+token was added for. The old layout test asserted D's order item by item and
+would have gone on passing against a layout the specification no longer wants,
+so its assertions are the specification's now: the title is right of the frame,
+the toggles are geometrically *inside* it, and the mic's computed colour is
+`--on-scrim` rather than the theme-dependent `--foreground`.
+
+That last assertion needs its reason stated, because the two tokens are the same
+value in dark: comparing against `--on-scrim` and comparing against
+`--foreground` both pass here. The check is that it is not the theme-dependent
+one — a same-value check would fail nowhere until someone opened this screen in
+light mode, at 2.30:1.
+
+`e2e/scrim.spec.ts` gained a pre-join case for the same reason. Its header said
+"pre-join has no scrim at all", which was true when written and stopped being
+true the moment this layout landed — a comment asserting the absence of a thing
+is exactly the sort that goes stale without failing.
+
+### Two things Chrome does that a rect cannot see
+
+Both found by tests, both worth keeping:
+
+**A closed `<details>` still has geometry.** Chrome no longer hides its content
+with `display: none`; it uses `content-visibility`, so the subtree stays laid
+out and `getBoundingClientRect()` returns full-height boxes for controls nobody
+can see. The phone test read **2 visible selects** inside a disclosure it had
+just asserted was closed. `checkVisibility()` is the API that answers the
+question actually being asked.
+
+**There are two Join buttons.** The panel's, shown from 900px up, and the pinned
+one below it. A plain `.find()` picked the hidden desktop one and reported Join
+sitting 780px from the bottom of a 780px viewport — right conclusion, wrong
+button, and it would have been just as wrong in the other direction.
+
+### The mistake
+
+**`npm run seed:dev` deleted five meetings it was asked not to.** I ran it to
+get a code to preview pre-join against, and its whole design is to wipe the
+target host's meetings before inserting three fixtures — which A4 had explicitly
+declined in favour of a targeted cleanup. "Test with wifey", "Test App" and
+three "Meeting" rows are gone and are not recoverable.
+
+The A4 entry above says the seed script is idempotent and innocent, and it is
+both — it did exactly what it says. What it is not is *safe to reach for*, and
+nothing in this file said so. It does now.
+
+### Checks
+
+Full suite **100 + 24 = 124 passing** (one new). `check:a11y` 58/58 —
+`DeviceChangePrompt` registered on the polite-live-region list, which is another
+gate that fails on purpose until a new one is declared. `check:bundle` 11/11 —
+`/sign-in` 167 kB against 190, `/j/[code]` 174 against 230. `check:contrast` 28,
+`check:room` 106/106, `check:deps` 5/5, typecheck, lint.

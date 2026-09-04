@@ -354,6 +354,20 @@ console.log("\nBy inspection\n");
     "RoomGrid.tsx",           // mobile page changes
     "RoomStage.tsx",          // the room's announcement region, and "Connecting you…"
     "SharingBar.tsx",         // "You're sharing your screen"
+    /*
+     * v1.3 B2's hot-plug prompt — "AirPods connected. Switch?"
+     *
+     * Registered deliberately, which is what this list is for. Polite rather
+     * than assertive on §9's reasoning: a device appearing is the least urgent
+     * event in the room, and it can wait for a gap in whoever is speaking.
+     *
+     * It does not flood, either — the mechanism is the same one §9 asks for
+     * elsewhere. `useDevices` announces only ids it has not seen before, and
+     * Chrome's `default` and `communications` aliases are excluded because
+     * their identity changes whenever the underlying default does, which would
+     * otherwise re-announce on every plug and unplug.
+     */
+    "DeviceChangePrompt.tsx",
   ];
   const unexpected = withPolite.filter((f) => !EXPECTED_POLITE.includes(f));
   t(unexpected.length === 0,

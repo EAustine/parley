@@ -61,7 +61,7 @@ export function SignInForm({
         </div>
         {/* A link, not a button: it re-renders the idle form from the server,
             which is the same thing the button did and works without script. */}
-        <Button variant="outline" asChild className="w-full">
+        <Button variant="outline" size="touch" asChild className="w-full">
           <a href={`/sign-in?next=${encodeURIComponent(next)}`}>
             Use a different email
           </a>
@@ -92,6 +92,10 @@ export function SignInForm({
           <Input
             id="email"
             name="email"
+            // 44px, per the design. Sign-in's floor is 24 and this cleared it
+            // at 32 — but the field someone types an address into on a phone
+            // is not the place to sit two thirds of the way to the target.
+            size="touch"
             type="email"
             autoComplete="email"
             required
@@ -101,6 +105,19 @@ export function SignInForm({
           />
         </div>
         <MagicLinkButton />
+        {/*
+          v1.3 E1: "A line explaining the magic link has no password and
+          expires."
+
+          The "sent" screen already says both, and by then it is a description
+          of something that has happened rather than an answer to the hesitation
+          that precedes it — someone deciding whether to type their address
+          wants to know what arrives before they ask for it. `--muted-foreground`
+          on `--popover` is 5.08:1.
+        */}
+        <p className="text-center type-caption text-muted-foreground">
+          No password. The link signs you in and expires after use.
+        </p>
       </form>
 
       {state.kind === "error" && (
@@ -124,7 +141,7 @@ export function SignInForm({
 function MagicLinkButton() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" className="w-full" disabled={pending}>
+    <Button type="submit" size="touch" className="w-full" disabled={pending}>
       {pending ? "Sending link…" : "Email me a sign-in link"}
     </Button>
   );
@@ -133,7 +150,7 @@ function MagicLinkButton() {
 function GoogleButton() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant="outline" className="w-full" disabled={pending}>
+    <Button type="submit" size="touch" variant="outline" className="w-full" disabled={pending}>
       <HugeiconsIcon
         icon={ICONS.google.icon}
         size={20}
