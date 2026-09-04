@@ -90,7 +90,7 @@ test.describe("rule 4 — what is drawn on the scrim", () => {
     });
 
     await wakeControls(page);
-    await page.getByRole("button", { name: "Turn on camera" }).click();
+    await page.getByRole("button", { name: "Start video" }).click();
 
     await expect(page.getByText("Your camera didn't turn on.")).toBeVisible();
     await assertScrimText(page, 2);

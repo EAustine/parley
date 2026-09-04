@@ -207,71 +207,54 @@ export function RoomControls({
           · [leave]. Every control sat at one spacing, so the bar read as seven
           equal things and the two reached for in a hurry were not a pair.
         */}
+        {/*
+          v1.3 C2's primary tier: **labelled**. "Mute, Stop video, Present. The
+          ones you hit under pressure, and where a wrong guess costs something."
+          They were three of eight identical icon circles.
+        */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <CircleToggle
+          <PrimaryControl
             on={isMicrophoneEnabled}
             onIcon="micOn"
             offIcon="micOff"
-            label={isMicrophoneEnabled ? "Turn off microphone" : "Turn on microphone"}
+            label={isMicrophoneEnabled ? "Mute" : "Unmute"}
             shortcut={chordFor("mic", platform)}
             onToggle={() =>
               localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
             }
           />
-          <CircleToggle
+          <PrimaryControl
             on={isCameraEnabled}
             onIcon="cameraOn"
             offIcon="cameraOff"
-            label={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
+            label={isCameraEnabled ? "Stop video" : "Start video"}
             shortcut={chordFor("camera", platform)}
             onToggle={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
           />
+          {/*
+            Present joins the primary tier — and leaves the bar below 900px,
+            where C2 allows exactly six controls. It reappears in the overflow
+            menu at that width, so it is never unreachable.
+          */}
+          {share.supported && (
+            <div className="hidden min-[900px]:flex">
+              <PrimaryControl
+                on={!share.sharing}
+                onIcon="screenShare"
+                offIcon="stopShare"
+                label={share.sharing ? "Stop presenting" : "Present"}
+                onToggle={share.toggle}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* §3.7, as v1.3 C5 restates it: wherever `getDisplayMedia` exists,
-              which includes Android Chrome and excludes iOS Safari. Hidden
-              rather than disabled — a control that can never work on this
-              device is not a control, and a tooltip explaining why is worse
-              than the space it takes. */}
-          {share.supported && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={share.toggle}
-                  // A state toggle: the name is the action and changes with
-                  // it. No `aria-pressed` — an action name plus a pressed state
-                  // announces the same fact twice, in a confusing order.
-                  aria-label={share.sharing ? "Stop sharing your screen" : "Share your screen"}
-                  className={`flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
-                  style={{
-                    // §3.4: "Active = filled --primary". The only control that
-                    // fills with primary, because it is the only one whose "on"
-                    // state changes what everyone else is looking at.
-                    backgroundColor: share.sharing ? "var(--primary)" : "transparent",
-                    // v1.2 B4: ghost at rest. Transparent rather than absent,
-                    // so the box does not resize when the border returns.
-                    borderColor: share.sharing ? "var(--primary)" : "transparent",
-                    color: share.sharing ? "var(--primary-foreground)" : "var(--foreground)",
-                  }}
-                >
-                  <HugeiconsIcon
-                    icon={ICONS[share.sharing ? "stopShare" : "screenShare"].icon}
-                    size={20}
-                    strokeWidth={1.5}
-                    color="currentColor"
-                    aria-hidden
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="dark">
-                {share.sharing ? "Stop sharing your screen" : "Share your screen"}
-              </TooltipContent>
-            </Tooltip>
-          )}
-
-          <ReactionPicker onReact={onReact} />
+          {/* Reactions leave the bar below 900px with Present — C2's six.
+              The overflow menu carries them at that width. */}
+          <div className="hidden min-[900px]:flex">
+            <ReactionPicker onReact={onReact} />
+          </div>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -287,10 +270,30 @@ export function RoomControls({
                 aria-controls="chat-panel"
                 className={`relative flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
                 style={{
-                  // v1.2 B4: filled while its panel is open, ghost otherwise.
+                  /*
+                   * C2's secondary tier: "Ghost until hover, filled while their
+                   * panel is open." Ghost is a *value* change as well as a fill
+                   * one — `--muted-foreground` at rest, `--foreground` when
+                   * open — which is what separates the tier from the primary
+                   * one at a glance. It was `--foreground` throughout, so the
+                   * two tiers differed only in size.
+                   */
                   backgroundColor: chatOpen ? "var(--secondary)" : "transparent",
-                  borderColor: chatOpen ? "var(--secondary)" : "transparent",
-                  color: "var(--foreground)",
+                  borderColor: chatOpen ? "var(--boundary)" : "transparent",
+                  /*
+                   * `--on-scrim-muted`, not `--muted-foreground`.
+                   *
+                   * Ghost means transparent, so the backdrop here is the bar's
+                   * `--scrim` and rule 4 applies. `--muted-foreground` is
+                   * **2.97:1** over bright video; `--on-scrim-muted` is 4.70.
+                   * `check:scrim` failed the moment the ghost was introduced,
+                   * which is exactly the walk it was written for — the fill and
+                   * the value changed together and only one of them was safe.
+                   *
+                   * The open state paints an opaque `--secondary`, so the walk
+                   * stops there and `--foreground` is permitted again.
+                   */
+                  color: chatOpen ? "var(--foreground)" : "var(--on-scrim-muted)",
                 }}
               >
                 <HugeiconsIcon
@@ -333,10 +336,15 @@ export function RoomControls({
                 aria-controls="participants-panel"
                 className={`relative flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
                 style={{
-                  // v1.2 B4: filled while its panel is open, ghost otherwise.
+                  // C2's secondary tier, as on chat above: ghost is a value
+                  // change too, not only a fill one.
                   backgroundColor: participantsOpen ? "var(--secondary)" : "transparent",
-                  borderColor: participantsOpen ? "var(--secondary)" : "transparent",
-                  color: "var(--foreground)",
+                  borderColor: participantsOpen ? "var(--boundary)" : "transparent",
+                  // As on chat: ghost is on the scrim, so it takes the
+                  // on-scrim token. See the note there.
+                  color: participantsOpen
+                    ? "var(--foreground)"
+                    : "var(--on-scrim-muted)",
                 }}
               >
                 <HugeiconsIcon
@@ -346,9 +354,24 @@ export function RoomControls({
                   color="currentColor"
                   aria-hidden
                 />
-                {/* §3.4: "shows count". Tabular so it does not shift width as
-                    people arrive. */}
-                <span className="type-caption tabular-nums absolute -right-0.5 -top-0.5 rounded-full bg-secondary px-1">
+                {/*
+                  §3.4's count, as C2's 16px pill — inverted, so it reads at
+                  10px against the ghost icon behind it. It was a 12px caption
+                  chip on `--secondary` with no minimum size, which at a single
+                  digit was narrower than it was tall.
+
+                  `pointer-events-none` because it sits over the button it
+                  belongs to: a badge that swallows a tap is a control that
+                  intermittently does nothing.
+                */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-semibold tabular-nums"
+                  style={{
+                    background: "var(--foreground)",
+                    color: "var(--background)",
+                  }}
+                >
                   {participantCount}
                 </span>
               </button>
@@ -368,6 +391,8 @@ export function RoomControls({
           <OverflowMenu
             onOpenDevices={onOpenDevices}
             onOpenShortcuts={onOpenShortcuts}
+            onReact={onReact}
+            share={share}
           />
         </div>
 
@@ -382,7 +407,21 @@ export function RoomControls({
 }
 
 
-function CircleToggle({
+/**
+ * The primary tier — v1.3 C2. A labelled pill, not an icon circle.
+ *
+ * **The visible label *is* the accessible name.** There is no `aria-label`:
+ * the text is `sr-only` below 900px rather than removed, so the name is "Mute"
+ * at every width while only the wide bar draws it. An `aria-label` of "Turn off
+ * microphone" over a visible "Mute" would fail SC 2.5.3 Label in Name — the
+ * accessible name has to contain the visible one, and it does not.
+ *
+ * Still a state toggle in the floor's sense: the name is the action and changes
+ * with it, "Mute" becoming "Unmute". Still no `aria-pressed`, for the reason
+ * the floor gives — an action name plus a pressed state announces the same fact
+ * twice, in an order that reads as a contradiction.
+ */
+function PrimaryControl({
   on,
   onIcon,
   offIcon,
@@ -394,7 +433,7 @@ function CircleToggle({
   onIcon: keyof typeof ICONS;
   offIcon: keyof typeof ICONS;
   label: string;
-  shortcut: string;
+  shortcut?: string;
   onToggle: () => void;
 }) {
   return (
@@ -403,16 +442,11 @@ function CircleToggle({
         <button
           type="button"
           onClick={onToggle}
-          // A state toggle. The name is the action and changes with it —
-          // "Turn off microphone" becomes "Turn on microphone". No
-          // `aria-pressed`: an action name plus a pressed state announces the
-          // same fact twice, and in an order that reads as a contradiction.
-          aria-label={label}
-          className={`flex size-12 items-center justify-center rounded-full border ${CONTROL_MOTION}`}
+          className={`flex h-12 min-w-12 items-center justify-center gap-2 rounded-full border px-0 type-small font-medium min-[900px]:px-4 ${CONTROL_MOTION}`}
           style={{
             // Off is a fill and an icon change, never a hue change — rule 5.
-            backgroundColor: on ? "transparent" : "var(--secondary)",
-            borderColor: on ? "var(--boundary)" : "var(--secondary)",
+            backgroundColor: on ? "var(--secondary)" : "var(--accent)",
+            borderColor: "var(--boundary)",
             color: "var(--foreground)",
           }}
         >
@@ -423,10 +457,14 @@ function CircleToggle({
             color="currentColor"
             aria-hidden
           />
+          <span className="sr-only min-[900px]:not-sr-only">{label}</span>
         </button>
       </TooltipTrigger>
+      {/* The tooltip is still worth having on the wide bar: it carries the
+          shortcut, which the label does not. */}
       <TooltipContent className="dark">
-        {label} <span className="text-background/70">{shortcut}</span>
+        {label}
+        {shortcut && <span className="text-background/70"> {shortcut}</span>}
       </TooltipContent>
     </Tooltip>
   );

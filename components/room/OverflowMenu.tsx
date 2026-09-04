@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { chordFor } from "@/lib/room/shortcuts";
 import { usePlatform } from "@/lib/hooks/usePlatform";
 import { MenuItem, PopupMenu } from "@/components/room/PopupMenu";
+import { REACTIONS, REACTION_NAMES, type Reaction } from "@/lib/room/messages";
 
 /**
  * The control bar's overflow — v1.3 B2, and the beginning of C2.
@@ -33,13 +34,23 @@ import { MenuItem, PopupMenu } from "@/components/room/PopupMenu";
 export function OverflowMenu({
   onOpenDevices,
   onOpenShortcuts,
+  onReact,
+  share,
 }: {
   onOpenDevices: () => void;
   onOpenShortcuts: () => void;
+  /** v1.3 C2: reactions live here below 900px, where the bar has no room. */
+  onReact: (emoji: Reaction) => void;
+  share: { supported: boolean; sharing: boolean; toggle: () => void };
 }) {
   const platform = usePlatform();
 
   /**
+   * 900px — the design's own breakpoint, and the one the bar uses to decide
+   * which controls it keeps. Below it the bar is C2's six and this menu carries
+   * Present and reactions; above it they are in the bar and this menu carries
+   * shortcuts instead.
+   *
    * Shortcuts are offered on a wide viewport only.
    *
    * `?` needs a keyboard, and a menu item leading to a dialog full of chords is
@@ -54,7 +65,7 @@ export function OverflowMenu({
    */
   const [wide, setWide] = useState(false);
   useEffect(() => {
-    const query = window.matchMedia("(min-width: 640px)");
+    const query = window.matchMedia("(min-width: 900px)");
     const update = () => setWide(query.matches);
     update();
     query.addEventListener("change", update);
@@ -68,7 +79,13 @@ export function OverflowMenu({
       // The secondary tier: ghost at rest, filled while open. Same treatment as
       // chat and participants, because it is the same kind of control.
       triggerLabel="More options"
-      triggerClassName={`flex size-11 items-center justify-center rounded-full border border-transparent text-foreground hover:bg-[var(--secondary)] data-[open]:border-boundary data-[open]:bg-[var(--secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] ${CONTROL_MOTION}`}
+      /*
+       * Ghost in `--on-scrim-muted`, filled in `--foreground` — the same tier
+       * as chat and participants. The ghost state is transparent, so its
+       * backdrop is the bar's scrim and rule 4 applies: `--muted-foreground`
+       * is 2.97:1 there, `--on-scrim-muted` is 4.70.
+       */
+      triggerClassName={`flex size-11 items-center justify-center rounded-full border border-transparent text-[var(--on-scrim-muted)] hover:bg-[var(--secondary)] data-[open]:border-boundary data-[open]:bg-[var(--secondary)] data-[open]:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] ${CONTROL_MOTION}`}
       trigger={
         <HugeiconsIcon
           icon={ICONS.more.icon}
@@ -81,6 +98,42 @@ export function OverflowMenu({
     >
       {(close) => (
         <>
+          {/*
+            What the bar hands over below 900px — C2: "Present and reactions
+            move into the overflow menu". Rendered only at that width, because
+            the same action in two places at once is how a person learns to
+            trust neither.
+          */}
+          {!wide && (
+            <>
+              <ReactionRow
+                onReact={(emoji) => {
+                  close();
+                  onReact(emoji);
+                }}
+              />
+              {share.supported && (
+                <MenuItem
+                  icon={
+                    <HugeiconsIcon
+                      icon={ICONS[share.sharing ? "stopShare" : "screenShare"].icon}
+                      size={18}
+                      strokeWidth={1.5}
+                      color="currentColor"
+                      aria-hidden
+                    />
+                  }
+                  title={share.sharing ? "Stop presenting" : "Share your screen"}
+                  onSelect={() => {
+                    close();
+                    share.toggle();
+                  }}
+                />
+              )}
+              <hr className="mx-1 my-1.5 border-t border-border" />
+            </>
+          )}
+
           <MenuItem
             icon={
               <HugeiconsIcon
@@ -119,5 +172,36 @@ export function OverflowMenu({
         </>
       )}
     </PopupMenu>
+  );
+}
+
+/**
+ * The six reactions, as a row inside the menu.
+ *
+ * A menu item that opened a *second* popup would be a popup inside a popup on
+ * the surface with least room for either, so the emoji are the menu items. They
+ * are laid out in a row rather than a column because six emoji stacked is most
+ * of a phone screen, and because they are one choice rather than six unrelated
+ * actions.
+ *
+ * Each is 44px — the room's floor — and each carries its name, since an emoji
+ * has no accessible name of its own.
+ */
+function ReactionRow({ onReact }: { onReact: (emoji: Reaction) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-0.5 px-1 py-1">
+      {REACTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          role="menuitem"
+          onClick={() => onReact(emoji)}
+          aria-label={`React with ${REACTION_NAMES[emoji]}`}
+          className="flex size-11 items-center justify-center rounded-full text-[22px] hover:bg-secondary focus-visible:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
+        >
+          <span aria-hidden>{emoji}</span>
+        </button>
+      ))}
+    </div>
   );
 }

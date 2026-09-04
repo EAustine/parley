@@ -41,7 +41,7 @@ test.describe("the room on a phone", () => {
      * so the ends did not wrap or scroll, they simply were not there.
      */
     const box = await page
-      .getByRole("button", { name: /microphone/i })
+      .getByRole("button", { name: /^(Mute|Unmute)$/ })
       .boundingBox();
     expect(box, "the mic control did not render").not.toBeNull();
     expect(box!.x, "the mic control is clipped off the left edge")
@@ -97,7 +97,7 @@ test.describe("the room on a phone", () => {
      * whether a finger would reach it.
      */
     await wakeControls(page);
-    const mic = page.getByRole("button", { name: /microphone/i });
+    const mic = page.getByRole("button", { name: /^(Mute|Unmute)$/ });
     await expect(mic).toBeVisible();
 
     /**
@@ -144,7 +144,19 @@ test.describe("the room on a phone", () => {
     const onTop = await page.evaluate(
       ({ x, y }) => {
         const stack = document.elementsFromPoint(x, y);
-        const label = stack[0]?.closest("button")?.getAttribute("aria-label") ?? null;
+        /**
+         * The accessible *name*, not one mechanism of producing it.
+         *
+         * This read `aria-label` alone, and v1.3 C2's primary tier deliberately
+         * has none: its label is real text, `sr-only` below 900px, so that the
+         * visible label and the accessible name are the same string — SC 2.5.3.
+         * Reading only the attribute reported "nothing focusable on top" for a
+         * control that was sitting right there.
+         */
+        const button = stack[0]?.closest("button");
+        const label =
+          button?.getAttribute("aria-label") ??
+          (button?.textContent?.trim() || null);
         return {
           label,
           // The whole stack, so a failure names what is covering the control
@@ -164,11 +176,11 @@ test.describe("the room on a phone", () => {
       onTop.label ??
         `nothing focusable on top — stack:\n  ${onTop.stack.join("\n  ")}`,
       "something is painted over the mic control while the chat panel is open",
-    ).toMatch(/microphone/i);
+    ).toMatch(/^(Mute|Unmute)$/);
 
     // And it still works, which is the fact the geometry is a proxy for.
     await mic.click();
-    await expect(page.getByRole("button", { name: /Turn on microphone/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Unmute/i })).toBeVisible();
   });
 
   /**
@@ -272,7 +284,7 @@ test.describe("the room on a phone", () => {
 
     try {
       await wakeControls(sharer.page);
-      await sharer.page.getByRole("button", { name: "Share your screen" }).click();
+      await sharer.page.getByRole("button", { name: "Present" }).click();
 
       const { page } = participant;
       await expect(page.getByText("Kwabena Osei is sharing")).toBeVisible({

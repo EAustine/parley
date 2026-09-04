@@ -155,7 +155,7 @@ test.describe("device settings, mid-call", () => {
     // Non-modal: the meeting continues, and the control bar stays reachable —
     // §3.4, and mute is a privacy control.
     await wakeControls(page);
-    await expect(page.getByRole("button", { name: /Turn off microphone/ })).toBeEnabled();
+    await expect(page.getByRole("button", { name: /Mute/ })).toBeEnabled();
 
     await prompt.getByRole("button", { name: "Dismiss" }).click();
     await expect(prompt).toHaveCount(0);

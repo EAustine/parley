@@ -29,7 +29,7 @@ test.describe("§3.7 — where screen share is offered", () => {
   });
 
   const present = (p: Participant) =>
-    p.page.getByRole("button", { name: "Share your screen" });
+    p.page.getByRole("button", { name: "Present" });
 
   test("offered on a pointer device that has the API", async ({
     browser,
@@ -78,10 +78,25 @@ test.describe("§3.7 — where screen share is offered", () => {
       "the emulated phone still reports hover — this is a narrow window, not a touch device",
     ).toBe(false);
 
+    /**
+     * **Reachable, not necessarily in the bar** — v1.3 C2 moved Present into
+     * the overflow menu below 900px, where the bar is allowed six controls.
+     *
+     * The claim C5 makes is about *availability on this device*, not about
+     * which of the two surfaces carries it, so the assertion follows the
+     * feature rather than the layout that happened to hold it when the test
+     * was written.
+     */
     await wakeControls(page);
     await expect(
       present(participant),
-      "screen share is hidden on a touch device that supports it — C5's bug",
+      "Present is in the bar on a phone, where C2 allows only six controls",
+    ).toHaveCount(0);
+
+    await page.getByRole("button", { name: "More options" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: /Share your screen/ }),
+      "screen share is unreachable on a touch device that supports it — C5's bug",
     ).toBeVisible();
   });
 
@@ -136,12 +151,12 @@ test.describe("§3.7 — where screen share is offered", () => {
      */
     await expect(present(participant)).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: /Stop sharing your screen/ }),
+      page.getByRole("button", { name: /Stop presenting/ }),
     ).toHaveCount(0);
 
     // And the rest of the bar is unaffected: hiding one control must not take
     // its neighbours with it.
-    await expect(page.getByRole("button", { name: /Turn off microphone/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Mute/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Chat", exact: true })).toBeVisible();
   });
 });

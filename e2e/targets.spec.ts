@@ -181,15 +181,36 @@ test.describe("touch targets, in the room", () => {
     const { page } = participant;
 
     await wakeControls(page);
+
+    /**
+     * C5 offers share on Android; **C2 moves it into the overflow menu there.**
+     *
+     * Below 900px the bar is C2's six — mic, camera, chat, people, overflow,
+     * Leave — so asserting Present *in the bar* would now be asserting the
+     * layout C2 replaced. What has to stay true is that it is still reachable,
+     * which is the whole point of C5 on this device.
+     */
     await expect(
-      page.getByRole("button", { name: "Share your screen" }),
-      "C5: share is offered on Android, so this is the bar being measured",
+      page.getByRole("button", { name: /^(Present|Stop presenting)$/ }),
+      "Present is in the Android bar, where C2 allows only six controls",
+    ).toHaveCount(0);
+
+    await assertFloor(page, {
+      floor: 44,
+      atLeast: 6,
+      label: "the room on an Android phone",
+    });
+
+    await page.getByRole("button", { name: "More options" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: /Share your screen/ }),
+      "C5: share is offered on Android — in the overflow, per C2",
     ).toBeVisible();
 
     await assertFloor(page, {
       floor: 44,
       atLeast: 6,
-      label: "the room on an Android phone, share offered",
+      label: "the room on an Android phone, overflow open with share and reactions",
     });
   });
 

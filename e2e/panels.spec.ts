@@ -74,9 +74,9 @@ test.describe("the side panels", () => {
     await expect(people(participant)).toBeVisible();
 
     await wakeControls(page);
-    const mic = page.getByRole("button", { name: /microphone/i });
+    const mic = page.getByRole("button", { name: /^(Mute|Unmute)$/ });
     await mic.click();
-    await expect(page.getByRole("button", { name: /Turn on microphone/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Unmute/i })).toBeVisible();
   });
 
   /**

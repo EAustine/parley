@@ -128,20 +128,35 @@ test.describe("the room canvas", () => {
       return b!;
     };
 
-    const mic = await box(/microphone/i);
-    const camera = await box(/camera/i);
-    // The first control of the second group, whichever it is: screen share is
-    // desktop-only, so on a phone the group starts at reactions. Measuring to
-    // reactions unconditionally spans the share button on desktop and reports
-    // a gap that is really a gap plus a control.
-    const share = await page.getByRole("button", { name: /share your screen/i }).count();
-    const groupStart = share > 0 ? await box(/share your screen/i) : await box("Send a reaction");
-    const participants = await box("Participants");
+    /*
+     * v1.3 C2 moved Present into the *primary* tier, so the groups are now
+     * [Mute · Stop video · Present] · [reactions · chat · people · more] ·
+     * [Leave]. This measured from the camera to "share your screen", which was
+     * the old second group's first control and is now the first group's last —
+     * the rhythm it was checking is still there, one control along.
+     */
+    const mic = await box(/^(Mute|Unmute)$/);
+    const camera = await box(/^(Stop|Start) video$/);
+    // Present is hidden below 900px, where C2 allows six controls; it is in the
+    // overflow menu there instead. So the primary group ends at whichever of
+    // the two is actually rendered.
+    const hasPresent = await page.getByRole("button", { name: /^(Present|Stop presenting)$/ }).count();
+    const primaryEnd = hasPresent > 0 ? await box(/^(Present|Stop presenting)$/) : camera;
+    /*
+     * The secondary group's two ends. Reactions lead it above 900px and are in
+     * the overflow menu below, so the first control is whichever is rendered;
+     * the last is the overflow trigger, which C2's bar added after this test
+     * was written — measuring to Participants spanned it and reported a gap
+     * that was really a gap plus a control.
+     */
+    const hasReactions = await page.getByRole("button", { name: "Send a reaction" }).count();
+    const groupStart = hasReactions > 0 ? await box("Send a reaction") : await box("Chat");
+    const groupEnd = await box("More options");
     const leaveButton = await box("Leave");
 
     const withinDevices = camera.x - (mic.x + mic.width);
-    const betweenGroups = groupStart.x - (camera.x + camera.width);
-    const beforeLeave = leaveButton.x - (participants.x + participants.width);
+    const betweenGroups = groupStart.x - (primaryEnd.x + primaryEnd.width);
+    const beforeLeave = leaveButton.x - (groupEnd.x + groupEnd.width);
 
     expect(
       betweenGroups,
@@ -234,7 +249,7 @@ test.describe("the room canvas", () => {
     open.push(kwabena);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await ama.page.getByRole("button", { name: "Present" }).click();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 
     await settleAnimations(kwabena.page);

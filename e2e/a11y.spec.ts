@@ -326,11 +326,11 @@ test.describe("keyboard", () => {
     await expect(page.getByRole("textbox", { name: /message/i })).toBeVisible();
 
     await wakeControls(page);
-    const mic = page.getByRole("button", { name: /microphone/i });
+    const mic = page.getByRole("button", { name: /^(Mute|Unmute)$/ });
     await expect(mic).toBeVisible();
     await mic.click();
     // The name flips because §9's floor names the action rather than a state.
-    await expect(page.getByRole("button", { name: /Turn on microphone/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Unmute/i })).toBeVisible();
   });
 });
 

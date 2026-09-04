@@ -46,14 +46,14 @@ test.describe("screen share", () => {
     await expectParticipants(kwabena.page, 2);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await ama.page.getByRole("button", { name: "Present" }).click();
 
     // §3.7: a persistent bar, not one that hides with the controls — what it
     // says is that other people can see your screen.
     await expect(sharingBar(ama)).toBeVisible();
     // The name changed with the state; no `aria-pressed` alongside it.
     await expect(
-      ama.page.getByRole("button", { name: "Stop sharing your screen" }),
+      ama.page.getByRole("button", { name: "Stop presenting" }),
     ).toBeVisible();
 
     /**
@@ -160,7 +160,7 @@ test.describe("screen share", () => {
     await expectParticipants(ama.page, 2);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await ama.page.getByRole("button", { name: "Present" }).click();
     await expect(sharingBar(ama)).toBeVisible();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 
@@ -191,7 +191,7 @@ test.describe("screen share", () => {
       timeout: 15_000,
     });
     await expect(
-      ama.page.getByRole("button", { name: "Share your screen" }),
+      ama.page.getByRole("button", { name: "Present" }),
     ).toBeVisible();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeHidden();
   });
@@ -203,13 +203,13 @@ test.describe("screen share", () => {
     await expectParticipants(kwabena.page, 2);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await ama.page.getByRole("button", { name: "Present" }).click();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 
     // §3.7: the confirmation goes to the person taking the action. Kwabena is
     // asked; Ama is not interrupted with a dialog she cannot usefully weigh.
     await wakeControls(kwabena.page);
-    await kwabena.page.getByRole("button", { name: "Share your screen" }).click();
+    await kwabena.page.getByRole("button", { name: "Present" }).click();
     /**
      * Named by its title, not by an `aria-label`.
      *
@@ -234,7 +234,7 @@ test.describe("screen share", () => {
 
     // Continue takes over.
     await wakeControls(kwabena.page);
-    await kwabena.page.getByRole("button", { name: "Share your screen" }).click();
+    await kwabena.page.getByRole("button", { name: "Present" }).click();
     await kwabena.page
       .getByRole("dialog", { name: "Ama Serwaa is presenting" })
       .getByRole("button", { name: "Continue" })
@@ -256,7 +256,7 @@ test.describe("screen share", () => {
     await expectParticipants(ama.page, 1);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await ama.page.getByRole("button", { name: "Present" }).click();
     // No presenter to replace, so the dialog never appears and the share
     // starts on one press.
     await expect(sharingBar(ama)).toBeVisible();
@@ -269,7 +269,7 @@ test.describe("screen share", () => {
     await expectParticipants(kwabena.page, 2);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Share your screen" }).click();
+    await ama.page.getByRole("button", { name: "Present" }).click();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 
     // §3.7 acceptance. A panel toggle re-renders the room; the share must not
@@ -339,10 +339,38 @@ test.describe("participants panel", () => {
     ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
     await openParticipants(ama);
 
-    // §3.8's rule, asserted as an absence across the whole room rather than
-    // one panel: there is no unmute message to send and no control to send it.
+    /**
+     * §3.8's rule, still asserted across the whole room rather than one panel —
+     * but precisely, because a blunt scan stopped being safe.
+     *
+     * This read the page's entire text and refused any occurrence of "unmute".
+     * That worked while no control anywhere used the word, and v1.3 C2 gave the
+     * primary tier visible labels: your **own** mic control now reads "Unmute"
+     * when you are muted. Unmuting yourself is not a host activating someone
+     * else, so the scan was catching the wrong thing — and simply deleting it
+     * would have given up the property it protects.
+     *
+     * So: every control matching the word is enumerated, and the only one
+     * permitted is your own. Anything aimed at another participant — a row
+     * action, a tile menu, a request — fails, wherever it is added.
+     */
+    const unmute = await ama.page.getByRole("button", { name: /unmute/i }).all();
+    const names = await Promise.all(
+      unmute.map(async (b) => (await b.getAttribute("aria-label")) ?? (await b.textContent())?.trim() ?? ""),
+    );
+    expect(
+      names,
+      "an unmute control exists that is not the local participant's own",
+    ).toEqual(["Unmute"]);
+
+    // And the panel — where host actions on other people live — says nothing
+    // of the kind at all.
+    const panel = await ama.page
+      .getByRole("complementary", { name: "Participants" })
+      .innerText();
+    expect(panel).not.toMatch(/unmute/i);
+
     const body = await ama.page.locator("body").innerText();
-    expect(body).not.toMatch(/unmute/i);
     expect(body).not.toMatch(/turn on their (microphone|camera)/i);
   });
 });

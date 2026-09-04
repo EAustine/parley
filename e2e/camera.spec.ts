@@ -41,9 +41,9 @@ import {
 async function cameraState(participant: Participant) {
   const { page } = participant;
 
-  // "Turn off camera" is offered when the camera is enabled, and vice versa.
+  // "Stop video" is offered when the camera is enabled, and vice versa.
   const enabled = await page
-    .getByRole("button", { name: "Turn off camera" })
+    .getByRole("button", { name: "Stop video" })
     .count();
 
   const dom = await page.evaluate(() => {
@@ -101,13 +101,13 @@ test.describe("A3 — camera off, then on", () => {
 
     // --- off ---------------------------------------------------------------
     await wakeControls(page);
-    await page.getByRole("button", { name: "Turn off camera" }).click();
-    await expect(page.getByRole("button", { name: "Turn on camera" })).toBeVisible();
+    await page.getByRole("button", { name: "Stop video" }).click();
+    await expect(page.getByRole("button", { name: "Start video" })).toBeVisible();
 
     // --- and on again ------------------------------------------------------
     await wakeControls(page);
-    await page.getByRole("button", { name: "Turn on camera" }).click();
-    await expect(page.getByRole("button", { name: "Turn off camera" })).toBeVisible();
+    await page.getByRole("button", { name: "Start video" }).click();
+    await expect(page.getByRole("button", { name: "Stop video" })).toBeVisible();
 
     /**
      * The diagnosis, asserted rather than inspected.

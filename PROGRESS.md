@@ -6052,3 +6052,86 @@ Project → Settings → Deployment Protection → Vercel Authentication → Dis
 add a custom domain. Then verify from a device that has never signed into Vercel
 or Parley. Until that passes, "guests can join in production" is unverified — and
 it is the claim the product is built around.
+
+---
+
+## v1.3 C2 — the control bar's three tiers
+
+Track C opened with a mapped survey: four agents against `design/02-room.html`,
+each gap then handed to a second agent to refute. **24 raised, 20 confirmed** —
+and the four dismissed are worth recording, because two of them would have been
+the most disruptive changes in the track:
+
+- the bar as a flow row rather than a scrim overlay — the build reaches the same
+  outcome another way
+- shrinking every mobile control to the design's 40px — **the build's 44px is
+  rule-mandated and test-enforced**, and following the design here would undo
+  Phase 9
+- a "fit to width" share control — `ScreenShareStage` already serves that
+  purpose, with its reasoning written down
+- a 13/18 presenter label — the design line was misread; that rule does not
+  reach the element quoted
+
+### What changed
+
+**The primary tier is labelled.** Mic, camera and Present were three of eight
+identical icon circles; C2 calls them "the ones you hit under pressure, and
+where a wrong guess costs something". They are now pills reading Mute / Stop
+video / Present.
+
+**The visible label *is* the accessible name.** No `aria-label`: the text is
+`sr-only` below 900px rather than removed, so the name is "Mute" at every width
+while only the wide bar draws it. An `aria-label` of "Turn off microphone" over a
+visible "Mute" would fail **SC 2.5.3 Label in Name** — the accessible name has
+to contain the visible one, and it does not. That is what makes this a rename
+across 12 spec files rather than a styling change.
+
+**Mobile is C2's six.** Present and reactions leave the bar below 900px and
+appear in the overflow menu instead — the reactions as a row of six emoji
+menu items rather than a second popup inside the first, which on the surface
+with least room for either is not a trade worth making.
+
+**The secondary tier is ghost in value, not only in fill**, and the people badge
+is the design's 16px inverted pill rather than a 12px caption chip narrower than
+it was tall.
+
+### `check:scrim` caught a 2.97:1 the moment I wrote it
+
+Ghost means transparent, so the backdrop is the bar's own `--scrim` — and I
+reached for `--muted-foreground`. That is **2.97:1** over bright video.
+`--on-scrim-muted` is 4.70. The check failed on the first run after the change,
+which is precisely the walk it was written for: the fill and the value changed
+together and only one of them was safe.
+
+That is the second time the on-scrim tokens have paid for themselves, and the
+first time the check caught a defect being *introduced* rather than one already
+shipped.
+
+### Six specs described the old bar, and one guard was protecting a real thing
+
+Five were mechanical — names, group boundaries, which surface carries Present.
+Two are worth keeping:
+
+**`mobile.spec`'s hit test read `aria-label` alone**, so a control whose name is
+its own text reported "nothing focusable on top" while sitting right there. It
+asks for the accessible *name* now, not one mechanism of producing it.
+
+**`share.spec`'s §3.8 guard** — "a host can silence, never activate" — scanned
+the whole page for the word "unmute" and refused any occurrence. That was safe
+while no control anywhere used the word. Your own mic control now reads "Unmute"
+when muted, and unmuting *yourself* is not a host activating someone else. The
+blunt scan was catching the wrong thing, and deleting it would have surrendered
+the property. It now enumerates every control matching the word and permits
+exactly one — your own — so a row action, a tile menu or a request still fails
+wherever it is added.
+
+### Checks
+
+Full suite **106 + 24 = 130 passing**. `check:scrim` 4/4, `check:a11y` 58/58,
+`check:contrast` 28, `check:room` 106/106, `check:deps` 5/5, `check:bundle`
+11/11, typecheck, lint. Verified in a browser: the three tiers render as the
+design draws them.
+
+**C1, C3 and C4 remain.** C1 is the largest ripple in the track — taking the
+local participant out of the grid shifts every breakpoint by one and touches
+nine spec files — so it is deliberately last.

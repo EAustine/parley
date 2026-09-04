@@ -83,7 +83,7 @@ test.describe("two participants", () => {
     await expect(amaOnKwabena).toHaveCount(0);
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Turn off microphone" }).click();
+    await ama.page.getByRole("button", { name: "Mute" }).click();
 
     // Rule 3: the indicator follows the published track, not a local boolean —
     // so it can only appear here if the mute actually crossed the SFU.
@@ -91,17 +91,17 @@ test.describe("two participants", () => {
     // The accessibility floor: a state toggle names the action and changes
     // with it. No `aria-pressed` — that would announce the same fact twice.
     await expect(
-      ama.page.getByRole("button", { name: "Turn on microphone" }),
+      ama.page.getByRole("button", { name: "Unmute" }),
     ).toBeVisible();
     expect(
       await ama.page
-        .getByRole("button", { name: "Turn on microphone" })
+        .getByRole("button", { name: "Unmute" })
         .getAttribute("aria-pressed"),
       "a state toggle should not carry aria-pressed",
     ).toBeNull();
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Turn on microphone" }).click();
+    await ama.page.getByRole("button", { name: "Unmute" }).click();
     await expect(amaOnKwabena).toHaveCount(0);
   });
 
@@ -111,7 +111,7 @@ test.describe("two participants", () => {
 
     await expect(kwabena.page.locator("video")).toHaveCount(2);
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Turn off camera" }).click();
+    await ama.page.getByRole("button", { name: "Stop video" }).click();
 
     // Ama's tile falls back to the initial; Kwabena's own video stays.
     await expect(kwabena.page.locator("video")).toHaveCount(1);
@@ -125,7 +125,7 @@ test.describe("two participants", () => {
     ).toBeVisible();
 
     await wakeControls(ama.page);
-    await ama.page.getByRole("button", { name: "Turn on camera" }).click();
+    await ama.page.getByRole("button", { name: "Start video" }).click();
     await expect(kwabena.page.locator("video")).toHaveCount(2);
 
     /**
