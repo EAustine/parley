@@ -4755,3 +4755,74 @@ unverified. It is on the list because the second fact makes the first one true.
 media serial. `check:bundle` 11/11 with `/sign-in` at 166 kB against its new 190.
 `check:contrast` 25 in both roles, `check:room` 103, `check:a11y` 58. Every
 static check green.
+
+---
+
+## v1.2 close-out, part five — both flags resolved, one by declining it
+
+Neither needed code.
+
+**`PRD.md` §4.2's palette comment** now reads `/* any surface needing an edge —
+see CLAUDE.md */`, and §3.4's ratio is corrected to 3.93:1 against the room
+ground. Both match what `check:contrast` computes.
+
+**The sign-out move is declined, not deferred**, and §10 says why it was ever
+proposed: "It was recommended once, mid-answer, in the middle of a longer
+discussion about bundle numbers, and was never tracked or built."
+
+The reason for declining is load-bearing, so it is worth saying that it holds.
+`app/(app)/layout.tsx:27` mounts `<AuthListener />`, and that component imports
+`createClient` from `lib/supabase/client` — the layout's own comment already
+said so: "it pulls `supabase-js` into whatever bundle contains it." So the SDK is
+in `/dashboard` whether or not `SignOutButton` calls it, and moving the button
+saves nothing.
+
+That is verified structurally rather than measured: the module is in the import
+graph via the layout, so removing one importer of an already-included module
+cannot change the total. Measuring it would have meant building the change §10
+has just declined.
+
+`/sign-in`'s budget row is filled in at ≤ 190 kB against the measured 166 —
+completing §10's own instruction to refactor, measure, then set it.
+
+### Figures in §10 that the last two commits overtook
+
+None of these change a decision; all of them are the document describing the
+build before the native-select swap and the sign-in refactor.
+
+| §10 says | Measures now |
+|---|---|
+| shared baseline "at 160 kB" | 163 kB |
+| `/schedule` 273 kB | **263 kB** |
+| `/schedule/[code]` 264 kB | 269 kB |
+| `/sign-in` "builds at 249 kB" | **166 kB** |
+
+The paragraph reasoning that "`/schedule` sits ~10 kB above `/dashboard`" no
+longer describes the build: it is 263 against 268, five below. Dropping Radix's
+Select took the scroll-lock family with it, which is what that paragraph
+predicted would happen and then declined to do — "**No change recommended**"
+was answering whether to swap Select out of `/schedule` *alone*, which remains
+correct as stated and was overtaken by swapping all five.
+
+### One figure that still does not reproduce
+
+`CLAUDE.md`'s boundary paragraph: "`#687284` clears 3:1 on every dark surface —
+worst case 3.25 on `--muted` — **and 5.1 on the worst light surface**."
+
+The first half is exact. The second is not reproducible under any reading:
+
+| Light surface | Ratio |
+|---|---|
+| `--background`, `--popover` | 4.85 |
+| `--card` | 4.56 |
+| `--muted`, `--secondary`, `--accent` | 4.32 |
+| `--border`, `--input` | 3.87 |
+
+4.85 is the *best* pairing, not the worst. The worst among the surfaces the
+boundary rule permits is **4.32 on `--muted`**; the worst against any light
+token at all is 3.87. Nothing produces 5.1.
+
+It changes no decision — the value clears 3:1 everywhere it is used in both
+themes — so this is a sentence to correct rather than a value to revisit.
+Third time recorded; the maths was validated against every other documented
+pair first, and all of those reproduce exactly.

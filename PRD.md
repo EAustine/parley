@@ -171,7 +171,7 @@ Tile aspect ratio is 16:9. Video is `object-fit: cover`. Never letterbox individ
 
 #### Active speaker
 
-LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--boundary` (3.25:1 worst-case against the ground, clearing the 3:1 non-text threshold), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
+LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--boundary` (3.93:1 against the room ground, clearing the 3:1 non-text threshold), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
 
 `--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all, which makes this border the only thing identifying the tile as a component. That brings it under WCAG 1.4.11 at 3:1, which the first replacement value (2.09:1) also missed. `--boundary` is the boundary colour for any surface with no usable fill contrast against what it sits on — tiles, panel edges, form-field borders. `CLAUDE.md` holds its permitted-surface table.
 
@@ -409,7 +409,7 @@ Note the phrasing: **no hue**, not "weight, not colour." The speaking ring chang
 --border                #242830
 --input                 #2B303A
 --ring                  #F2F4F7
---boundary           #687284   /* room ground only — see §3.4 */
+--boundary           #687284   /* any surface needing an edge — see CLAUDE.md */
 ```
 
 State-only, not part of the general palette:
@@ -754,17 +754,19 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 | `/schedule` | ≤ 290 kB | ~115 kB |
 | `/schedule/[code]` | ≤ 290 kB | ~115 kB |
 
-**Set at 190 kB, after the refactor below.** It measured 249 kB, and moving
-`signInWithOtp` and `signInWithOAuth` into server actions took it to **166 kB** —
-`supabase-js` is no longer in the bundle, and the form now works with
-JavaScript disabled. 190 because the route is now the same shape as `/`: a
-public cold-load page that is a form and nothing else.
-
 **`/sign-in` had no budget and should have.** It builds at 249 kB — heavier than every budgeted route but the two scheduling ones — and it is public, cold-load, and the first thing a host sees. That is the same error as the original table budgeting `/dashboard` instead of `/j/[code]`: the principle was right and the route list was wrong. **Budgets belong on public cold-load routes**, and `/sign-in` is one.
 
-Do not set the number at 249. Most of that weight is `supabase-js` on the client, and it does not need to be there — `signInWithOtp` sends its email server-side, and `signInWithOAuth` returns a URL a server action can redirect to. Move both behind a server action and the route becomes a form with no auth SDK in the bundle, which also makes sign-in work without JavaScript. Same reasoning as moving sign-out to a route handler.
+Do not set the number at 249. Most of that weight is `supabase-js` on the client, and it does not need to be there — `signInWithOtp` sends its email server-side, and `signInWithOAuth` returns a URL a server action can redirect to. Move both behind a server action and the route becomes a form with no auth SDK in the bundle.
+
+An earlier draft of this paragraph cited "the same reasoning as moving sign-out to a route handler". **No such move happened.** It was recommended once, mid-answer, in the middle of a longer discussion about bundle numbers, and was never tracked or built — sign-out is still a client component calling `supabase.auth.signOut()`.
+
+It is now declined rather than left floating. On `/dashboard` the bundle argument does not apply, because `AuthListener` puts `supabase-js` in that bundle regardless, so moving the button saves nothing. And "works without JavaScript" is thin justification in a product that cannot hold a video call without it. The recommendation was weaker than the way it was phrased at the time.
+
+Sign-in is different on both counts: the route is public, cold-load, and currently carries the SDK for no other reason.
 
 Refactor, measure, then set the budget with headroom. Setting it first is how 180 kB landed on the dashboard and 200 kB on `/j/[code]`, both of which were guesses that later had to move.
+
+**Done, and set at 190 kB.** Both calls are server actions in `app/(auth)/sign-in/actions.ts`, and the route measures **166 kB** — `supabase-js` is out of the bundle. 190 rather than a number invented for it: the route is now the same shape as `/`, a public cold-load page that is a form and nothing else, so it takes the same budget. `scripts/check-bundle.mjs` enforces it.
 
 The two scheduling routes are measured at 273 kB and 264 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
 
