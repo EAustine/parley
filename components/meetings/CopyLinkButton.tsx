@@ -23,9 +23,19 @@ import {
 export function CopyLinkButton({
   code,
   label = "Copy link",
+  withLabel = false,
 }: {
   code: string;
   label?: string;
+  /**
+   * Render the label beside the icon — v1.3 C3's copy row in the room's People
+   * tab, where the button sits in a wide row and the design gives it text.
+   *
+   * A variant rather than a second component: the clipboard path here handles a
+   * refusal ("Your browser blocked the clipboard") that a copy of this would
+   * either duplicate or, more likely, omit.
+   */
+  withLabel?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -49,8 +59,16 @@ export function CopyLinkButton({
       <TooltipTrigger asChild>
         <Button
           variant="outline"
-          size="icon"
+          /*
+           * `touch` for the labelled variant, not the design's 36px `.copybtn`.
+           * It exists only in the room's People tab, which is a 44px surface —
+           * the floor beats the design file here as it does for the control bar
+           * and the panel's tabs. `check:targets` measured it at 95x28.
+           */
+          size={withLabel ? "touch" : "icon"}
           onClick={copy}
+          // The visible label is a prefix of the accessible name, so SC 2.5.3
+          // holds in both variants.
           aria-label={`${label} for meeting ${code}`}
         >
           <HugeiconsIcon
@@ -60,6 +78,7 @@ export function CopyLinkButton({
             color="currentColor"
             aria-hidden
           />
+          {withLabel && <span>{copied ? "Link copied" : label}</span>}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{copied ? "Link copied" : label}</TooltipContent>

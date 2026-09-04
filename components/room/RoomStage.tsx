@@ -26,9 +26,8 @@ import { AudioBlockedPrompt } from "@/components/room/AudioBlockedPrompt";
 import { ConnectionBar } from "@/components/room/ConnectionBar";
 import { ConnectionFailedDialog } from "@/components/room/ConnectionFailedDialog";
 import { ResumePrompt } from "@/components/room/ResumePrompt";
-import { ChatPanel } from "@/components/room/ChatPanel";
 import { MuteRequestPrompt } from "@/components/room/MuteRequestPrompt";
-import { ParticipantsPanel } from "@/components/room/ParticipantsPanel";
+import { RoomPanel } from "@/components/room/RoomPanel";
 import { ReactionOverlay } from "@/components/room/ReactionOverlay";
 import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
 import { ReplacedNotice } from "@/components/room/ReplacedNotice";
@@ -431,10 +430,26 @@ function RoomSurface({
     });
   }, []);
 
-  const closeChat = useCallback(() => closePanel("chat"), [closePanel]);
-  const closeParticipants = useCallback(
-    () => closePanel("participants"),
-    [closePanel],
+  /**
+   * One panel now, so one close — v1.3 C3.
+   *
+   * `closePanel` still takes which tab was showing, because that is what
+   * decides *whose trigger* focus goes back to. Escape from the People tab
+   * should return to the People button, not to whichever one opened the panel
+   * three tab-switches ago.
+   */
+  const closeCurrent = useCallback(
+    () => closePanel(panel ?? "chat"),
+    [closePanel, panel],
+  );
+  /**
+   * Switching tab is not opening a panel: the surface is already there, so
+   * there is no trigger to remember and no focus to claim. `RoomPanel` moves
+   * focus to the newly selected tab itself.
+   */
+  const selectTab = useCallback(
+    (next: Panel) => setPanel(next),
+    [],
   );
   const toggleChat = useCallback(() => togglePanel("chat"), [togglePanel]);
   const toggleParticipants = useCallback(
@@ -719,25 +734,26 @@ function RoomSurface({
         entered it. Both panels are absolutely positioned, so this changes the
         order the keyboard sees and nothing the eye does.
       */}
-      <div id="chat-panel">
-        <ChatPanel
-          open={chatOpen}
-          log={messages.log}
-          cooldown={messages.chatCooldown}
-          onClose={closeChat}
-          onSend={messages.sendChat}
-        />
-      </div>
+      {/*
+        One panel, two tabs — C3. The wrappers stay because the control bar's
+        `aria-controls` points at them and `triggerFor` finds the bar button by
+        the same id; the *panel* is one surface inside.
+      */}
+      <div id="chat-panel" />
+      <div id="participants-panel" />
 
-      <div id="participants-panel">
-        <ParticipantsPanel
-          open={participantsOpen}
-          isLocalHost={localIsHost}
-          onClose={closeParticipants}
-          onRequestMute={messages.requestMute}
-          onRemove={removeParticipant}
-        />
-      </div>
+      <RoomPanel
+        tab={panel}
+        log={messages.log}
+        cooldown={messages.chatCooldown}
+        code={code}
+        isLocalHost={localIsHost}
+        onTab={selectTab}
+        onClose={closeCurrent}
+        onSend={messages.sendChat}
+        onRequestMute={messages.requestMute}
+        onRemove={removeParticipant}
+      />
 
       {share.error && (
         <p

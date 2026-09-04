@@ -271,14 +271,14 @@ test.describe("keyboard", () => {
     await trigger.focus();
     await page.keyboard.press("Enter");
 
-    const panel = page.getByRole("complementary", { name: "Participants" });
+    const panel = page.getByRole("tabpanel", { name: "People" });
     await expect(panel).toBeVisible();
 
     // Focus must be inside, or Escape below proves nothing.
     await expect
       .poll(async () => page.evaluate(() => {
         const el = document.activeElement;
-        return el ? el.closest("aside[aria-label='Participants']") !== null : false;
+        return el ? el.closest("aside[aria-label='Chat and people']") !== null : false;
       }))
       .toBe(true);
 

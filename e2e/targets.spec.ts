@@ -131,7 +131,7 @@ test.describe("touch targets, in the room", () => {
 
       await wakeControls(page);
       await page.getByRole("button", { name: "Participants" }).click();
-      await expect(page.getByRole("complementary", { name: "Participants" })).toBeVisible();
+      await expect(page.getByRole("tabpanel", { name: "People" })).toBeVisible();
       await at(`the room, participants open, at ${where}`);
       await page.keyboard.press("Escape");
 

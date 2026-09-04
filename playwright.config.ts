@@ -50,6 +50,37 @@ const REAL_MEDIA = [
   // a claim about decoded frames and not about DOM state — the same contention
   // that made media.spec's "frozen frame" flake applies here exactly.
   "camera.spec.ts",
+  /*
+   * `mobile.spec` is deliberately **not** here, and the reason is worth keeping.
+   *
+   * Its share-region test failed three times with a `NaN` picture, and I read
+   * that as four-worker contention and moved the file across. It then failed
+   * again at one worker — so the diagnosis was wrong. The test waited a fixed
+   * 500ms for a frame to decode and simply lost a race that contention made
+   * more likely; it now polls for a non-zero `videoHeight`.
+   *
+   * Serialising would have hidden it rather than fixed it, and hidden it in the
+   * shape that is hardest to notice: a green suite that is slower for a reason
+   * nobody can reconstruct.
+   */
+  /*
+   * `chat.spec` measures wall-clock delivery from a keypress in one browser to
+   * the text appearing in another, and its own comment concedes the weakness:
+   * "Playwright's own round trips are in the measurement". Under four workers
+   * that overhead dominates — 3313ms and 3317ms against a 3000ms bound on two
+   * separate full runs, and 197ms and 199ms alone.
+   *
+   * Serialising removes the contention rather than relaxing the bound, which is
+   * the rule. The bound is the point: a 3000ms ceiling on a 500ms target is
+   * already an upper bound on an upper bound, and moving it to fit a saturated
+   * harness would leave nothing that could fail.
+   *
+   * The deeper fix is to measure in-page — `Date.now()` at dispatch in the
+   * sender and at arrival in the receiver, with no harness IPC between — which
+   * would let this run parallel again. Worth doing; not worth doing inside a
+   * change about panels.
+   */
+  "chat.spec.ts",
 ];
 
 /**

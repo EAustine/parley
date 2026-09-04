@@ -220,10 +220,10 @@ test.describe("the room on a phone", () => {
     await page.waitForTimeout(400);
 
     const geometry = await page.evaluate(() => {
-      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]')!;
       const tile = document.querySelector<HTMLElement>("[data-participant]");
       const send = [...document.querySelectorAll<HTMLElement>("button")].find(
-        (b) => b.textContent?.trim() === "Send",
+        (b) => b.getAttribute("aria-label") === "Send message",
       );
       const box = (el: Element | null | undefined) =>
         el ? el.getBoundingClientRect() : null;
@@ -231,7 +231,7 @@ test.describe("the room on a phone", () => {
       const onTopOfSend = sendBox
         ? document
             .elementFromPoint(sendBox.x + sendBox.width / 2, sendBox.y + sendBox.height / 2)
-            ?.closest("button")?.textContent?.trim() ?? null
+            ?.closest("button")?.getAttribute("aria-label") ?? null
         : null;
       return {
         panelHeight: box(panel)!.height,
@@ -242,8 +242,18 @@ test.describe("the room on a phone", () => {
       };
     });
 
-    // 55% of the dynamic viewport, measured rather than read back.
-    expect(geometry.panelHeight / geometry.viewport).toBeCloseTo(0.55, 2);
+    /**
+     * **Capped at 55dvh, not pinned to it** — v1.3 C3.
+     *
+     * This asserted exactly 0.55, which the panel met by declaring `h-[55dvh]`:
+     * a room with two people and no messages still took over half the screen to
+     * say so. C3 caps it and lets it hug what it holds, so the assertion is the
+     * cap plus a floor — a sheet that collapsed to nothing would satisfy "at
+     * most 55%" and be just as wrong.
+     */
+    const share = geometry.panelHeight / geometry.viewport;
+    expect(share, `the sheet is ${Math.round(share * 100)}% of the viewport`).toBeLessThanOrEqual(0.56);
+    expect(share, `the sheet is ${Math.round(share * 100)}% of the viewport`).toBeGreaterThan(0.2);
 
     // The video ends above the sheet instead of running under it.
     expect(geometry.tileBottom, "no participant tile to measure").not.toBeNull();
@@ -256,7 +266,7 @@ test.describe("the room on a phone", () => {
     expect(
       geometry.onTopOfSend,
       "the control bar is painted over the chat Send button",
-    ).toBe("Send");
+    ).toBe("Send message");
   });
 
   /**
@@ -290,7 +300,34 @@ test.describe("the room on a phone", () => {
       await expect(page.getByText("Kwabena Osei is sharing")).toBeVisible({
         timeout: 20_000,
       });
-      await page.waitForTimeout(500);
+
+      /**
+       * Wait for a **decoded frame**, not for a fixed 500ms.
+       *
+       * The label appears when the publication arrives; `videoWidth` and
+       * `videoHeight` stay 0 until a frame is actually decoded, and the gap
+       * between the two is a real network. A `waitForTimeout(500)` stood in for
+       * that condition and lost the race repeatedly — `intrinsic` came back
+       * `NaN` (0/0) and the failure read "against a NaN picture".
+       *
+       * I first took that for four-worker contention and moved the whole file
+       * to the serial project. It failed there too, at one worker: the wait was
+       * never long enough *in principle*, only usually. Polling asks the
+       * question the sleep was guessing at, which is the same lesson as every
+       * other measured check here.
+       */
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const video = [...document.querySelectorAll<HTMLVideoElement>("video")].find(
+                (v) => getComputedStyle(v).objectFit === "contain",
+              );
+              return video?.videoHeight ?? 0;
+            }),
+          { message: "the shared picture never decoded a frame", timeout: 20_000 },
+        )
+        .toBeGreaterThan(0);
 
       const measured = await page.evaluate(() => {
         const video = [...document.querySelectorAll<HTMLVideoElement>("video")].find(
@@ -366,12 +403,12 @@ test.describe("the room on a phone", () => {
 
     await wakeControls(page);
     await page.getByRole("button", { name: "Chat" }).click();
-    const panel = page.getByRole("complementary", { name: "Meeting chat" });
+    const panel = page.getByRole("tabpanel", { name: "Chat" });
     await expect(panel).toBeVisible();
     await page.waitForTimeout(300);
 
     const handle = await page.evaluate(() => {
-      const sheet = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const sheet = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]')!;
       const grip = sheet.firstElementChild as HTMLElement;
       const box = grip.getBoundingClientRect();
       return { x: box.x + box.width / 2, y: box.y + box.height / 2, touch: getComputedStyle(grip).touchAction };

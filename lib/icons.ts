@@ -25,6 +25,7 @@ import {
   PinIcon,
   PlusSignIcon,
   ScreenShareIcon,
+  SentIcon,
   Settings01Icon,
   ScreenShareOffIcon,
   Sun03Icon,
@@ -121,6 +122,8 @@ export const ICONS = {
     label: "Audio and video settings",
   },
   keyboard: { icon: KeyboardIcon, export: "KeyboardIcon", label: "Keyboard" },
+  // v1.3 C3: the composer's 44px send button, beside the field.
+  send: { icon: SentIcon, export: "SentIcon", label: "Send message" },
   chevronDown: {
     icon: ArrowDown01Icon,
     export: "ArrowDown01Icon",

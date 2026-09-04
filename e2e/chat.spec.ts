@@ -18,7 +18,7 @@ import {
 async function openChat(p: Participant) {
   await wakeControls(p.page);
   await p.page.getByRole("button", { name: "Chat", exact: true }).click();
-  await expect(p.page.getByRole("complementary", { name: "Meeting chat" })).toBeVisible();
+  await expect(p.page.getByRole("tabpanel", { name: "Chat" })).toBeVisible();
 }
 
 /**
@@ -50,8 +50,8 @@ const reactionsSeen = (p: Participant) =>
   p.page.evaluate(() => (window as unknown as { __reactions?: number }).__reactions ?? 0);
 
 async function say(p: Participant, body: string) {
-  await p.page.getByLabel("Message").fill(body);
-  await p.page.getByLabel("Message").press("Enter");
+  await p.page.getByRole("textbox", { name: "Message", exact: true }).fill(body);
+  await p.page.getByRole("textbox", { name: "Message", exact: true }).press("Enter");
 }
 
 test.describe("chat", () => {
@@ -87,8 +87,8 @@ test.describe("chat", () => {
 
     // Attribution, scoped to the panel. A name also appears on its owner's
     // tile, so an unscoped query matches both and says nothing about either.
-    const amaPanel = ama.page.getByRole("complementary", { name: "Meeting chat" });
-    const kwabenaPanel = kwabena.page.getByRole("complementary", { name: "Meeting chat" });
+    const amaPanel = ama.page.getByRole("tabpanel", { name: "Chat" });
+    const kwabenaPanel = kwabena.page.getByRole("tabpanel", { name: "Chat" });
     await expect(amaPanel.getByText("You", { exact: true })).toBeVisible();
     await expect(kwabenaPanel.getByText("Ama Serwaa", { exact: true })).toBeVisible();
   });
@@ -172,7 +172,7 @@ test.describe("chat", () => {
     // §3.5: consecutive messages from the same sender within 60s group under
     // one header. Three messages, one name.
     const headers = kwabena.page
-      .getByRole("complementary", { name: "Meeting chat" })
+      .getByRole("tabpanel", { name: "Chat" })
       .getByText("Ama Serwaa", { exact: true });
     await expect(headers).toHaveCount(1);
 
@@ -180,7 +180,7 @@ test.describe("chat", () => {
     await expect(ama.page.getByText("hello")).toBeVisible();
     // A different sender always starts a new group.
     await expect(
-      ama.page.getByRole("complementary", { name: "Meeting chat" })
+      ama.page.getByRole("tabpanel", { name: "Chat" })
         .getByText("You", { exact: true }),
     ).toHaveCount(1);
   });
@@ -194,7 +194,7 @@ test.describe("chat", () => {
     const geometry = () =>
       ama.page.evaluate(() => {
         const grid = document.querySelector<HTMLElement>(".grid");
-        const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]');
+        const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]');
         if (!grid) return null;
         const g = grid.getBoundingClientRect();
         const p = panel?.getBoundingClientRect();
@@ -266,7 +266,7 @@ test.describe("chat", () => {
     await expect(ama.page.getByText("second")).toBeVisible();
 
     const measured = await ama.page.evaluate(() => {
-      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]')!;
       const resolve = (name: string) => {
         const probe = document.createElement("span");
         probe.style.color = getComputedStyle(panel).getPropertyValue(name).trim();
@@ -360,7 +360,7 @@ test.describe("chat", () => {
     await openChat(kwabena);
 
     // Eight sent as fast as the input allows; it disables partway through.
-    const composer = ama.page.getByLabel("Message");
+    const composer = ama.page.getByRole("textbox", { name: "Message", exact: true });
     for (let i = 1; i <= 8; i++) {
       if (await composer.isEnabled()) {
         await composer.fill(`flood ${i}`);
@@ -373,7 +373,7 @@ test.describe("chat", () => {
     await expect(composer).toHaveAttribute("placeholder", /send again in \d+s/);
 
     // §3.5: five per ten seconds. At the far end, no more than five arrive.
-    const kwabenaPanel = kwabena.page.getByRole("complementary", { name: "Meeting chat" });
+    const kwabenaPanel = kwabena.page.getByRole("tabpanel", { name: "Chat" });
     await expect(kwabenaPanel.getByText(/^flood 1$/)).toBeVisible();
     await ama.page.waitForTimeout(1500);
     const delivered = await kwabenaPanel.getByText(/^flood \d$/).count();
@@ -390,13 +390,13 @@ test.describe("chat", () => {
 
     await ama.page.keyboard.press("Escape");
     await expect(
-      ama.page.getByRole("complementary", { name: "Meeting chat" }),
+      ama.page.getByRole("tabpanel", { name: "Chat" }),
     ).toBeHidden();
     // Measured, not inferred from the attribute: `hidden` only hides if a rule
     // says so, and for a `display: flex` element that rule has to be important.
     expect(
       await ama.page.evaluate(() => {
-        const panel = document.querySelector('aside[aria-label="Meeting chat"]');
+        const panel = document.querySelector('aside[aria-label="Chat and people"]');
         return panel ? getComputedStyle(panel).display : null;
       }),
     ).toBe("none");

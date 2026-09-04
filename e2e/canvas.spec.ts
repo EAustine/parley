@@ -206,7 +206,7 @@ test.describe("the room canvas", () => {
 
     // Active fills it, and the box is unchanged.
     await chat.click();
-    await expect(page.getByRole("complementary", { name: "Meeting chat" })).toBeVisible();
+    await expect(page.getByRole("tabpanel", { name: "Chat" })).toBeVisible();
     // Let the 120ms fill finish. Read mid-transition this returns
     // `rgba(36, 40, 48, 0.082)` — the right colour part-way through its own
     // animation, which is the same trap a Phase 4 test fell into.

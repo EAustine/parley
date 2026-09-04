@@ -6135,3 +6135,128 @@ design draws them.
 **C1, C3 and C4 remain.** C1 is the largest ripple in the track — taking the
 local participant out of the grid shifts every breakpoint by one and touches
 nine spec files — so it is deliberately last.
+
+---
+
+## v1.3 C3 — one panel, two tabs
+
+Chat and People were two independent `<aside>` regions with identical geometry,
+landing on the same 360px column, kept apart by a one-at-a-time constraint in
+`RoomStage`. C3 "dissolves the one-at-a-time constraint by removing the second
+panel" — which is the better fix in the shape this project keeps reaching for:
+the state that could go wrong is gone rather than guarded.
+
+`ChatPanel` and `ParticipantsPanel` became `ChatBody` and `PeopleBody`; the
+shell, the surface reasoning and the sheet geometry moved to `RoomPanel`.
+
+### What had to survive the merge
+
+**Still a labelled region, never a dialog.** The floor is explicit that
+`role="dialog"` with `aria-modal` promises a trap, and this must not trap: §3.4
+requires the control bar to stay reachable with a panel open, and mute is a
+privacy control.
+
+**The two bar buttons stay two disclosures.** Opening People while Chat is
+showing does not close the panel, so Chat's button is no longer disclosing
+anything and its `aria-expanded` says so. A single flag shared by both would
+claim chat was on screen when people was.
+
+**The tabs are real tabs** — arrow keys, Home and End, roving `tabIndex`. Same
+rule the leave menu is built on: the role is a promise about keyboard behaviour,
+and making it without keeping it is the lie `CLAUDE.md` names.
+
+**Both bodies stay mounted, one hidden.** `ChatBody` pins its scroller to the
+bottom and counts what arrived while you were away; unmounting on every tab
+change would reset both, so switching to People and back would lose your place.
+
+### The floor beat the design file three times
+
+The design draws `.tab{height:40px}` and `.copybtn{height:36px}`.
+`CLAUDE.md`'s floor is 44px on the room surface and does not bend for a design
+file — the same call already made for the control bar, where the design shrinks
+every control to 40 on mobile. `check:targets` measured the tabs at **146×40**
+and the copy button at **95×28** and said so both times.
+
+### Two silent-failure paths closed
+
+**The room had no `<Toaster />`.** C3 puts a Copy link button in the People tab,
+and `CopyLinkButton` reports both outcomes with a toast — "Link copied", and
+"Your browser blocked the clipboard" when the copy is refused. Both would have
+been silent. Exactly the defect E3 found on `/`, in a second place: a control
+reporting through a channel its route does not render.
+
+**Device state was told by absence.** A row rendered an icon only for a device
+that was *off*, so one icon was ambiguous until you looked at which, and no
+icons meant everything is on. C3: "Two icons, because one cannot express 'camera
+off, mic on'."
+
+### `check:room` caught a rule that had outgrown itself
+
+Its disclosure scan pairs every `aria-controls` with `aria-expanded`, and a
+**tab** correctly pairs it with `aria-selected` — a tab does not expand, it
+selects. Widened deliberately rather than loosened: what the check prevents is
+"a screen reader knowing something opened and not what", and a tab that names
+its panel does not leave that gap. `aria-controls` with *neither* partner still
+fails.
+
+### The tests, and one that was measuring the harness
+
+Eleven spec files referenced the two regions. Most were mechanical — the region
+is now one `aside`, the bodies are `tabpanel`s, "Close chat" and "Close
+participants" are one "Close panel".
+
+Three were not:
+
+**`getByLabel("Message")` began matching two elements** — the composer, and the
+new "Send message" button, by substring. Now scoped by role, which is what
+`CLAUDE.md`'s testing rules ask for.
+
+**"a panel slides in over 180ms, and swapping never overlaps"** asserted a state
+C3 deleted. Rewritten to the property that made it worth having: the panel is
+already on screen, so a tab change must move only its contents — a surface that
+slid in again on every tab press would be the same flicker arriving by a
+different route.
+
+**The mobile sheet test pinned exactly 55dvh**, which the panel met by declaring
+`h-[55dvh]`. C3 caps it and lets it hug its content, so the sheet is now ~49% in
+an empty room. The assertion is the cap plus a floor — a sheet that collapsed to
+nothing would satisfy "at most 55%" and be just as wrong.
+
+### Two flakes that looked alike and were not
+
+`chat.spec`'s latency test failed twice at ~3.3s against a 3000ms bound and
+measured 197ms, 199ms, 202ms and 301ms alone. Its own comment already conceded
+the weakness — "Playwright's own round trips are in the measurement" — so this
+one really is contention, and it moved to the serial project. Serialising
+removes the contention rather than relaxing the bound; moving a 3000ms ceiling
+on a 500ms target to fit a saturated harness would leave nothing that could
+fail. The deeper fix is an in-page measurement with no harness IPC between the
+two clocks, noted in the config.
+
+**`mobile.spec`'s share test was a different animal, and I got it wrong first.**
+It failed with a `NaN` picture twice under four workers, so I moved it across
+with the other one — and it **failed again at one worker**. The diagnosis was
+wrong: it waited a fixed `500ms` for the shared picture to decode and read
+`videoWidth / videoHeight` as `0/0`. A sleep standing in for a condition, losing
+a race that contention merely made more likely.
+
+It now polls for a non-zero `videoHeight`, the pattern `media.spec` already
+uses, and passes ten for ten across two repeats back in the **parallel** project.
+The serialisation is reverted, and the config records why: it would have hidden
+the bug in the shape hardest to notice — a green suite, slower, for a reason
+nobody could reconstruct.
+
+### And the run that reported success while failing
+
+`npm run check:media | grep …` exits with **grep's** status, so a run with a
+failed test came back `0`. Reading the output is what caught it. Worth naming
+because it is this project's recurring shape in a new place: the check was
+answering a question adjacent to the one being asked.
+
+### Checks
+
+Full suite **94 + 36 = 130 passing**, verified against the command's own exit
+status rather than a pipeline's. `check:room` 107/107 (one new),
+`check:contrast` 28, `check:chat` 73/73, `check:deps` 5/5, `check:codes` 6/6,
+typecheck, lint. Verified in a browser: both tabs, the copy row, the two device
+icons, and the composer's edge and send button.

@@ -522,6 +522,21 @@ check(
 // reusing one across a filter silently skips every other file.
 const attrControls = () => /(?<!\[)\baria-controls=/g;
 const attrExpanded = () => /(?<!\[)\baria-expanded=/g;
+/**
+ * `aria-selected` is the other legitimate partner — v1.3 C3.
+ *
+ * The rule above is the *disclosure* pattern, and it was written when every
+ * `aria-controls` in the room was one. C3's panel added tabs, where the correct
+ * pairing is `aria-controls` with `aria-selected`: a tab does not expand, it
+ * selects, and `aria-expanded` on one would be describing a state it does not
+ * have.
+ *
+ * Widened deliberately rather than loosened. What the check exists to prevent
+ * is "a screen reader knowing something opened and not what" — and a tab that
+ * names the panel it selects does not leave that gap. Anything carrying
+ * `aria-controls` with *neither* partner still fails.
+ */
+const attrSelected = () => /(?<!\[)\baria-selected=/g;
 
 const disclosures = interactive.filter((f) => attrControls().test(codeOf(f)));
 check(disclosures.length > 0, `something uses the disclosure pattern  (${disclosures.length} file)`,
@@ -530,10 +545,12 @@ check(disclosures.length > 0, `something uses the disclosure pattern  (${disclos
 for (const file of disclosures) {
   const code = codeOf(file);
   const controls = (code.match(attrControls()) ?? []).length;
-  const expanded = (code.match(attrExpanded()) ?? []).length;
+  const expanded =
+    (code.match(attrExpanded()) ?? []).length +
+    (code.match(attrSelected()) ?? []).length;
   check(
     expanded >= controls,
-    `${file.replace(/^.*\//, "")} pairs every aria-controls with aria-expanded`,
+    `${file.replace(/^.*\//, "")} pairs every aria-controls with aria-expanded or aria-selected`,
     `${controls} controls, ${expanded} expanded`,
   );
 }

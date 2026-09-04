@@ -28,7 +28,7 @@ const sharingBar = (p: Participant) =>
 async function openParticipants(p: Participant) {
   await wakeControls(p.page);
   await p.page.getByRole("button", { name: "Participants", exact: true }).click();
-  await expect(p.page.getByRole("complementary", { name: "Participants" })).toBeVisible();
+  await expect(p.page.getByRole("tabpanel", { name: "People" })).toBeVisible();
 }
 
 test.describe("screen share", () => {
@@ -276,7 +276,7 @@ test.describe("screen share", () => {
     // be a casualty of that.
     await wakeControls(kwabena.page);
     await kwabena.page.getByRole("button", { name: "Chat", exact: true }).click();
-    await expect(kwabena.page.getByRole("complementary", { name: "Meeting chat" })).toBeVisible();
+    await expect(kwabena.page.getByRole("tabpanel", { name: "Chat" })).toBeVisible();
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();
 
     await kwabena.page.keyboard.press("Escape");
@@ -299,7 +299,7 @@ test.describe("participants panel", () => {
     await expectParticipants(ama.page, 2);
 
     await openParticipants(ama);
-    const panel = ama.page.getByRole("complementary", { name: "Participants" });
+    const panel = ama.page.getByRole("tabpanel", { name: "People" });
     // v1.2 C2 split "(you)" out of the name span and into `--muted-foreground`,
     // so it is no longer part of what someone is called. Asserted as two
     // elements in one row rather than as one string.
@@ -330,7 +330,7 @@ test.describe("participants panel", () => {
     await expectParticipants(ama.page, 2);
 
     await openParticipants(ama);
-    const panel = ama.page.getByRole("complementary", { name: "Participants" });
+    const panel = ama.page.getByRole("tabpanel", { name: "People" });
     await expect(panel.getByRole("button", { name: /Ask to mute/ })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
   });
@@ -366,7 +366,7 @@ test.describe("participants panel", () => {
     // And the panel — where host actions on other people live — says nothing
     // of the kind at all.
     const panel = await ama.page
-      .getByRole("complementary", { name: "Participants" })
+      .getByRole("tabpanel", { name: "People" })
       .innerText();
     expect(panel).not.toMatch(/unmute/i);
 

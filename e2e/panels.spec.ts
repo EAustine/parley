@@ -26,9 +26,9 @@ test.describe("the side panels", () => {
   });
 
   const chat = (p: Participant) =>
-    p.page.getByRole("complementary", { name: "Meeting chat" });
+    p.page.getByRole("tabpanel", { name: "Chat" });
   const people = (p: Participant) =>
-    p.page.getByRole("complementary", { name: "Participants" });
+    p.page.getByRole("tabpanel", { name: "People" });
 
   test("opening one panel closes the other", async ({ browser, meetingCode }) => {
     participant = await joinAs(browser, "Abena Poku", { code: meetingCode });
@@ -105,7 +105,7 @@ test.describe("the side panels", () => {
     await expect(chat(participant)).toBeVisible();
 
     const paint = await page.evaluate(() => {
-      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]')!;
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]')!;
       const room = document.querySelector<HTMLElement>(".relative.h-dvh")!;
       const cs = getComputedStyle(panel);
       // Resolve a token through a real element so both sides are rgb() and
@@ -195,7 +195,7 @@ test.describe("the side panels", () => {
     await expect(people(participant)).toBeVisible();
 
     const row = await page.evaluate(() => {
-      const panel = document.querySelector<HTMLElement>('aside[aria-label="Participants"]')!;
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]')!;
       const li = panel.querySelector<HTMLElement>("li");
       if (!li) return null;
       const resolve = (name: string) => {
@@ -277,7 +277,7 @@ test.describe("the side panels", () => {
      * input, which is what the rule is about.
      */
     const slide = await page.evaluate(() => {
-      const panel = document.querySelector<HTMLElement>('aside[aria-label="Meeting chat"]');
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]');
       const animation = panel?.getAnimations()[0];
       if (!panel || !animation) return null;
       const at = (ms: number) => {
@@ -297,37 +297,44 @@ test.describe("the side panels", () => {
     expect(["none", "0px", "0px 0px"]).toContain(slide!.end.translate);
     expect(parseFloat(slide!.end.opacity)).toBe(1);
 
-    // Swap, and look at both panels in the same frame.
+    /**
+     * Switching tab does **not** re-animate the surface — v1.3 C3.
+     *
+     * v1.2's version of this asserted that swapping between two panels never
+     * rendered both at once, and that the incoming one was animating. Neither
+     * state exists any more: C3 "dissolves the one-at-a-time constraint by
+     * removing the second panel", so there is one surface and nothing to swap.
+     *
+     * What replaces it is the property that made the old assertion worth
+     * having. The panel is already on screen, so a tab change must move only
+     * its contents — a surface that slid in again on every tab press would be
+     * the flicker the original rule was written against, arriving by a
+     * different route.
+     */
     await expect(chat(participant)).toBeVisible();
     await wakeControls(page);
     await page.getByRole("button", { name: "Participants", exact: true }).click();
+    await expect(people(participant)).toBeVisible();
 
-    /*
-     * C3: "no flicker, no simultaneous transition."
-     *
-     * Asserted as *one panel rendered at a time*, which is a property a
-     * cross-fade would break. An earlier version of this asserted that the
-     * closing panel had no running animation — which no change to the code
-     * could ever have made false, because closing is instant. A guard that
-     * cannot fail is not a guard.
-     */
-    const frame = await page.evaluate(() => {
-      const shown = (label: string) => {
-        const el = document.querySelector<HTMLElement>(`aside[aria-label="${label}"]`);
-        if (!el) return null;
-        return {
-          display: getComputedStyle(el).display,
-          animating: el.getAnimations().filter((a) => a.playState === "running").length,
-        };
+    const afterSwitch = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('aside[aria-label="Chat and people"]')!;
+      return {
+        running: panel.getAnimations().filter((a) => a.playState === "running").length,
+        // Exactly one tab body is rendered, which is the half of "never
+        // overlaps" that survives the merge.
+        shown: [...document.querySelectorAll<HTMLElement>('[role="tabpanel"]')].filter(
+          (el) => getComputedStyle(el).display !== "none",
+        ).length,
+        translate: getComputedStyle(panel).translate,
       };
-      return { chat: shown("Meeting chat"), participants: shown("Participants") };
     });
 
-    expect(frame.chat!.display, "both panels are rendered during the swap").toBe("none");
     expect(
-      frame.participants!.animating,
-      "the opening panel is not animating",
-    ).toBeGreaterThan(0);
+      afterSwitch.running,
+      "the panel animates again when only its tab changed",
+    ).toBe(0);
+    expect(afterSwitch.shown, "both tab bodies are rendered at once").toBe(1);
+    expect(["none", "0px", "0px 0px"]).toContain(afterSwitch.translate);
   });
 
   /**

@@ -7,42 +7,37 @@ import { ICONS } from "@/lib/icons";
 import { isPinnedToBottom, startsGroup, type LogEntry } from "@/lib/room/chat";
 import { CHAT_COUNTER_AT, CHAT_MAX_LENGTH } from "@/lib/room/messages";
 import { ChatMessage } from "@/components/room/ChatMessage";
-import { SheetHandle } from "@/components/room/SheetHandle";
 import { Button } from "@/components/ui/button";
 
 /**
- * §3.5's panel: a 360px drawer on desktop, a bottom sheet on mobile.
+ * §3.5's chat, as the Chat tab's body and footer — v1.3 C3.
  *
- * Built here rather than from shadcn's `Sheet` because this one has to stay
- * open while the room behind it stays usable — §3.4 requires the controls to
- * remain reachable with a panel open. `Sheet` is a modal dialog: it traps
- * focus, marks the rest of the page `aria-hidden`, and blocks the pointer,
- * which is the correct behaviour for a dialog and the wrong behaviour for a
- * side panel in a live meeting.
+ * This was a whole panel: its own `<aside aria-label="Meeting chat">`, its own
+ * header and close button, its own sheet geometry. C3 merges chat and people
+ * into **one** surface with two tabs, so the shell moved to `RoomPanel` and
+ * what stayed here is the part that is actually about chat — the log, the
+ * scroll pinning, and the composer.
  *
- * Focus trapping and the full tab-order pass are Phase 9's. Escape closing and
- * returning focus to the trigger is here, because a panel you cannot close
- * from the keyboard is not a partial implementation, it is a trap.
+ * The surface reasoning did not move with it; it is recorded in `RoomPanel`,
+ * which is now the thing that has a surface.
  */
-export function ChatPanel({
+export function ChatBody({
   open,
   log,
   cooldown,
-  onClose,
   onSend,
 }: {
+  /** The Chat tab is showing. Focus and scroll pinning both key off it. */
   open: boolean;
   log: LogEntry[];
   /** Seconds until sending is allowed again, or null — §3.5. */
   cooldown: number | null;
-  onClose: () => void;
   onSend: (body: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [hasNew, setHasNew] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const sheet = useRef<HTMLElement>(null);
   const pinned = useRef(true);
 
   // Focus the composer on open. Someone who opened the chat means to type.
@@ -107,72 +102,7 @@ export function ChatPanel({
   const remaining = CHAT_MAX_LENGTH - draft.length;
 
   return (
-    <aside
-      ref={sheet}
-      // Not `role="dialog"`: this is a complementary region beside the room,
-      // and the room stays live behind it.
-      aria-label="Meeting chat"
-      hidden={!open}
-      // `hidden` alone does the hiding. `app/globals.css` declares
-      // `[hidden] { display: none !important }` in our own base layer, so this
-      // does not depend on Tailwind's preflight happening to do the same — see
-      // CLAUDE.md's testing rules, which is where that lesson came from.
-      // The bottom inset on mobile is the control bar's *measured* height, not
-      // a guess: the bar is `z-30` and floats over this sheet — it has to,
-      // because §3.4 requires mute to stay reachable with a panel open, and
-      // mute is a privacy control. This was a hard-coded `pb-24` (96px) and
-      // B4's wrapping made the bar 144px, which put Send underneath it.
-      // Surface, not content: `--popover` is the plane every other floating
-      // chrome surface in the room already sits on — the mute request, the
-      // replaced notice, the connection bar and pill, the shortcuts hint. This
-      // was `bg-card`, which is the *tile* surface (`Tile`, `ScreenShareStage`),
-      // so the panel was on the wrong plane in the system.
-      //
-      // It is not what makes the boundary. No fill in the set can: the whole
-      // surface ramp lives inside 0.2 of a contrast point against the ground —
-      // card 1.09:1, popover 1.15:1, and even `--secondary`, the lightest
-      // surface token, only 1.29:1. That is what happens when every fill sits
-      // within 22 hex values of `--background`.
-      //
-      // The boundary is the 1px `--boundary` edge below, at 3.93:1 against
-      // the ground and 3.41:1 against this fill — the only value in the set
-      // that reads as an edge. `--border` would be 1.12:1 against it, invisible.
-      //
-      // Not a shadow. Shadows carry elevation on light grounds by darkening
-      // what is beneath, and on `#0E1013` there is nothing meaningfully darker
-      // to go to; dark interfaces carry elevation with a lighter fill and a
-      // visible edge.
-      className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[55dvh] flex-col rounded-t-xl border-t bg-popover pb-[var(--parley-controls-h)] md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
-      style={{ borderColor: "var(--boundary)" }}
-      onKeyDown={(event) => {
-        // Escape closes from anywhere inside, including mid-draft.
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          onClose();
-        }
-      }}
-    >
-      <SheetHandle onDismiss={onClose} sheet={sheet} />
-
-      <header className="flex shrink-0 items-center justify-between border-b px-4 py-3"
-              style={{ borderColor: "var(--boundary)" }}>
-        <h2 className="type-h2">Chat</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close chat"
-          className="flex size-11 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-        >
-          <HugeiconsIcon
-            icon={ICONS.close.icon}
-            size={20}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden
-          />
-        </button>
-      </header>
-
+    <>
       <div
         ref={scroller}
         onScroll={onScroll}
@@ -208,6 +138,7 @@ export function ChatPanel({
         <label htmlFor="chat-composer" className="sr-only">
           Message
         </label>
+        <div className="flex items-end gap-2">
         <textarea
           id="chat-composer"
           ref={composer}
@@ -230,9 +161,41 @@ export function ChatPanel({
               submit();
             }
           }}
-          className="w-full resize-none rounded-lg bg-input px-3 py-2 type-body text-foreground placeholder:text-muted-foreground disabled:opacity-60"
+          /*
+           * v1.3 C3: transparent with a 1px `--boundary` edge, not a filled
+           * `--input` well. `--input` is a fill, and at 1.44:1 against the
+           * panel it is not a boundary — the same distinction `CLAUDE.md` draws
+           * for every other field in the product. The focus ring is the `--ring`
+           * border plus a 1px shadow, matching the design's `.composer:focus`.
+           */
+          className="min-h-11 max-h-30 w-full resize-none rounded-lg border border-boundary bg-transparent px-3 py-2.5 type-body text-foreground outline-none placeholder:text-muted-foreground focus:border-[var(--ring)] focus:shadow-[0_0_0_1px_var(--ring)] disabled:opacity-60"
         />
-        <div className="mt-2 flex items-center justify-between gap-3">
+        {/*
+          C3: "A send button beside the composer, disabled until there is
+          content; Enter still sends, the button is for touch."
+
+          It was a text button on its own row, sharing it with the character
+          counter — two rows of chrome under a two-row field, on the surface
+          with the least vertical room in the product.
+        */}
+        <button
+          type="button"
+          onClick={submit}
+          disabled={draft.trim().length === 0 || cooldown !== null}
+          aria-label="Send message"
+          className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <HugeiconsIcon
+            icon={ICONS.send.icon}
+            size={18}
+            strokeWidth={1.5}
+            color="currentColor"
+            aria-hidden
+          />
+        </button>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-3">
           {/* §3.5: the counter appears at 900, not before. A permanent counter
               is a permanent reminder of a limit almost nobody reaches. */}
           {/*
@@ -253,15 +216,8 @@ export function ChatPanel({
                 ? `${remaining} left`
                 : ""}
           </span>
-          <Button
-            size="touch"
-            onClick={submit}
-            disabled={draft.trim().length === 0 || cooldown !== null}
-          >
-            Send
-          </Button>
         </div>
       </div>
-    </aside>
+    </>
   );
 }

@@ -8,11 +8,12 @@ import {
 } from "@livekit/components-react";
 import { type Participant } from "livekit-client";
 
+import { siteUrl } from "@/lib/site";
+import { CopyLinkButton } from "@/components/meetings/CopyLinkButton";
 import { TILE_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
 
 import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
-import { SheetHandle } from "@/components/room/SheetHandle";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -29,22 +30,22 @@ import { Button } from "@/components/ui/button";
  * panel is: §3.4 requires the controls to stay reachable with a panel open, and
  * a modal makes the room behind it inert.
  */
-export function ParticipantsPanel({
+export function PeopleBody({
   open,
   isLocalHost,
-  onClose,
+  code,
   onRequestMute,
   onRemove,
 }: {
   open: boolean;
   isLocalHost: boolean;
-  onClose: () => void;
+  /** The room's own link, for C3's copy row at the top. */
+  code: string;
   onRequestMute: (identity: string) => void;
   onRemove: (identity: string) => void;
 }) {
   const participants = useParticipants();
   const close = useRef<HTMLButtonElement>(null);
-  const sheet = useRef<HTMLElement>(null);
 
   /**
    * Move focus into the panel when it opens.
@@ -82,67 +83,19 @@ export function ParticipantsPanel({
   }, [open]);
 
   return (
-    <aside
-      ref={sheet}
-      aria-label="Participants"
-      hidden={!open}
-      // Surface, not content: `--popover` is the plane every other floating
-      // chrome surface in the room already sits on — the mute request, the
-      // replaced notice, the connection bar and pill, the shortcuts hint. This
-      // was `bg-card`, which is the *tile* surface (`Tile`, `ScreenShareStage`),
-      // so the panel was on the wrong plane in the system.
-      //
-      // It is not what makes the boundary. No fill in the set can: the whole
-      // surface ramp lives inside 0.2 of a contrast point against the ground —
-      // card 1.09:1, popover 1.15:1, and even `--secondary`, the lightest
-      // surface token, only 1.29:1. That is what happens when every fill sits
-      // within 22 hex values of `--background`.
-      //
-      // The boundary is the 1px `--boundary` edge below, at 3.93:1 against
-      // the ground and 3.41:1 against this fill — the only value in the set
-      // that reads as an edge. `--border` would be 1.12:1 against it, invisible.
-      //
-      // Not a shadow. Shadows carry elevation on light grounds by darkening
-      // what is beneath, and on `#0E1013` there is nothing meaningfully darker
-      // to go to; dark interfaces carry elevation with a lighter fill and a
-      // visible edge.
-      className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 h-[55dvh] flex-col rounded-t-xl border-t bg-popover pb-[var(--parley-controls-h)] md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:h-auto md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
-      style={{ borderColor: "var(--boundary)" }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          onClose();
-        }
-      }}
-    >
-      <SheetHandle onDismiss={onClose} sheet={sheet} />
-
-      <header
-        className="flex shrink-0 items-center justify-between border-b px-4 py-3"
-        style={{ borderColor: "var(--boundary)" }}
-      >
-        <h2 className="type-h2">
-          Participants{" "}
-          <span className="type-data tabular-nums text-muted-foreground">
-            {participants.length}
-          </span>
-        </h2>
-        <button
-          ref={close}
-          type="button"
-          onClick={onClose}
-          aria-label="Close participants"
-          className="flex size-11 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-        >
-          <HugeiconsIcon
-            icon={ICONS.close.icon}
-            size={20}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden
-          />
-        </button>
-      </header>
+    <>
+      {/*
+        C3: "copy link at the top". The meeting link had no home in the room at
+        all — a host who wanted to invite someone mid-meeting had to leave for
+        the dashboard. This is the one surface where the question "how do I get
+        someone else in here" is already being asked.
+      */}
+      <div className="mb-4 flex items-center gap-2 rounded-lg bg-muted p-3">
+        <span className="min-w-0 flex-1 truncate font-mono type-small text-muted-foreground">
+          {`${siteUrl().replace(/^https?:\/\//, "")}/j/${code}`}
+        </span>
+        <CopyLinkButton code={code} withLabel />
+      </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {participants.map((participant) => (
@@ -155,7 +108,7 @@ export function ParticipantsPanel({
           />
         ))}
       </ul>
-    </aside>
+    </>
   );
 }
 
@@ -215,27 +168,32 @@ function ParticipantRow({
         <ConnectionLabel participant={participant} />
       </div>
 
-      {/* Device state, as icons with names. Rule 5: no hue — a muted mic is a
-          different icon, not a red one. */}
-      <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
-        {!participant.isMicrophoneEnabled && (
-          <HugeiconsIcon
-            icon={ICONS.micOff.icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-label={`${name}'s microphone is off`}
-          />
-        )}
-        {!participant.isCameraEnabled && (
-          <HugeiconsIcon
-            icon={ICONS.cameraOff.icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-label={`${name}'s camera is off`}
-          />
-        )}
+      {/*
+        Device state, as **two icons, always** — v1.3 C3: "Two icons, because
+        one cannot express 'camera off, mic on'."
+
+        An icon was rendered only for a device that was *off*, so a row with one
+        icon was ambiguous until you looked at which one it was, and a row with
+        none meant everything is on — a state told entirely by absence. Now the
+        pair is always there and the glyph carries the state.
+
+        Rule 5: no hue. A muted mic is a different icon, not a red one.
+      */}
+      <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
+        <HugeiconsIcon
+          icon={ICONS[participant.isMicrophoneEnabled ? "micOn" : "micOff"].icon}
+          size={16}
+          strokeWidth={1.5}
+          color="currentColor"
+          aria-label={`${name}'s microphone is ${participant.isMicrophoneEnabled ? "on" : "off"}`}
+        />
+        <HugeiconsIcon
+          icon={ICONS[participant.isCameraEnabled ? "cameraOn" : "cameraOff"].icon}
+          size={16}
+          strokeWidth={1.5}
+          color="currentColor"
+          aria-label={`${name}'s camera is ${participant.isCameraEnabled ? "on" : "off"}`}
+        />
       </div>
 
       {showActions && (

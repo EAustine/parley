@@ -1,3 +1,5 @@
+import { Toaster } from "@/components/ui/sonner";
+
 /**
  * The room is dark regardless of the viewer's theme — rule 8b, the same
  * boundary `/j/` sets. No site header: this is the call, not a document.
@@ -22,6 +24,18 @@ export default function RoomLayout({
   return (
     <div className="dark flex min-h-dvh flex-col bg-background text-foreground [color-scheme:dark]">
       <main className="flex-1">{children}</main>
+      {/*
+        v1.3 C3 puts a Copy link button in the room's People tab, and
+        `CopyLinkButton` reports both outcomes with a toast — "Link copied", and
+        "Your browser blocked the clipboard" when the copy is refused. The room
+        mounted no `<Toaster />`, so both would have been silent.
+
+        Exactly the defect E3 found on `/`: a control that reports through a
+        channel its route does not render. The never-do list calls silent
+        failure the worst outcome in this product, and a copy that quietly did
+        nothing is the version of it people actually hit.
+      */}
+      <Toaster />
     </div>
   );
 }
