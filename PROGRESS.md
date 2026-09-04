@@ -5622,3 +5622,116 @@ Full suite **90 + 23 = 113 passing** (eight new). `check:bundle` 11/11 —
 `check:partition` 20/20, `check:chat` 73/73, `check:connection` 72/72,
 `check:permissions` 39/39, `check:ics` 69/69, `check:codes` 6/6, `check:deps`
 5/5, typecheck, lint.
+
+---
+
+## v1.3 B2 — devices, during a meeting
+
+§3.3 gave pre-join three selectors and gave the room none, so the only moment a
+device could be changed was before you were in a position to discover it was the
+wrong one. B2: "Field issues 2 and 5 are one feature."
+
+### What was already right, and what was not
+
+Worth separating, because the first grep suggested a bigger hole than there was.
+`RoomStage` has always called `switchActiveDevice("audiooutput", …)` with the
+stored id and caught the rejection, so the **room** honoured a speaker choice
+and degraded correctly where it could not. Two things were missing:
+
+- **Nothing let you change a device after joining**, at all.
+- **Pre-join offered a Speaker control on browsers that cannot route audio.**
+  B2: "unsupported in Safari. Feature-detect and hide rather than showing a
+  control that does nothing." It had always done nothing there, silently — the
+  room caught the rejection and the choice evaporated, so the person concludes
+  their audio routing is broken rather than that the browser has no such
+  feature.
+
+### One implementation, as B2 asks
+
+"Build once, for all three." `DeviceSelect` was private to `PreJoin`; it is now
+`components/shared/DeviceSelect.tsx` and the mid-call dialog renders the same
+control. A second copy is how the two would drift — the empty-state copy is
+exactly the sort of thing fixed in one place and not the other.
+
+`canChooseSpeaker()` is detected off `HTMLMediaElement.prototype`, not inferred
+from a user agent: Safari has never had `setSinkId`, Firefox shipped it behind a
+flag and then on by default in 116. A version table would be wrong within a
+release; the prototype is not. It is read in an effect rather than during
+render, because the server has no `HTMLMediaElement` and reading it while
+rendering would make the first client paint disagree with the server's.
+
+### The overflow menu had to exist first
+
+B2 puts the entry point "in the control bar's overflow menu, which is where the
+design puts it" — and that menu is C2's, which is three steps later. A feature
+reachable from nowhere is not shipped, so it is built here.
+
+**Scoped to what exists.** C2 moves Present and reactions into it on mobile;
+adding those now would put the same action in two places. What goes in is device
+settings, and keyboard shortcuts — which already existed behind `?` with no
+pointer affordance at all, so this is the first way to find them with a mouse.
+
+Shortcuts are gated on viewport width, and **not** with CSS. A `display: none`
+item still matches the menu's `querySelectorAll` and cannot take focus, so
+arrow-key navigation would stall on a row nobody can see. It has to be absent
+from the tree.
+
+### `PopupMenu`, extracted rather than written twice
+
+B1's Leave menu carried the arrow-key handling. Rather than a second copy in the
+overflow menu, both now use `components/room/PopupMenu.tsx` — arrows, Home and
+End, Escape returning focus, Tab closing, focus entering on open, and
+`pointerdown` (not `click`) for outside dismissal so a press that lands on
+another control closes this *and* reaches that control.
+
+### `check:targets` found a two-pixel defect on its first run
+
+The overflow menu's items measured **42px**: `p-2.5` plus one line of
+`type-body` is 10 + 22 + 10. The Leave menu had cleared the floor only because
+both of *its* items carry a second line — so the component was never 44px, and
+the one test that could have said so had been looking at the taller case.
+
+`min-h-11` on `MenuItem`, a floor rather than a fixed height so the two-line
+items keep growing. This is B1's own argument arriving from the other side: the
+whole reason Leave is a menu rather than a split button was target size.
+
+### Hot-plug asks, and asks once
+
+B2 calls this a decision rather than a detail: "Silently moving someone's audio
+to a device they did not choose is how a private conversation comes out of a
+laptop speaker in an open office."
+
+Non-modal, which is the other half — someone plugging in headphones mid-sentence
+should not have a dialog thrown over the person talking. Ignoring it is a valid
+answer, the same shape as `MuteRequestPrompt`.
+
+Two details that are not obvious:
+
+**`default` and `communications` are excluded from the comparison.** Chrome
+reports these aliases alongside the real device and their identity changes when
+the underlying default does — so they look new every time anything is plugged
+in, and would prompt about a device nobody added.
+
+**One prompt per piece of hardware.** A headset is an `audioinput` and an
+`audiooutput` with the same label; asking twice about AirPods is asking about a
+thing that arrived once. Grouping by label is also what lets "Switch" move both.
+
+### Mutation
+
+| mutation | fails |
+|---|---|
+| `canChooseSpeaker` forced to `false` | the speaker test — count 0 where the browser reports the capability |
+| the seen-device snapshot never advances | "not asked about twice" — expected 0 prompts, received 1 |
+
+The first mutation is worth a note. It proves the *linkage* — the control tracks
+the capability — but only in the direction Chromium can see. There `setSinkId`
+exists, so "shown when supported" and "always shown" render identically, and no
+Chromium test can separate them. `MANUAL.md` carries the other direction, and
+says why Playwright's WebKit does not discharge it: native media routing is
+precisely where WebKit and Safari diverge.
+
+### Checks
+
+Full suite **95 + 23 = 118 passing** (five new). `check:bundle` 11/11 —
+`/room/[code]` 160 kB against 250, `/j/[code]` 173 against 230. `check:room`
+106/106, `check:contrast` 28, `check:deps` 5/5, typecheck, lint.

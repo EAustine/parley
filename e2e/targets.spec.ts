@@ -139,6 +139,19 @@ test.describe("touch targets, in the room", () => {
       await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
       await at(`the room, shortcuts dialog open, at ${where}`);
       await page.keyboard.press("Escape");
+
+      // v1.3 B2's two new surfaces. The overflow menu is offered to everyone,
+      // unlike the leave menu below, so it belongs in this sweep.
+      await wakeControls(page);
+      await page.getByRole("button", { name: "More options" }).click();
+      await expect(page.getByRole("menu", { name: "More options" })).toBeVisible();
+      await at(`the room, overflow menu open, at ${where}`);
+
+      await page.getByRole("menuitem", { name: "Audio and video settings" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await at(`the room, device settings open, at ${where}`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     }
   });
 

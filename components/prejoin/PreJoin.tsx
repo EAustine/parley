@@ -14,7 +14,8 @@ import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { DeviceSelect } from "@/components/shared/DeviceSelect";
+import { canChooseSpeaker } from "@/lib/media/output";
 import {
   Tooltip,
   TooltipContent,
@@ -189,6 +190,16 @@ export function PreJoin({
   const showPreview =
     media.state === "granted" && media.cameraOn && media.hasCamera;
   const devicesKnown = media.state === "granted";
+
+  /**
+   * Whether this browser can route audio to a chosen speaker — B2.
+   *
+   * In state rather than read during render: the answer depends on
+   * `HTMLMediaElement`, which the server does not have, so reading it while
+   * rendering would make the first client paint disagree with the server's.
+   */
+  const [speakerChoosable, setSpeakerChoosable] = useState(false);
+  useEffect(() => setSpeakerChoosable(canChooseSpeaker()), []);
   // Permission was granted and the camera still isn't there — Screen Time has
   // it switched off, or it was unplugged. Different from "you turned it off",
   // and it must not be reported as though they chose it.
@@ -314,14 +325,28 @@ export function PreJoin({
           onChange={media.setMicrophone}
           ready={devicesKnown}
         />
-        <DeviceSelect
-          id="speaker"
-          label="Speaker"
-          options={media.speakers}
-          value={media.speakerId}
-          onChange={media.setSpeaker}
-          ready={devicesKnown}
-        />
+        {/*
+          v1.3 B2: "Speaker selection needs `HTMLMediaElement.setSinkId`,
+          unsupported in Safari. Feature-detect and hide rather than showing a
+          control that does nothing."
+
+          It has always done nothing on those browsers. `RoomStage` calls
+          `switchActiveDevice("audiooutput", …)` and catches the rejection, so
+          the *room* degraded correctly from the start — what nothing could do
+          was stop this screen offering a choice that would be silently
+          discarded. Hidden rather than disabled, like screen share under §3.7:
+          a disabled control invites someone to keep trying.
+        */}
+        {speakerChoosable && (
+          <DeviceSelect
+            id="speaker"
+            label="Speaker"
+            options={media.speakers}
+            value={media.speakerId}
+            onChange={media.setSpeaker}
+            ready={devicesKnown}
+          />
+        )}
       </div>
 
       {/* --- name and join, one block ------------------------------------- */}
@@ -438,66 +463,6 @@ function DeviceToggle({
       </TooltipTrigger>
       <TooltipContent className="dark">{label}</TooltipContent>
     </Tooltip>
-  );
-}
-
-function DeviceSelect({
-  id,
-  label,
-  options,
-  value,
-  onChange,
-  ready,
-}: {
-  id: string;
-  label: string;
-  options: { deviceId: string; label: string }[];
-  value: string | null;
-  onChange: (deviceId: string) => void;
-  ready: boolean;
-}) {
-  // §3.3: labels are empty until permission is granted, so an empty dropdown
-  // would be a control that looks broken. Say why it is empty instead.
-  if (!ready || options.length === 0) {
-    return (
-      <div className="space-y-2">
-        <Label htmlFor={id} className="type-small">
-          {label}
-        </Label>
-        <p id={id} className="type-small text-muted-foreground">
-          {ready ? `No ${label.toLowerCase()} found.` : "Allow access to choose a device."}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id} className="type-small">
-        {label}
-      </Label>
-      {/* 44px: the device selectors are targets on a pre-join surface. */}
-      <Select
-        id={id}
-        size="touch"
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {/* The placeholder is an option rather than a separate slot, and it
-            disappears once a device is chosen — a native select always has a
-            value, so there is nothing for an empty state to mean afterwards. */}
-        {value == null && (
-          <option value="" disabled>
-            {`Choose a ${label.toLowerCase()}`}
-          </option>
-        )}
-        {options.map((option) => (
-          <option key={option.deviceId} value={option.deviceId}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
-    </div>
   );
 }
 

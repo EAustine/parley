@@ -15,14 +15,17 @@ import {
   HappyIcon,
   Link01Icon,
   Loading03Icon,
+  KeyboardIcon,
   Mail01Icon,
   MinimizeScreenIcon,
+  MoreHorizontalIcon,
   Mic02Icon,
   MicOff02Icon,
   Moon02Icon,
   PinIcon,
   PlusSignIcon,
   ScreenShareIcon,
+  Settings01Icon,
   ScreenShareOffIcon,
   Sun03Icon,
   Tick02Icon,
@@ -105,6 +108,19 @@ export const ICONS = {
   plus: { icon: PlusSignIcon, export: "PlusSignIcon", label: "Add" },
   check: { icon: Tick02Icon, export: "Tick02Icon", label: "Done" },
   close: { icon: Cancel01Icon, export: "Cancel01Icon", label: "Close" },
+  // v1.3 B2: the control bar's overflow, and what it opens. Resolved against
+  // the installed package rather than guessed — CLAUDE.md's icon rule.
+  more: {
+    icon: MoreHorizontalIcon,
+    export: "MoreHorizontalIcon",
+    label: "More options",
+  },
+  settings: {
+    icon: Settings01Icon,
+    export: "Settings01Icon",
+    label: "Audio and video settings",
+  },
+  keyboard: { icon: KeyboardIcon, export: "KeyboardIcon", label: "Keyboard" },
   chevronDown: {
     icon: ArrowDown01Icon,
     export: "ArrowDown01Icon",

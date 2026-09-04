@@ -189,6 +189,21 @@ Two things to watch while working the rows:
 
 ## 4. Cross-browser and cross-engine
 
+- **Speaker selection hidden in Safari** — needs a human.
+  v1.3 B2 says "feature-detect and hide rather than showing a control that does
+  nothing", and `lib/media/output.ts` reads `setSinkId` off
+  `HTMLMediaElement.prototype`. `e2e/devices.spec.ts` asserts the control count
+  equals the browser's own answer rather than a hard-coded one, so the *linkage*
+  is tested — and mutation confirms it: forcing the detection to `false` fails
+  the test in Chromium, where the capability exists.
+
+  What Chromium cannot test is the direction the rule was written for. There,
+  `setSinkId` is present, so "shown when supported" and "always shown" are the
+  same rendering. Only an engine without it separates them, and Playwright's
+  WebKit is not Safari — native media routing is precisely where they diverge.
+  Open pre-join and the room's audio-and-video settings in a real Safari and
+  confirm the Speaker control is **absent**, not disabled and not empty.
+
 Playwright projects now exist for Firefox and WebKit as well as Chromium
 (`select-chromium`, `select-firefox`, `select-webkit` in `playwright.config.ts`,
 running `e2e/select.spec.ts`), covering the native select's closed-state

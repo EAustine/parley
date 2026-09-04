@@ -19,6 +19,7 @@ import { useScreenShare } from "@/lib/hooks/useScreenShare";
 import { useAnnouncer } from "@/lib/hooks/useAnnouncer";
 import { usePresence } from "@/lib/hooks/usePresence";
 import { useRoomConnection } from "@/lib/hooks/useRoomConnection";
+import { useDevices } from "@/lib/hooks/useDevices";
 import { createRetryCounter, type RetryCounter } from "@/lib/room/retry-counter";
 import { displayNameOf, isHost } from "@/lib/room/participant";
 import { AudioBlockedPrompt } from "@/components/room/AudioBlockedPrompt";
@@ -32,6 +33,8 @@ import { ReactionOverlay } from "@/components/room/ReactionOverlay";
 import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
 import { ReplacedNotice } from "@/components/room/ReplacedNotice";
 import { EndMeetingDialog } from "@/components/room/EndMeetingDialog";
+import { DeviceSettingsDialog } from "@/components/room/DeviceSettingsDialog";
+import { DeviceChangePrompt } from "@/components/room/DeviceChangePrompt";
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
@@ -368,6 +371,9 @@ function RoomSurface({
    */
   const [endOpen, setEndOpen] = useState(false);
   const [endPending, setEndPending] = useState(false);
+  /** v1.3 B2: device selection mid-call, and the hot-plug prompt. */
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const devices = useDevices();
   const triggers = useRef<Record<Panel, HTMLElement | null>>({
     chat: null,
     participants: null,
@@ -659,7 +665,26 @@ function RoomSurface({
         onLeave={onLeave}
         isHost={localIsHost}
         onEnd={() => setEndOpen(true)}
+        onOpenDevices={() => setDevicesOpen(true)}
+        onOpenShortcuts={() => setHelpOpen(true)}
       />
+
+      {devicesOpen && (
+        <DeviceSettingsDialog
+          devices={devices}
+          onClose={() => setDevicesOpen(false)}
+        />
+      )}
+
+      {/* B2: "Do not switch silently." Non-modal, so the meeting continues
+          behind it and ignoring it is a valid answer. */}
+      {devices.newDevice && (
+        <DeviceChangePrompt
+          label={devices.newDevice.label}
+          onSwitch={() => void devices.acceptNewDevice()}
+          onDismiss={devices.dismissNewDevice}
+        />
+      )}
 
       {endOpen && (
         <EndMeetingDialog

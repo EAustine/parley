@@ -9,6 +9,7 @@ import { CONTROL_MOTION } from "@/lib/motion";
 import type { Reaction } from "@/lib/room/messages";
 import { ReactionPicker } from "@/components/room/ReactionPicker";
 import { LeaveControl } from "@/components/room/LeaveControl";
+import { OverflowMenu } from "@/components/room/OverflowMenu";
 /**
  * Tooltip text is `--background`, not `--muted-foreground`.
  *
@@ -49,6 +50,8 @@ export function RoomControls({
   onLeave,
   isHost,
   onEnd,
+  onOpenDevices,
+  onOpenShortcuts,
 }: {
   visible: boolean;
   unread: number;
@@ -64,6 +67,9 @@ export function RoomControls({
   /** §3.8: only a host is offered "End meeting for everyone" — B1. */
   isHost: boolean;
   onEnd: () => void;
+  /** v1.3 B2: the overflow menu's two entries. */
+  onOpenDevices: () => void;
+  onOpenShortcuts: () => void;
 }) {
   /**
    * Publish the bar's rendered height as `--parley-controls-h`.
@@ -353,6 +359,14 @@ export function RoomControls({
             </TooltipContent>
           </Tooltip>
 
+          {/* v1.3 B2: "Its entry point is 'Audio and video settings' in the
+              control bar's overflow menu, which is where the design puts it."
+              Last in the secondary group, so the tier reads left to right by
+              how often it is reached for. */}
+          <OverflowMenu
+            onOpenDevices={onOpenDevices}
+            onOpenShortcuts={onOpenShortcuts}
+          />
         </div>
 
         {/* The one non-circular control, and B4's larger gap before it —
