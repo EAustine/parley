@@ -4908,3 +4908,54 @@ the question they were answering.
 surfaces. `check:bundle` 11/11 and a working `--snapshot`. Every static check
 green. No application code changed, so the browser suite is unaffected — 95/95
 stands from the previous commit.
+
+---
+
+## v1.2 close-out, part seven — §10's prose, under its own new rule
+
+The rule §10 just adopted is "measured figures are not recorded here", so the
+stale ones are **removed rather than updated**. Updating them would have put the
+same four numbers back on the same road.
+
+| Was | Now |
+|---|---|
+| "The two scheduling routes are measured at 273 kB and 264 kB" | the reasoning, and `check:bundle -- --snapshot` for where they sit |
+| "`/schedule` sits ~10 kB above `/dashboard`… about 7 kB… about 3 kB… closed the gap from 10 kB to 3 kB" | past tense, proportions instead of figures, and a lead-in saying the gap has closed |
+| "**No change recommended**… a budget sitting at 273 against 290" | the recommendation intact, plus what overtook it |
+| "At 160 kB it is the dominant term" | "It is the dominant term" |
+| "**These four route numbers are provisional.** … Recalibrate at the end of Phase 3" | recalibrated, and the paragraph kept for the mistake rather than the instruction |
+
+Every number left in §10 is now a budget, a *historical* budget marked as one
+("180 kB landed on the dashboard"), Next's own framework floor, or the 249 kB
+that justified budgeting `/sign-in` — tensed to "when this was written".
+
+### The claim I nearly wrote instead
+
+The first version of the lead-in said the scroll-locking family "left with"
+Radix's `Select`. That is the mechanism the paragraph below hypothesises, and I
+was about to restate a hypothesis as a finding — three lines above the sentence
+"Chunk labels are not evidence."
+
+Checked before it landed: `ThemeToggle` imports `components/ui/tooltip`, so a
+Radix overlay primitive is mounted on **every** route, `/dashboard` included.
+`Tooltip` is not in the scroll-locking family, which is the distinction the
+original investigation turns on — and nobody has re-measured that distinction
+since the swap. A total moving in the direction you expected is not a
+measurement of why.
+
+So the lead-in claims only what was measured: the gap has closed, and the route
+came down by more than the gap. The attribution would need the same intervention
+that produced the original split — adding a throwaway Popover to `/dashboard`
+and changing `/schedule` not at all.
+
+### One thing left alone
+
+§10's new rule says the four figures "went stale in a single batch of Track F
+work". They went stale in the v1.2 close-out — the native-select swap and the
+sign-in refactor, two commits later. It is an attribution inside the rule's own
+justification rather than a figure, so it is raised rather than edited.
+
+### Checks
+
+`check:contrast` 25, `check:bundle` 11/11. Documentation only this time; no
+code changed, so 95/95 stands.

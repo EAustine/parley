@@ -758,7 +758,7 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 
 Same split as the contrast table, §9's mechanics, and §4.4's motion table.
 
-**`/sign-in` had no budget and should have.** It builds at 249 kB — heavier than every budgeted route but the two scheduling ones — and it is public, cold-load, and the first thing a host sees. That is the same error as the original table budgeting `/dashboard` instead of `/j/[code]`: the principle was right and the route list was wrong. **Budgets belong on public cold-load routes**, and `/sign-in` is one.
+**`/sign-in` had no budget and should have.** It built at 249 kB when this was written — heavier than every budgeted route but the two scheduling ones — and it is public, cold-load, and the first thing a host sees. That is the same error as the original table budgeting `/dashboard` instead of `/j/[code]`: the principle was right and the route list was wrong. **Budgets belong on public cold-load routes**, and `/sign-in` is one.
 
 Do not set the number at 249. Most of that weight is `supabase-js` on the client, and it does not need to be there — `signInWithOtp` sends its email server-side, and `signInWithOAuth` returns a URL a server action can redirect to. Move both behind a server action and the route becomes a form with no auth SDK in the bundle.
 
@@ -770,21 +770,27 @@ Sign-in is different on both counts: the route is public, cold-load, and current
 
 Refactor, measure, then set the budget with headroom. Setting it first is how 180 kB landed on the dashboard and 200 kB on `/j/[code]`, both of which were guesses that later had to move.
 
-The two scheduling routes are measured at 273 kB and 264 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
+Both scheduling routes take the dashboard's reasoning, and their headroom with it: authenticated, low-traffic, returning users. `npm run check:bundle -- --snapshot` for where they actually sit.
 
-`/schedule` sits ~10 kB above `/dashboard` because it is the only signed-in route mounting a Radix overlay primitive from the scroll-locking family — FocusScope, FocusGuards, `react-remove-scroll`, `aria-hidden` — which this build carries per route rather than hoisting. About 7 kB of the excess is that fixed family cost, which any Dialog, Popover, DropdownMenu or Sheet would carry identically; about 3 kB is Select's own implementation. The split comes from an intervention rather than an inspection: adding a throwaway Popover to `/dashboard`, changing `/schedule` not at all, closed the gap from 10 kB to 3 kB.
+**The gap this paragraph investigated has closed.** `/schedule` no longer sits above `/dashboard`. v1.2 replaced Radix's `Select` with a native one — for accessibility, not for weight — and the route came down by more than the gap. The investigation below is kept because it named the right suspect.
+
+What it does **not** establish is that the whole scroll-locking family left with `Select`. `Tooltip` reaches every route through `ThemeToggle`, so a Radix overlay primitive is still mounted on both. `Tooltip` is not in the scroll-locking family — that is the distinction the paragraph below turns on, and it is a distinction nobody has re-measured since the swap. Chunk labels are not evidence, and neither is a total moving in the direction you expected — attributing it again would take the same intervention that produced the split below.
+
+`/schedule` sat above `/dashboard` because it was the only signed-in route mounting a Radix overlay primitive from the scroll-locking family — FocusScope, FocusGuards, `react-remove-scroll`, `aria-hidden` — which this build carries per route rather than hoisting. Most of the excess was that fixed family cost, which any Dialog, Popover, DropdownMenu or Sheet would carry identically; the remainder was Select's own implementation. The split came from an intervention rather than an inspection: adding a throwaway Popover to `/dashboard`, changing `/schedule` not at all, closed most of the gap.
 
 Not involved, despite two rounds of plausible guessing: `react-day-picker` (removed, and its removal moved no route total), a full IANA zone list (`COMMON_TIMEZONES` is seventeen hand-picked entries), or `date-fns-tz` (its chunk is shared across all three routes). The first draft of this paragraph credited the zone list on the strength of one incidental `Africa/Accra` string inside what turned out to be `react-remove-scroll`. Chunk labels are not evidence.
 
-**No change recommended.** `/j/[code]` renders three of the same primitive, so swapping Select out of `/schedule` alone deletes zero library code while introducing a second select idiom — to relieve a budget sitting at 273 against 290.
+**No change recommended.** `/j/[code]` renders three of the same primitive, so swapping Select out of `/schedule` alone deletes zero library code while introducing a second select idiom — to relieve a budget that was not close to its ceiling.
+
+**Overtaken, and by its own argument.** That reasoning was about swapping Select out of `/schedule` *alone*, and it still holds: the library survives as long as `/j/[code]` renders it. v1.2 swapped all five instances, because Radix `Select` fails axe twice and the open listbox could not enter the scan otherwise — and the library left with them. The weight followed the accessibility decision rather than justifying it, which is the order that made the change worth making.
 
 Moving the edit form behind `next/dynamic` was the right instinct — most visits to `/schedule/[code]` copy a link and never open it.
 
 `/j/[code]` is the one that matters. It is a cold load for a stranger on a phone with an empty cache, and §3.3 names it the highest-traffic flow in the product. The dashboard is deliberately loose: it sits behind auth, the same people revisit it, and its bundle amortises across sessions.
 
-**The shared baseline is the leveraged number.** At 160 kB it is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times. Next's App Router floor is roughly 105–120 kB gzipped, which puts 40–55 kB of our own code in the shared chunk before any feature exists. That is worth an itemised look before optimising any individual route — cutting shared beats cutting `/dashboard`.
+**The shared baseline is the leveraged number.** It is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times. Next's App Router floor is roughly 105–120 kB gzipped, which puts a few tens of kilobytes of our own code in the shared chunk before any feature exists. That is worth an itemised look before optimising any individual route — cutting shared beats cutting `/dashboard`.
 
-**These four route numbers are provisional.** They are inferred from a baseline measured against a nearly empty app, not from any route that does its real work yet. Recalibrate at the end of Phase 3, when pre-join actually exists and there is evidence rather than estimate. A budget invented ahead of the code is a guess wearing a number, and the first version of this table put its tightest constraint on the wrong route for exactly that reason.
+**The first four route numbers were provisional, and have been recalibrated.** They were inferred from a baseline measured against a nearly empty app, before any route did its real work, which is how the two guesses above happened — the tightest constraint landing on the wrong route. A budget invented ahead of the code is a guess wearing a number. The table is now set against routes that do their work; the paragraph stays because the mistake is the kind that repeats.
 
 Two specifics that follow from the `/j/[code]` budget: pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code, and it should not pull a form library in for a single display-name field. Native state and one parse on submit is a fraction of the weight — a rule that ended up governing every form in the product, not just this one.
 
