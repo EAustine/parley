@@ -173,7 +173,7 @@ Tile aspect ratio is 16:9. Video is `object-fit: cover`. Never letterbox individ
 
 LiveKit provides smoothed speaking state. Encode it with **no hue**: idle tiles carry a 1px border at `--boundary` (3.25:1 worst-case against the ground, clearing the 3:1 non-text threshold), the speaking tile a 2px border at `--foreground` (17.29:1). 120ms transition on border-color and border-width.
 
-`--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all, which makes this border the only thing identifying the tile as a component. That brings it under WCAG 1.4.11 at 3:1, which the first replacement value (2.09:1) also missed. `--boundary` is single-purpose: the room ground, nowhere else.
+`--border` at 1.29:1 was the original value and is not a visible boundary. Worse, `--card` against `--background` is 1.09:1 — so a camera-off tile had no readable edge at all, which makes this border the only thing identifying the tile as a component. That brings it under WCAG 1.4.11 at 3:1, which the first replacement value (2.09:1) also missed. `--boundary` is the boundary colour for any surface with no usable fill contrast against what it sits on — tiles, panel edges, form-field borders. `CLAUDE.md` holds its permitted-surface table.
 
 Rationale for the encoding: hue on the tile edge competes with skin tones and video content, and it fails for colourblind users. Weight and value read at any size against any background.
 
@@ -437,7 +437,7 @@ State-only, not part of the general palette:
 
 **Contrast is verified by script, not by hand.** `CLAUDE.md` carries the permitted-surface table and the generated snapshot; `npm run check:contrast` is the source of truth and `-- --snapshot` emits the markdown. This document deliberately does not duplicate it — four separate rounds of hand-copied ratios going stale is enough evidence that a second copy is a liability rather than a convenience.
 
-The shape of the system, which does belong here: every foreground token declares the surfaces it is permitted on and is verified against those. `--state-critical` is permitted on every dark surface except `--input` (4.34:1); validation errors sit below a field on the ground, never inside the filled input. `--boundary` is permitted on `--background` alone.
+The shape of the system, which does belong here: every foreground token declares the surfaces it is permitted on and is verified against those. `--state-critical` is permitted on every dark surface except `--input` (4.34:1); validation errors sit below a field on the ground, never inside the filled input. `--boundary` is permitted wherever a surface needs an edge, and never as a text colour.
 
 Note: `#E5484D` on white is 3.91:1 and fails. That is why light mode has a separate, darker destructive.
 
@@ -750,8 +750,21 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 | `/j/[code]` pre-join | ≤ 230 kB | ~55 kB |
 | `/room/[code]` | ≤ 250 kB before the dynamic import | ~75 kB |
 | `/dashboard` | ≤ 280 kB | ~105 kB |
+| `/sign-in` | ≤ 190 kB | ~24 kB |
 | `/schedule` | ≤ 290 kB | ~115 kB |
 | `/schedule/[code]` | ≤ 290 kB | ~115 kB |
+
+**Set at 190 kB, after the refactor below.** It measured 249 kB, and moving
+`signInWithOtp` and `signInWithOAuth` into server actions took it to **166 kB** —
+`supabase-js` is no longer in the bundle, and the form now works with
+JavaScript disabled. 190 because the route is now the same shape as `/`: a
+public cold-load page that is a form and nothing else.
+
+**`/sign-in` had no budget and should have.** It builds at 249 kB — heavier than every budgeted route but the two scheduling ones — and it is public, cold-load, and the first thing a host sees. That is the same error as the original table budgeting `/dashboard` instead of `/j/[code]`: the principle was right and the route list was wrong. **Budgets belong on public cold-load routes**, and `/sign-in` is one.
+
+Do not set the number at 249. Most of that weight is `supabase-js` on the client, and it does not need to be there — `signInWithOtp` sends its email server-side, and `signInWithOAuth` returns a URL a server action can redirect to. Move both behind a server action and the route becomes a form with no auth SDK in the bundle, which also makes sign-in work without JavaScript. Same reasoning as moving sign-out to a route handler.
+
+Refactor, measure, then set the budget with headroom. Setting it first is how 180 kB landed on the dashboard and 200 kB on `/j/[code]`, both of which were guesses that later had to move.
 
 The two scheduling routes are measured at 273 kB and 264 kB, with headroom on the dashboard's reasoning: authenticated, low-traffic, returning users.
 

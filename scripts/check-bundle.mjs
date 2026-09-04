@@ -24,13 +24,25 @@ import { join } from "node:path";
 /** `PRD.md` §10. First Load JS totals, gzipped, inclusive of the baseline. */
 const BUDGETS = {
   "/": 190,
+  /**
+   * Set after the refactor, not before it — §10: "Do not set the number at 249.
+   * … Refactor, measure, then set the budget with headroom. Setting it first is
+   * how 180 kB landed on the dashboard and 200 kB on `/j/[code]`, both of which
+   * were guesses that later had to move."
+   *
+   * Moving `signInWithOtp` and `signInWithOAuth` into server actions took the
+   * route from **249 kB to 166 kB** — `supabase-js` is no longer in it. 190
+   * because it is now the same shape as `/`: a public cold-load route that is a
+   * form and nothing else, so it takes the same budget rather than a number
+   * invented for it.
+   */
+  "/sign-in": 190,
   "/j/[code]": 230,
   "/room/[code]": 250,
   "/dashboard": 280,
-  // Phase 6's two routes. §10's table does not list them yet — these are
-  // measured (273 and 263) plus headroom, on the same reasoning §10 gives the
-  // dashboard: behind auth, revisited by the same people, amortised across
-  // sessions. Proposed rather than settled; §10 should carry the rows.
+  // Phase 6's two routes, measured plus headroom on the same reasoning §10
+  // gives the dashboard: behind auth, revisited by the same people, amortised
+  // across sessions. §10 now carries both rows at 290.
   "/schedule": 290,
   "/schedule/[code]": 290,
 };

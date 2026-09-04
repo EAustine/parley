@@ -257,7 +257,13 @@ Three independent arguments already point at native, and this is the third:
 
 Five instances: three device selectors in pre-join, duration and timezone in schedule. Style the closed state with `appearance: none`; the open list is OS-rendered, which is a minor inconsistency in a dark app rather than a design failure.
 
-Verify with a real screen reader before and after, and check the closed state in Chrome, Safari, and Firefox.
+**Cross-engine and screen reader verification, split by what is actually automatable.**
+
+Playwright drives Firefox and WebKit as well as Chromium, so add both as projects for the closed-state geometry and styling. That catches gross regressions cheaply and is worth doing regardless.
+
+It is not sufficient here. Playwright's WebKit is not Safari, and native form controls are precisely where they diverge, because the rendering is the operating system's rather than the engine's. The definitive closed-state check is a real Safari on a real Mac.
+
+The screen reader pass cannot be automated at all. **VoiceOver with Safari**, before and after the swap, comparing how each announces its role, its current value, and the option list. That belongs on the manual list beside the cross-network media test and the four permission states — things a suite cannot reach, recorded as unverified until a person does them rather than assumed from a green run.
 
 If the swap is judged too much for this pass, the fallback is two **narrowly scoped, documented** exclusions on the Select subtree with the reasoning recorded — never a blanket rule disable, and never an exclusion list that grows. But suppressing a warning about a component we could simply not use is treating the symptom.
 

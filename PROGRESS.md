@@ -4636,3 +4636,122 @@ Every static check green.
 - **A screen reader pass on the native selects has not been done**, and
   BUILD-PLAN asks for one before and after. Nor has the closed state been
   checked in Safari or Firefox — the suite is Chromium.
+
+---
+
+## v1.2 close-out, part four — the three open items, closed
+
+Two of the three were documentation decisions and the documents made them. The
+third was real work.
+
+### The budget figure, and the boundary's scope
+
+Rule 8 now reads "budgets … live in `PRD.md` §10, which is authoritative — no
+figure is repeated here", which removes the 200 kB that contradicted §10's 230
+and that nothing enforced. `PRD.md` §3.4 and §4.2 no longer call `--boundary`
+room-ground-only. Nothing in the build changed for either; `check:bundle`
+already agreed with §10, which is why the disagreement was invisible.
+
+One line of residue survives: §4.2's palette block still comments `--boundary`
+as `/* room ground only — see §3.4 */`, three paragraphs above the sentence that
+now says otherwise.
+
+### `/sign-in`: 249 kB → 166 kB
+
+§10 asked for the refactor rather than the number: "Do not set the number at
+249. Most of that weight is `supabase-js` on the client, and it does not need to
+be there."
+
+`signInWithOtp` and `signInWithOAuth` are server actions now
+(`app/(auth)/sign-in/actions.ts`). The form imports no auth SDK. **Budget set at
+190 kB** — the same as `/`, because the route is now the same shape as `/`: a
+public cold-load page that is a form and nothing else. Set after measuring, per
+§10: "Setting it first is how 180 kB landed on the dashboard and 200 kB on
+`/j/[code]`, both of which were guesses that later had to move."
+
+Three things fell out of it that were not the point:
+
+- **It works with JavaScript off.** `useActionState` renders the action's return
+  value, so "Check your email" is a server response rather than client state.
+- **The email address never enters the URL.** It is echoed from the POST body.
+  A redirect-with-query implementation would have put it in browser history.
+- **The link's origin comes from `NEXT_PUBLIC_APP_URL`, not the request.** The
+  client version read `window.location.origin`; the server equivalent is the
+  `Host` header, which is attacker-controllable — and this value is the
+  destination of an authentication link in an email. Configuration is the right
+  source, and Supabase's redirect allow-list has to match it anyway.
+
+`check:deps` then failed on `components/ui/skeleton.tsx`, which existed only for
+the Suspense boundary the old form needed. Deleted, per rule 9.
+
+The route is dynamically rendered now, because the page reads `searchParams`
+instead of the form reading them on the client. That is the trade: one server
+render per visit against 83 kB on every visit.
+
+**The precedent §10 names does not exist.** "Same reasoning as moving sign-out
+to a route handler" — sign-out is still a client component calling
+`supabase.auth.signOut()`. It sits on `/dashboard`, which is authenticated and
+deliberately loose, so it costs nothing to leave; but the sentence describes a
+move that has not happened.
+
+### Firefox and WebKit, as projects
+
+`select-chromium`, `select-firefox`, `select-webkit` run one spec —
+`e2e/select.spec.ts`, the closed state of the native `<select>` that replaced
+Radix's. Chromium runs it too, because a cross-engine check with no baseline
+tells you two browsers agree with each other and nothing about whether either is
+right. **6/6 on all three.**
+
+**The blocker was not the one I expected.** I assumed the Chrome media flags
+would break Firefox — they are in the global `use` block, and every project
+inherited them. Mapping found something that fails earlier and harder:
+`permissions: ["camera", "microphone"]` is also global, and **Firefox's
+permission map has no `camera`**. The unmapped branch throws `Unknown
+permission: camera` at `newContext`, for every test, before a line of any spec
+runs. Both moved into the two Chromium projects.
+
+Mutation: removing `appearance-none` fails all three engines with "Duration
+still draws the platform chevron". The check bites, and it bites identically.
+
+Firefox 153 and WebKit 26.5 were not on this machine — `npx playwright install
+firefox webkit`, about 250 MB, local only. There is no CI to also fix.
+
+### `MANUAL.md`, which the plan assumed already existed
+
+BUILD-PLAN says the VoiceOver pass "belongs on the manual list beside the
+cross-network media test and the four permission states". There was no manual
+list. The phrase appears once in the repo — in the sentence that names it.
+
+The items were real and every one of them was written down, scattered across
+**eighteen sections of this file under eight different heading names**, in an
+append-only log 4,600 lines long. The nearest thing to a consolidated view was
+Phase 3's permission matrix, and the cross-reference pointing at it still said
+"at the end of this file" from when the file ended 3,600 lines earlier.
+
+So `MANUAL.md` now holds them in one place: 23 open items and the permission
+matrix, grouped by what a person has to do rather than by the phase that first
+noticed it, plus 8 closed ones with the evidence that closed them. PROGRESS is
+unchanged and stays the record; the new file carries forward rather than
+rewrites, and nothing was upgraded to verified that this file does not already
+call verified.
+
+Two items are new, and the three engine projects discharge neither:
+
+- **VoiceOver with Safari on the native `<select>`**, before and after the swap,
+  comparing how each announces role, current value and option list.
+- **The closed state in a real Safari on a real Mac.** Playwright's WebKit is
+  not Safari, and native form controls are exactly where they diverge, because
+  the rendering is the operating system's rather than the engine's.
+
+One entry is assembled rather than carried, and says so in its own text: magic-
+link email delivery. PROGRESS records the sender and the rate limit as a
+deferred task, and separately records that `dev:signin` mints links directly
+because auth screens are otherwise unreachable — it never calls delivery
+unverified. It is on the list because the second fact makes the first one true.
+
+### Checks
+
+`check:media` **95/95** — 73 across the app and the three engine projects, 22
+media serial. `check:bundle` 11/11 with `/sign-in` at 166 kB against its new 190.
+`check:contrast` 25 in both roles, `check:room` 103, `check:a11y` 58. Every
+static check green.

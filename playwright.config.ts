@@ -48,6 +48,50 @@ const REAL_MEDIA = [
   "prejoin.spec.ts",
 ];
 
+/**
+ * Chromium's synthetic capture, and the permissions that go with it.
+ *
+ * Per project rather than global: Firefox and WebKit do not understand these
+ * arguments, and the cross-engine projects below need neither media nor a
+ * permission grant — they measure a form control on a page with no camera on it.
+ */
+const CHROMIUM_MEDIA = {
+  args: [
+    "--use-fake-device-for-media-stream",
+    "--use-fake-ui-for-media-stream",
+    // §3.7. `getDisplayMedia` normally opens a picker no automation can answer;
+    // this selects a source and returns a real display track — real capture,
+    // real `ended` event, real publish through the SFU.
+    "--auto-select-desktop-capture-source=Entire screen",
+    `--use-file-for-fake-audio-capture=${SPEECH}`,
+    // Without these Chrome throttles rendering and media in backgrounded pages,
+    // and every context after the first is backgrounded.
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--autoplay-policy=no-user-gesture-required",
+  ],
+};
+
+const CAMERA_AND_MIC = ["camera", "microphone"];
+
+/**
+ * The spec that runs on all three engines.
+ *
+ * Deliberately one file, and deliberately not a media one. Everything else in
+ * the suite either publishes tracks, grants camera permission, or reads the
+ * clipboard — none of which Firefox and WebKit can do the way Chromium's flags
+ * make possible. This one signs in and measures a `<select>`.
+ */
+const CROSS_ENGINE = ["select.spec.ts"];
+
+/** Playwright's device presets, by engine. */
+const ENGINE_DEVICE = {
+  chromium: "Desktop Chrome",
+  firefox: "Desktop Firefox",
+  webkit: "Desktop Safari",
+} as const;
+
 export default defineConfig({
   testDir: "e2e",
   /**
@@ -84,30 +128,25 @@ export default defineConfig({
 
   use: {
     baseURL: `http://localhost:${PORT}`,
-    permissions: ["camera", "microphone"],
-    launchOptions: {
-      args: [
-        "--use-fake-device-for-media-stream",
-        "--use-fake-ui-for-media-stream",
-        // §3.7. `getDisplayMedia` normally opens a picker no automation can
-        // answer; this selects a source and returns a real display track —
-        // real capture, real `ended` event, real publish through the SFU.
-        "--auto-select-desktop-capture-source=Entire screen",
-        `--use-file-for-fake-audio-capture=${SPEECH}`,
-        // Without this Chrome throttles rendering and media in backgrounded
-        // pages, and every context after the first is backgrounded.
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--autoplay-policy=no-user-gesture-required",
-      ],
-    },
   },
 
   projects: [
     /**
-     * Two projects, run as two invocations — see `check:media` in package.json.
+     * Four projects, and the split is not arbitrary.
      *
+     * **The Chrome flags moved out of the global `use` block.** They were
+     * inherited by every project, and every project was Chromium, so nothing
+     * noticed — but `--use-fake-device-for-media-stream` means nothing to
+     * Firefox or WebKit, and a global launch argument is exactly the kind of
+     * thing that fails at browser start with a message about the wrong subject.
+     * They belong to the engine that understands them.
+     */
+    {
+      name: "app",
+      use: { ...devices["Desktop Chrome"], permissions: CAMERA_AND_MIC, launchOptions: CHROMIUM_MEDIA },
+      testIgnore: [...REAL_MEDIA, ...CROSS_ENGINE].map((f) => `**/${f}`),
+    },
+    /**
      * BUILD-PLAN v1.2: "Contention flakes are fixed by removing the contention,
      * not by lowering the worker count." `media.spec`'s video test failed once
      * under four workers with "tile 1 is a frozen frame" and passed seven times
@@ -115,22 +154,38 @@ export default defineConfig({
      * an understood failure mode still has to be made deterministic — a suite
      * that is re-run until green is a suite that teaches you to ignore it.
      *
-     * So the tests that decode frames run alone, and the rest — layout, chat,
-     * scheduling, panels, connection — keep the parallelism. Playwright has no
-     * per-project worker count, so the split is expressed as two runs rather
-     * than as one config value.
+     * Playwright has no per-project worker count, so the split is expressed as
+     * two runs rather than as one config value — see `check:media`.
      */
     {
-      name: "app",
-      use: { ...devices["Desktop Chrome"] },
-      testIgnore: REAL_MEDIA.map((f) => `**/${f}`),
-    },
-    {
       name: "media",
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], permissions: CAMERA_AND_MIC, launchOptions: CHROMIUM_MEDIA },
       testMatch: REAL_MEDIA.map((f) => `**/${f}`),
       fullyParallel: false,
     },
+    /**
+     * The same spec on three engines.
+     *
+     * BUILD-PLAN v1.2, on replacing Radix's Select with a native one: "Playwright
+     * drives Firefox and WebKit as well as Chromium, so add both as projects for
+     * the closed-state geometry and styling. That catches gross regressions
+     * cheaply and is worth doing regardless."
+     *
+     * And, in the same breath, what this does not settle: "Playwright's WebKit
+     * is not Safari, and native form controls are precisely where they diverge,
+     * because the rendering is the operating system's rather than the engine's.
+     * The definitive closed-state check is a real Safari on a real Mac." That
+     * one is on the manual list, and this does not discharge it.
+     *
+     * Chromium runs the same file so the three results are comparable — a
+     * cross-engine check with no baseline engine tells you two browsers agree
+     * with each other and nothing about whether either is right.
+     */
+    ...(["chromium", "firefox", "webkit"] as const).map((engine) => ({
+      name: `select-${engine}`,
+      use: { ...devices[ENGINE_DEVICE[engine]] },
+      testMatch: CROSS_ENGINE.map((f) => `**/${f}`),
+    })),
   ],
 
   globalSetup: "./e2e/global-setup.ts",

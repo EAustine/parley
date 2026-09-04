@@ -66,7 +66,7 @@ Files delivered into `brand/` may arrive with a C2PA `<metadata>` block that dwa
 **8. `livekit-client` is dynamically imported on the room route only.**
 It must not appear in any other bundle. Pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code.
 
-Bundle budgets are per-route and live in `PRD.md` §10. The one that matters is `/j/[code]` at ≤ 200 kB — cold load, stranger on a phone, empty cache. The dashboard is deliberately loose.
+Bundle budgets are per-route and live in `PRD.md` §10, which is authoritative — no figure is repeated here. The ones that matter are the public cold-load routes, where a stranger meets the product on a phone with an empty cache. Authenticated routes are deliberately loose.
 
 **8c. Never pass `process.env` as an object to a function.**
 Next replaces `process.env.NEXT_PUBLIC_FOO` textually at build time and cannot replace anything when the whole object is handed off, so the client bundle sees every public variable as undefined. Reference each one as a literal. `Buffer` and `Object.entries(process.env)` are server-only — the leak guard must stay behind a `typeof window === "undefined"` check, and `npm run check:env` in CI is what actually catches a leaked key, since by server boot the bundle is already built.
