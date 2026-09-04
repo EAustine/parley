@@ -5454,3 +5454,171 @@ Nothing of the host's was touched, and the three seed fixtures still stand.
 
 Full suite **82 + 23 = 105 passing** (six new). `check:partition` 20/20,
 `check:webhook` 5/5, `check:contrast` 28/28, `check:deps` 5/5, typecheck, lint.
+
+---
+
+## v1.3 B1 — Leave, and "End meeting for everyone"
+
+`CLAUDE.md`'s vocabulary has said since Phase 0 that these are different actions
+and are never conflated. Only one of them existed. A host who was finished could
+not finish it: the room stayed open, the link kept working, and the only thing
+that could close a meeting was the last person happening to leave.
+
+### The button opens a menu; it is not split
+
+B1's reasoning, kept because it is a measurement rather than a preference: "on a
+40px mobile bar the target separating 'leave' from 'end this for everyone' is
+about 30px wide. That is a mis-click costing other people their meeting."
+
+So the whole button opens the menu, and the test for it asserts exactly that —
+clicking the button's own centre must *open* rather than leave, which a split
+would not have done.
+
+**A guest gets no menu and no chevron.** The test asserts the absence of
+`aria-haspopup` rather than the absence of a chevron: the attribute is the
+promise, and a control that announces a popup and then acts is worse than one
+that never claimed to have it.
+
+### A real menu, because it says it is one
+
+`ReactionPicker` uses Radix `Popover` and this could have. A popover announces
+itself as a dialog and its contents are reached by Tab — fine for six emoji, and
+wrong for two items where one is irreversible and the pattern people expect is a
+menu.
+
+So it is `role="menu"` with the behaviour that role promises: arrows move, Home
+and End jump, Escape closes and returns focus to the trigger, Tab out closes.
+`CLAUDE.md` already makes this non-negotiable in the other direction — "the ARIA
+attribute is what promises a trap, so using it without one is the lie" — and a
+menu role with no arrow keys is the same lie somewhere quieter.
+
+It does **not** trap focus, and should not. The floor traps modal surfaces and
+leaves everything else reachable. The modal is the dialog behind the destructive
+item.
+
+### The dialog is native, as B1 asks
+
+I proposed Radix — `ui/dialog` is already in the room, three dialogs use it, and
+`ReplaceShareDialog` is the same shape with a header recording that it *began*
+as a hand-rolled `role="dialog"` and was replaced to get a real trap. Overruled:
+do as B1 states. So `<dialog>` with `showModal()`, and the trap, the top layer,
+the inertness and Escape are the browser's rather than anyone's code.
+
+Two things fell out of going native, both good:
+
+**The buttons live in a `method="dialog"` form.** Cancel is a submit, so the
+platform closes the dialog and sets `returnValue` with no JavaScript — the same
+path Escape takes, which is why both arrive at one handler instead of two that
+can disagree. "End meeting" is deliberately not a submit: it has to hold the
+dialog open while the request runs.
+
+**The element is held in state, not a ref** — the A3 lesson, one file along. An
+effect that needs an element must have that element as an input.
+
+And the trap proved itself immediately: the first test that left the dialog open
+hung in `afterEach`, because the teardown clicks Leave and everything behind a
+modal `<dialog>` is inert. The click never landed. That is the feature working.
+
+### `::backdrop` gets its own test, because it can fail silently
+
+The backdrop is `var(--scrim)` rather than the design's `rgba(6,7,9,.66)` — rule
+"no colour that isn't in the token set" applies to a backdrop like anything
+else, and a scrim is exactly what this is.
+
+But `::backdrop` inherits from its originating element only in current browsers,
+and a `var()` that resolves to nothing gives a **transparent** backdrop rather
+than an error. The dialog would still trap focus and still dismiss, so nothing
+else in the suite would notice — the room would simply stay fully lit behind the
+most destructive confirmation in the product. One test reads the computed
+`::backdrop` and refuses the three ways "nothing painted" comes back. It
+resolves.
+
+### Everyone else is told what happened, not that their network failed
+
+The server deletes the LiveKit room, so every client is disconnected with
+`DisconnectReason.ROOM_DELETED`. Without reading that reason it arrives as an
+ordinary drop and `useRoomConnection` renders *"Parley kept trying and the
+connection didn't come back"* — false, and blaming someone's network for another
+person's decision. Exactly the mistake `leaving` already exists to prevent for
+the Leave button.
+
+The host who pressed it is disconnected by the same event, so `byMe` comes from
+a ref set before the request. **One code path to the ended screen**, rather than
+one the host reaches differently and which is therefore never the one under
+test.
+
+No Rejoin on it, either. The token endpoint refuses `ended`, so the button would
+exist only to fail.
+
+### Two places the design could not be followed, and why
+
+**The duration is this viewer's, and says so.** The design reads "Design review
+ran for 42 minutes", which needs the meeting's title and its real start. The room
+has neither: `RoomEntry` receives a token and a URL, and §3.2 keeps the anonymous
+resolver to six columns deliberately. Widening a security-definer function so an
+ended screen can print a number is not a trade worth making, so the screen claims
+what this client can honestly measure — how long *it* was in the meeting.
+
+**"Start a new meeting" is offered only to the host who ended it.** Creating a
+meeting needs an account, so for a guest that button returns 401 — a control that
+exists to fail, which the "never do" list forbids. And it is `StartMeetingButton`
+rather than a link to `/dashboard` wearing that label: the name says what
+happens, which is the copy rule.
+
+### The server route
+
+`DELETE /api/livekit/room/[code]` — a sibling of the removal route, and §3.8's
+"that route ends and removes, nothing wider" now reads as two files holding
+`roomAdmin` between them. `DELETE` on the room rather than `POST /end` because
+that is what it is; the `meetings` row survives and moves to `ended`, which is
+what the dashboard's past section reads.
+
+**The record first, the room second.** Either order can fail halfway, so the
+question is which half-state survives. Deleting the room and failing to write
+leaves a meeting that is over but reads as live, still joinable, with nothing to
+correct it. Writing and failing to delete leaves people connected to a meeting
+the database calls ended — and the token endpoint already refuses `ended`, so no
+one new gets in and `room_finished` writes the same status when the last of them
+leaves. One is self-healing; the other needs a human.
+
+Cancelled is refused rather than overwritten. §3.2 keeps the two apart because
+they are different events, and a cancelled meeting that quietly became "ended"
+would lose the only signal telling a late arrival it was called off.
+
+### `check:room` caught the new power, which is the point
+
+The §3.8 scan allows each `RoomServiceClient` caller a fixed method list, and its
+own comment says "adding one is a deliberate act with a failing check in front of
+it". `deleteRoom` failed it. Added deliberately, with the reasoning: §3.8 is now
+two verbs and two methods, and `deleteRoom` neither mutes nor unmutes anyone, so
+the guarantee that list protects — nothing can activate a microphone — is
+untouched.
+
+### Mutation
+
+| mutation | fails |
+|---|---|
+| `ROOM_DELETED` treated as an ordinary drop | "says who did it" — the guest never sees the ended screen |
+| the room deleted but `status` never written | "the link stops working" — pre-join still resolves it |
+
+And one caught by the tests before either: reading `--state-critical` from
+`:root` returned the **light** `#C62B31` against the `#F26669` the room paints,
+because rule 8b forces `.dark` on a wrapper *inside* the route. The tokens are
+now read from the element, which is where they are resolved.
+
+### Touch targets
+
+The in-room sweep joins with `meetingCode`, which makes a guest — and a guest has
+no leave menu, so every host-only surface would have gone unmeasured. A second
+test takes a `hostedMeeting` and measures the menu and the dialog at both
+viewports. The menu items are two lines of text in a button, so nothing about
+them is obviously 44px, and target size is the whole argument for a menu over a
+split button.
+
+### Checks
+
+Full suite **90 + 23 = 113 passing** (eight new). `check:bundle` 11/11 —
+`/room/[code]` 160 kB against 250. `check:room` 106/106, `check:contrast` 28,
+`check:partition` 20/20, `check:chat` 73/73, `check:connection` 72/72,
+`check:permissions` 39/39, `check:ics` 69/69, `check:codes` 6/6, `check:deps`
+5/5, typecheck, lint.

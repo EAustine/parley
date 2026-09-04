@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   RoomAudioRenderer,
   RoomContext,
   useLocalParticipant,
   useParticipants,
 } from "@livekit/components-react";
-import { Room, RoomEvent } from "livekit-client";
+import { DisconnectReason, Room, RoomEvent } from "livekit-client";
 
 import { readDevices } from "@/lib/media/devices";
 import { useControlVisibility } from "@/lib/hooks/useControlVisibility";
@@ -30,6 +31,8 @@ import { ParticipantsPanel } from "@/components/room/ParticipantsPanel";
 import { ReactionOverlay } from "@/components/room/ReactionOverlay";
 import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
 import { ReplacedNotice } from "@/components/room/ReplacedNotice";
+import { EndMeetingDialog } from "@/components/room/EndMeetingDialog";
+import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
 import { RoomControls } from "@/components/room/RoomControls";
 import { RoomGrid } from "@/components/room/RoomGrid";
 import { ShortcutsDialog } from "@/components/room/ShortcutsDialog";
@@ -62,7 +65,14 @@ type Stage =
   | { kind: "connected" }
   /** The first connect never succeeded. Distinct from dropping out later. */
   | { kind: "failed"; reason: string }
-  | { kind: "left" };
+  | { kind: "left" }
+  /**
+   * The host ended it — v1.3 B1. Distinct from `left`, which offers Rejoin,
+   * and from `failed`, which blames the connection. Rejoining here would be
+   * refused by the token endpoint anyway, so offering it would be a button
+   * that exists to fail.
+   */
+  | { kind: "ended"; byMe: boolean; minutes: number | null };
 
 export function RoomStage({
   code,
@@ -90,9 +100,22 @@ export function RoomStage({
   // Leave button causes would be indistinguishable from the connection
   // dropping, and the person who just left would be told something went wrong.
   const leaving = useRef(false);
+  /**
+   * The host's own end-meeting request, in flight.
+   *
+   * Their client is disconnected by the same `deleteRoom` as everyone else's,
+   * so the reason alone cannot tell "I ended this" from "someone ended this on
+   * me". A ref rather than state: it is read inside a listener registered once,
+   * where a state value would be the one captured at registration.
+   */
+  const ending = useRef(false);
+  /** When this client got in, for the duration on the ended screen. */
+  const connectedAt = useRef<number | null>(null);
 
   useEffect(() => {
     leaving.current = false;
+    ending.current = false;
+    connectedAt.current = null;
     const stored = readDevices();
 
     retry.current.reset();
@@ -132,8 +155,33 @@ export function RoomStage({
 
     let cancelled = false;
 
-    const onDisconnected = () => {
+    const onDisconnected = (reason?: DisconnectReason) => {
       if (cancelled) return;
+
+      /**
+       * `ROOM_DELETED` is the host ending it — B1.
+       *
+       * The server deletes the LiveKit room, and everyone still in it is
+       * disconnected with this reason. Without reading it, that arrives as an
+       * ordinary drop and `useRoomConnection` renders "the connection didn't
+       * come back" over a meeting that ended on purpose — the same class of
+       * mistake as telling someone who pressed Leave that something went
+       * wrong, which is what `leaving` exists to prevent.
+       *
+       * The host who pressed the button gets it too, from their own request.
+       */
+      if (reason === DisconnectReason.ROOM_DELETED) {
+        setStage({
+          kind: "ended",
+          byMe: ending.current,
+          minutes:
+            connectedAt.current === null
+              ? null
+              : Math.max(1, Math.round((Date.now() - connectedAt.current) / 60_000)),
+        });
+        return;
+      }
+
       // Leaving is the only disconnect that unmounts the room.
       //
       // A drop used to land here too and replace the whole surface with a
@@ -156,6 +204,7 @@ export function RoomStage({
 
         if (cancelled) return;
         setRoom(next);
+        connectedAt.current = Date.now();
         setStage({ kind: "connected" });
 
         // Everything below is *not* awaited before showing the room, and that
@@ -210,8 +259,51 @@ export function RoomStage({
     void room?.disconnect();
   }, [room]);
 
+  /**
+   * End the meeting for everyone — B1, host only.
+   *
+   * The client does not disconnect itself. §7's grants withhold `roomAdmin`, so
+   * the server deletes the room, and this client is disconnected by the same
+   * event as everyone else's — which is what keeps the ended screen a single
+   * code path rather than one the host reaches a different way and which is
+   * therefore never the one under test.
+   *
+   * `ending` is set before the request so the listener can attribute it. On
+   * failure it is cleared and nothing has happened: the meeting is untouched,
+   * the dialog's caller re-enables its buttons, and the room is still there.
+   */
+  const endMeeting = useCallback(async () => {
+    ending.current = true;
+    const response = await fetch(`/api/livekit/room/${code}`, {
+      method: "DELETE",
+    }).catch(() => null);
+
+    if (response?.ok) return;
+    ending.current = false;
+
+    /**
+     * A meeting already ended — by the webhook, or from another tab — is the
+     * outcome that was wanted. Everything else leaves the room running, and the
+     * caller says so rather than pretending.
+     */
+    if (response?.status === 409) {
+      setStage({
+        kind: "ended",
+        byMe: true,
+        minutes:
+          connectedAt.current === null
+            ? null
+            : Math.max(1, Math.round((Date.now() - connectedAt.current) / 60_000)),
+      });
+      return;
+    }
+    throw new Error("end_failed");
+  }, [code]);
+
   if (stage.kind === "connecting") return <Connecting />;
   if (stage.kind === "left") return <Left code={code} />;
+  if (stage.kind === "ended")
+    return <Ended byMe={stage.byMe} minutes={stage.minutes} />;
   // Only a first connect that never succeeded gets a page. Dropping out after
   // getting in is handled inside the room, over a surface that still exists.
   if (stage.kind === "failed") return <Failed code={code} />;
@@ -222,6 +314,7 @@ export function RoomStage({
       <RoomSurface
         code={code}
         onLeave={leave}
+        onEndMeeting={endMeeting}
         retry={retry.current}
         onResume={() => setResumeNonce((n) => n + 1)}
       />
@@ -235,11 +328,13 @@ export function RoomStage({
 function RoomSurface({
   code,
   onLeave,
+  onEndMeeting,
   retry,
   onResume,
 }: {
   code: string;
   onLeave: () => void;
+  onEndMeeting: () => Promise<void>;
   retry: RetryCounter;
   onResume: () => void;
 }) {
@@ -264,6 +359,15 @@ function RoomSurface({
   const chatOpen = panel === "chat";
   const participantsOpen = panel === "participants";
   const [helpOpen, setHelpOpen] = useState(false);
+  /**
+   * B1: the menu is a choice, the dialog is the commitment.
+   *
+   * `pending` is held here rather than inside the dialog because the request it
+   * describes is this component's — the dialog is told what is happening, and
+   * does not have to know how to find out.
+   */
+  const [endOpen, setEndOpen] = useState(false);
+  const [endPending, setEndPending] = useState(false);
   const triggers = useRef<Record<Panel, HTMLElement | null>>({
     chat: null,
     participants: null,
@@ -553,7 +657,30 @@ function RoomSurface({
         onToggleParticipants={toggleParticipants}
         onReact={messages.sendReaction}
         onLeave={onLeave}
+        isHost={localIsHost}
+        onEnd={() => setEndOpen(true)}
       />
+
+      {endOpen && (
+        <EndMeetingDialog
+          pending={endPending}
+          onCancel={() => {
+            if (endPending) return;
+            setEndOpen(false);
+          }}
+          onConfirm={() => {
+            setEndPending(true);
+            void onEndMeeting()
+              .catch(() => {
+                // Nothing happened: the meeting is untouched and the room is
+                // still there. Say so and let them try again, rather than
+                // closing on a failure that would look like success.
+                toast.error("The meeting couldn't be ended. Try again.");
+              })
+              .finally(() => setEndPending(false));
+          }}
+        />
+      )}
 
       {/*
         Panels after the controls, which is both §3.4's stated tab order —
@@ -704,6 +831,69 @@ function Left({ code }: { code: string }) {
         <Button size="touch" asChild variant="outline" className="w-full">
           <Link href="/dashboard">Back to meetings</Link>
         </Button>
+      </div>
+    </Centred>
+  );
+}
+
+/**
+ * What everyone lands on when the host ends it — B1, screen 5 of
+ * `design/02-room.html`.
+ *
+ * **No Rejoin.** The token endpoint refuses `ended`, so the button would exist
+ * only to fail — and `CLAUDE.md` forbids shipping a working control that lands
+ * somewhere broken. `Left` offers Rejoin because leaving is reversible; this
+ * is not, which is the whole reason the two states are separate.
+ *
+ * **The duration is this viewer's, and says so.** The design reads "Design
+ * review ran for 42 minutes", which needs the meeting's title and its real
+ * start — neither of which the room has. §3.2 keeps the anonymous resolver to
+ * six columns on purpose, and widening it so an ended screen can print a
+ * number is not a trade worth making. What this client can measure honestly is
+ * how long *it* was in the meeting, so that is what it claims.
+ */
+function Ended({ byMe, minutes }: { byMe: boolean; minutes: number | null }) {
+  return (
+    <Centred>
+      <div className="flex flex-col items-center gap-6">
+        <Lockup variant="stacked" markSize={40} />
+        <div className="space-y-2">
+          {/* The host who pressed the button knows who did it. Telling them
+              "the host ended the meeting" would read as someone else having
+              done it. */}
+          <h1 className="type-h1">
+            {byMe ? "You ended the meeting" : "The host ended the meeting"}
+          </h1>
+          <p className="type-body text-balance text-muted-foreground">
+            {minutes === null
+              ? "The link no longer works."
+              : `You were in it for ${minutes} minute${minutes === 1 ? "" : "s"}. The link no longer works.`}
+          </p>
+        </div>
+      </div>
+      {/*
+        The design puts two buttons here. Both are only offered to the host who
+        ended it, because "Start a new meeting" creates one — and creating a
+        meeting needs an account, so for a guest it is a button that exists to
+        return 401. They get the one action that works.
+
+        `StartMeetingButton` rather than a link to `/dashboard` labelled as if
+        it starts something: the label says what happens, which is the copy
+        rule, and it is the same control the dashboard uses.
+      */}
+      <div className="flex w-full flex-col gap-2">
+        {byMe ? (
+          <>
+            <StartMeetingButton />
+            <Button size="touch" asChild variant="outline" className="w-full">
+              <Link href="/dashboard">Back to meetings</Link>
+            </Button>
+          </>
+        ) : (
+          <Button size="touch" asChild className="w-full">
+            <Link href="/dashboard">Back to meetings</Link>
+          </Button>
+        )}
       </div>
     </Centred>
   );

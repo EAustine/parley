@@ -408,7 +408,14 @@ console.log("\nServer-side room powers\n");
 // this is what does: every file that constructs a RoomServiceClient may call
 // only the methods on this list. Adding one is a deliberate act with a
 // failing check in front of it, which is the point.
-const ALLOWED_ROOM_SERVICE_CALLS = new Set(["removeParticipant"]);
+//
+// `deleteRoom` was added deliberately for v1.3 B1, which is the process this
+// check exists to force. §3.8's sentence is now "that route ends and removes,
+// nothing wider" — two verbs, two methods. Ending is the one power a host
+// genuinely needs that Leave cannot express, and `deleteRoom` neither mutes nor
+// unmutes anyone, so the guarantee this list protects is untouched: nothing
+// here can activate a microphone.
+const ALLOWED_ROOM_SERVICE_CALLS = new Set(["removeParticipant", "deleteRoom"]);
 
 // Anything on the server SDK that could mute, unmute, or publish on someone
 // else's behalf. Named rather than inferred, so the check states what it is

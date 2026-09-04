@@ -8,7 +8,7 @@ import { ICONS } from "@/lib/icons";
 import { CONTROL_MOTION } from "@/lib/motion";
 import type { Reaction } from "@/lib/room/messages";
 import { ReactionPicker } from "@/components/room/ReactionPicker";
-import { Button } from "@/components/ui/button";
+import { LeaveControl } from "@/components/room/LeaveControl";
 /**
  * Tooltip text is `--background`, not `--muted-foreground`.
  *
@@ -47,6 +47,8 @@ export function RoomControls({
   onToggleParticipants,
   onReact,
   onLeave,
+  isHost,
+  onEnd,
 }: {
   visible: boolean;
   unread: number;
@@ -59,6 +61,9 @@ export function RoomControls({
   onToggleParticipants: () => void;
   onReact: (emoji: Reaction) => void;
   onLeave: () => void;
+  /** §3.8: only a host is offered "End meeting for everyone" — B1. */
+  isHost: boolean;
+  onEnd: () => void;
 }) {
   /**
    * Publish the bar's rendered height as `--parley-controls-h`.
@@ -350,23 +355,11 @@ export function RoomControls({
 
         </div>
 
-        {/* The one non-circular control. §3.4: shape distinguishes it as well
-            as colour, so it is unmistakable without relying on hue. The extra
-            margin is B4's larger gap — leaving is not one of the things you do
-            to a meeting, it is the thing that ends being in one. */}
-        <Button
-          size="touch" onClick={onLeave}
-          className={`ml-1 h-12 rounded-full px-6 bg-destructive text-destructive-foreground hover:bg-destructive/90 sm:ml-2 ${CONTROL_MOTION}`}
-        >
-          <HugeiconsIcon
-            icon={ICONS.leave.icon}
-            size={20}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden
-          />
-          Leave
-        </Button>
+        {/* The one non-circular control, and B4's larger gap before it —
+            leaving is not one of the things you do to a meeting, it is the
+            thing that ends being in one. For a host the whole button opens a
+            menu; for a guest it simply leaves. B1, and `LeaveControl`. */}
+        <LeaveControl isHost={isHost} onLeave={onLeave} onEnd={onEnd} />
       </div>
     </div>
   );

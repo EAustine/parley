@@ -141,4 +141,53 @@ test.describe("touch targets, in the room", () => {
       await page.keyboard.press("Escape");
     }
   });
+
+  /**
+   * The host's two extra surfaces — v1.3 B1.
+   *
+   * A separate test because they need a separate fixture: the sweep above
+   * joins with `meetingCode`, which makes a guest, and a guest has no leave
+   * menu at all. Every state a host can reach that a guest cannot would
+   * otherwise never be measured — which is how the control bar itself once
+   * shrank below the floor with a green check.
+   *
+   * The menu items are the interesting ones. They are two lines of text in a
+   * button, so nothing about them is obviously 44px, and B1's whole argument
+   * for a menu over a split button was about target size.
+   */
+  test("the host's leave menu and its dialog clear the 44px floor", async ({
+    browser,
+    hostedMeeting,
+  }) => {
+    test.setTimeout(180_000);
+    participant = await joinAs(browser, "Abena Poku", {
+      code: hostedMeeting.code,
+      asHost: hostedMeeting.email,
+    });
+    const { page } = participant;
+
+    for (const viewport of [DESKTOP, PHONE]) {
+      const where = `${viewport.width}px`;
+      await page.setViewportSize(viewport);
+
+      await wakeControls(page);
+      await page.getByRole("button", { name: "Leave", exact: true }).click();
+      await expect(page.getByRole("menu", { name: "Leave options" })).toBeVisible();
+      await assertFloor(page, {
+        floor: 44,
+        atLeast: 8,
+        label: `the room, leave menu open, at ${where}`,
+      });
+
+      await page.getByRole("menuitem", { name: /End meeting for everyone/ }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await assertFloor(page, {
+        floor: 44,
+        atLeast: 2,
+        label: `the room, end-meeting dialog open, at ${where}`,
+      });
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+  });
 });
