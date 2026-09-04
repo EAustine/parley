@@ -46,6 +46,10 @@ const REAL_MEDIA = [
   "media.spec.ts",
   "share.spec.ts",
   "prejoin.spec.ts",
+  // A3. Asserts that a tile paints again after the camera is toggled, which is
+  // a claim about decoded frames and not about DOM state — the same contention
+  // that made media.spec's "frozen frame" flake applies here exactly.
+  "camera.spec.ts",
 ];
 
 /**

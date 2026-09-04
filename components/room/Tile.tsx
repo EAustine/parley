@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useConnectionQualityIndicator,
@@ -32,7 +32,28 @@ export function Tile({
   track: Track | undefined;
   cameraOn: boolean;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  /**
+   * The `<video>` is held in **state**, not a ref — A3.
+   *
+   * It is conditionally rendered (`showVideo` below), so turning a camera off
+   * and on again destroys the element and mounts a *new* one. A ref does not
+   * re-run anything when that happens: `useEffect(…, [track])` saw the same
+   * track object both times, because LiveKit mutes and unmutes a publication
+   * rather than replacing it. So the second element was never handed the
+   * stream, and the tile stayed blank while every other signal said the camera
+   * was on.
+   *
+   * That is the shape of the bug the field report described, and it is a rule 3
+   * failure from the other direction: the control read "Turn off camera", the
+   * participants panel showed the camera on, and nothing was on screen. Rule 3
+   * is about the UI never claiming a device state the tracks do not support —
+   * this claimed one the *DOM* did not.
+   *
+   * A ref holds an element without telling anyone it changed. State makes the
+   * element an input to the effect, so mount, unmount and track-swap all run
+   * the same attach/detach path.
+   */
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   const isSpeaking = useIsSpeaking(participant);
   // Read here rather than threaded down from the grid: the participant is
   // already in hand, and `useIsSpeaking` above sets the precedent.
@@ -40,16 +61,15 @@ export function Tile({
   const treatment = treatmentFor(quality as Quality);
 
   useEffect(() => {
-    const element = videoRef.current;
-    if (!element || !track) return;
-    track.attach(element);
+    if (!video || !track) return;
+    track.attach(video);
     // Detaching on the way out is not tidiness: a track left attached to a
     // removed element keeps decoding, and on a paging mobile grid that is one
     // live decode per page you ever visited.
     return () => {
-      track.detach(element);
+      track.detach(video);
     };
-  }, [track]);
+  }, [track, video]);
 
   const name = displayNameOf(participant);
   const showVideo = Boolean(track) && cameraOn;
@@ -125,7 +145,7 @@ export function Tile({
       >
         {showVideo ? (
           <video
-            ref={videoRef}
+            ref={setVideo}
             autoPlay
             playsInline
             // Muted on the element, always. Remote audio is played by

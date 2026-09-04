@@ -5275,3 +5275,94 @@ and is now checked; `MANUAL.md` moves the webhook to closed, leaving only
 
 `check:partition` 20/20 (new), `check:webhook` 5/5 (new), `check:meetings`
 68/68, `check:contrast` 28/28, `check:deps` 5/5, typecheck, lint.
+
+---
+
+## v1.3 A3 — the camera did not come back, and the test said it did
+
+### The diagnosis, which A3 asked for first
+
+A3: "Distinguish before fixing. If `localParticipant.videoTrackPublications`
+shows a live track while the element is blank, it is **attachment**. If there is
+no track, it is **acquisition**."
+
+Measured, and it is attachment. After toggling off and on: the camera reads
+**enabled**, a `<video>` **is** rendered, and its `srcObject` is **null**.
+
+### Why
+
+`Tile` renders the `<video>` conditionally — `showVideo = Boolean(track) &&
+cameraOn` — and held it in a **ref**, attaching in `useEffect(…, [track])`.
+
+Turning the camera off destroys that element. Turning it on mounts a **new**
+one. And `track` is the same object across both, because LiveKit mutes and
+unmutes a publication rather than replacing it, so the dependency never changed
+and the effect never ran again. The new element was never handed the stream.
+
+A ref holds an element without telling anyone it changed. Holding it in **state**
+makes the element an input to the effect, so mount, unmount and track-swap all
+run the same attach/detach path.
+
+This is rule 3 from the other direction. Rule 3 exists so the UI never claims a
+device state the tracks do not support; here the control read "Turn off camera",
+the participants panel showed the camera on, and nothing was on screen. The
+claim was true of the tracks and false of the DOM.
+
+### It was worse than reported
+
+The field report is about your own camera. `Tile` renders **every** participant,
+so the same thing happened to everyone watching: when Ama turned her camera off
+and on, her tile stayed blank on Kwabena's screen too. Confirmed by putting the
+shipped `Tile` back and watching a two-participant test fail on *tile 1*.
+
+### The test that was named for this and passed anyway
+
+`media.spec.ts`, since Phase 4: **"camera off leaves an avatar, and the video
+comes back"**. Green throughout. Its final assertion:
+
+```js
+await expect(kwabena.page.locator("video")).toHaveCount(2);
+```
+
+It counts `<video>` **elements** — and the element genuinely does come back,
+because `showVideo` goes true again. The stream is what did not. The count
+survives the bug it is named for, completely.
+
+Same lesson as the tile that declared `aspect-ratio: 16/9` and rendered 1956px
+into 1337px, and as the touch-target script that resolved size classes: **assert
+the thing, not a proxy for it.** The test now polls decoded-frame motion on both
+tiles, and against the shipped `Tile` it fails with *"tile 1 is present but blank
+after the camera came back"*.
+
+That is three checks in this pass that were green over a live defect — the
+contrast matrix, the `"Upcoming"` string, and this. All three shared a shape:
+they asserted something adjacent to the claim and cheaper to reach.
+
+### Mutation
+
+Keeping the state but reverting the dependency to `[track]` fails *earlier* than
+expected — at the baseline, "no camera track ever arrived on join". With a ref,
+`videoRef.current` is populated before effects run, so the first attach worked by
+timing; with state it is null during the first effect, so the element must be a
+dependency for the initial attach as well as the second. The dependency is
+load-bearing twice over.
+
+### `camera.spec.ts`
+
+In `REAL_MEDIA`, because it asserts decoded frames rather than DOM state — the
+same contention that made `media.spec`'s frozen-frame case flake applies here.
+
+Its reading of LiveKit's side goes through **the product's own UI**, not a test
+global: `RoomControls` labels the button from `isCameraEnabled`, which is the
+publication's real state, and that is exactly what rule 3 guarantees. Exposing
+the `Room` on `window` would have put a hole in production code to observe
+something already rendered.
+
+Both halves are asserted separately so a future failure says *which*:
+`enabled` false is acquisition, `attached` false with a live track is the
+element.
+
+### Checks
+
+Full suite: **76 app + select, 23 media, 99 passing.** `check:partition` 20/20,
+`check:webhook` 5/5, `check:contrast` 28/28, `check:deps` 5/5, typecheck, lint.

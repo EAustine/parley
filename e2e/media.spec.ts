@@ -127,6 +127,34 @@ test.describe("two participants", () => {
     await wakeControls(ama.page);
     await ama.page.getByRole("button", { name: "Turn on camera" }).click();
     await expect(kwabena.page.locator("video")).toHaveCount(2);
+
+    /**
+     * **And it paints. `toHaveCount(2)` did not say that, and this test was
+     * named for the thing it did not check.**
+     *
+     * A3 reported that turning a camera off and on again leaves the tile blank,
+     * and this test — "the video comes back" — was green throughout. Counting
+     * `<video>` elements is a proxy: the element really is re-rendered when
+     * `cameraOn` goes true again. What it lacked was the *stream*. `Tile` held
+     * the element in a ref and attached on `[track]`, and LiveKit unmutes a
+     * publication rather than replacing it, so the second element arrived with
+     * the dependency unchanged and nothing ever handed it the track.
+     *
+     * The count survives that exactly. Same lesson as the tile that declared
+     * `aspect-ratio: 16/9` and rendered 1956px into 1337px: assert the thing,
+     * not a proxy for it.
+     *
+     * Both indices, because grid order is not this test's business — after a
+     * toggle either tile may be first, and both should be painting either way.
+     */
+    for (const index of [0, 1]) {
+      await expect
+        .poll(async () => (await videoLiveness(kwabena.page, index)).motion, {
+          message: `tile ${index} is present but blank after the camera came back`,
+          timeout: 15_000,
+        })
+        .toBeGreaterThan(1);
+    }
   });
 
   test("the speaking ring follows real speech, and ignores a cough", async ({ browser, meetingCode }) => {
