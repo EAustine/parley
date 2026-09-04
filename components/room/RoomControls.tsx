@@ -135,8 +135,21 @@ export function RoomControls({
           // stays on screen next to the control that fixes it, so nothing is
           // lost by waiting for a gap.
           role="status"
-          className="rounded-lg px-3 py-1.5 type-small text-[var(--state-critical)]"
-          style={{ background: "var(--scrim)" }}
+          /**
+           * An opaque chip, not the scrim — rule 4, the same narrowing
+           * `ConnectionPill` and `ConnectionBar` already carry.
+           *
+           * This was `text-[var(--state-critical)]` on `var(--scrim)`, which
+           * is **2.53:1** over bright video: the message telling you your
+           * camera did not start, drawn at half the floor it needs. The
+           * permitted-surface matrix was green the whole time, because a
+           * matrix computes whether a pairing *would* pass and is never shown
+           * one that exists. `e2e/scrim.spec.ts` is what asks the question.
+           *
+           * On `--popover` the same red is 5.42:1, and the background stops
+           * depending on what is on camera.
+           */
+          className="rounded-lg border border-boundary bg-popover px-3 py-1.5 type-small text-[var(--state-critical)]"
         >
           {lastMicrophoneError
             ? "Your microphone didn't turn on."

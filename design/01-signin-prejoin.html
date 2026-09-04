@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parley — sign-in & pre-join</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOKENS — verbatim from CLAUDE.md. Every colour is a var().
+   Translate token NAMES, not computed values:
+   var(--popover) → bg-popover, var(--boundary) → border-boundary
+   ============================================================ */
+:root{
+  --background:#FFFFFF; --foreground:#16181D; --card:#F7F8F9; --popover:#FFFFFF;
+  --primary:#16181D; --primary-foreground:#FFFFFF; --secondary:#F0F2F4;
+  --muted:#F0F2F4; --muted-foreground:#5C636E; --accent:#F0F2F4;
+  --destructive:#C62B31; --border:#E3E6EA; --input:#E3E6EA; --ring:#16181D;
+  --state-critical:#C62B31; --state-warning:#8A5300; --boundary:#687284;
+}
+.dark{
+  --background:#0E1013; --foreground:#F2F4F7; --card:#171A1F; --popover:#1B1F25;
+  --primary:#F2F4F7; --primary-foreground:#0E1013; --secondary:#242830;
+  --muted:#1F232A; --muted-foreground:#9AA1AC; --accent:#242830;
+  --destructive:#D32F2F; --border:#242830; --input:#2B303A; --ring:#F2F4F7;
+  --state-critical:#F26669; --state-warning:#F5A524; --boundary:#687284;
+}
+/* Theme-invariant. The scrim always sits over video and video is always dark,
+   so anything drawn ON it must be fixed too. --foreground flips with the theme
+   and is NOT permitted here — in light mode it lands at 2.3:1 and disappears.
+   That was the missing-icon bug. */
+:root,.dark,.light{
+  --scrim:rgba(14,16,19,.72);
+  --on-scrim:#F2F4F7;        /* 7.01:1 over the brightest video */
+  --on-scrim-muted:#C6CAD1;  /* 4.70:1 */
+  --radius:.5rem;
+}
+
+
+/* Native controls draw their own parts — the date picker glyph, the select
+   dropdown list, scrollbars, spinners. Without color-scheme the browser
+   paints them for a light UI, which is why the calendar icon was a dark
+   glyph on a dark field. Declaring it is what makes the OS match the theme. */
+:root{color-scheme:light}
+.dark{color-scheme:dark}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator{
+  opacity:.55;cursor:pointer;transition:opacity .12s}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover{opacity:1}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--background);color:var(--foreground);
+  font-family:"Instrument Sans",ui-sans-serif,system-ui,"Noto Sans",sans-serif;
+  font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",monospace}
+.t-h1{font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em}
+.t-body{font-size:15px;line-height:22px}
+.t-small{font-size:13px;line-height:18px}
+.t-caption{font-size:12px;line-height:16px;font-weight:500}
+.dim{color:var(--muted-foreground)}
+
+/* ---------- primitives ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;
+  padding:0 16px;border-radius:var(--radius);font:inherit;font-weight:500;font-size:15px;
+  cursor:pointer;border:1px solid transparent;background:none;color:inherit;
+  transition:background-color .12s cubic-bezier(.2,0,0,1),border-color .12s,transform .08s}
+.btn:active{transform:scale(.98)}
+.btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn-primary{background:var(--primary);color:var(--primary-foreground);width:100%}
+.btn-primary:hover{opacity:.92}
+.btn-secondary{background:var(--secondary);color:var(--foreground);border-color:var(--boundary)}
+.btn-secondary:hover{background:var(--accent)}
+.btn-ghost{color:var(--muted-foreground)}
+.btn-ghost:hover{background:var(--secondary);color:var(--foreground)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+.label{display:block;font-size:13px;line-height:18px;font-weight:500;margin-bottom:6px}
+.input{width:100%;min-height:44px;padding:0 12px;border-radius:var(--radius);background:transparent;
+  border:1px solid var(--boundary);color:var(--foreground);font:inherit;
+  transition:border-color .12s,box-shadow .12s}
+.input::placeholder{color:var(--muted-foreground)}
+.input:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 1px var(--ring)}
+select.input{appearance:none;padding-right:36px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888F9A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center}
+.card{background:var(--popover);border:1px solid var(--boundary);border-radius:12px}
+.divider{display:flex;align-items:center;gap:12px;color:var(--muted-foreground);font-size:13px}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
+.stackv > * + *{margin-top:16px}
+
+/* ---------- chrome ---------- */
+.page{min-height:100%;display:flex;flex-direction:column}
+.topbar{height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
+.icon-btn{width:44px;height:44px;border-radius:var(--radius);display:grid;place-items:center;
+  color:var(--muted-foreground);cursor:pointer;border:none;background:none}
+.icon-btn:hover{background:var(--secondary);color:var(--foreground)}
+
+/* ---------- sign in ---------- */
+.signin-wrap{flex:1;display:grid;place-items:center;padding:48px 24px}
+.signin{width:100%;max-width:400px}
+.signin-head{text-align:center;margin-bottom:32px}
+.signin-head .mark{margin:0 auto 20px;display:block}
+.signin-head h1{margin-bottom:8px}
+.signin-card{padding:24px}
+.signin-foot{margin-top:24px;text-align:center}
+
+/* ---------- pre-join ---------- */
+.prejoin-wrap{flex:1;display:flex;justify-content:center;align-items:center;padding:40px 24px}
+.prejoin{width:100%;max-width:1080px;display:grid;gap:32px;
+  grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr);align-items:start}
+
+.stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;
+  background:var(--card);border:1px solid var(--boundary)}
+/* a state card can be taller than 16:9 on a narrow screen — let it be,
+   rather than clipping the copy that is the whole point of the state */
+.stage:has(.stage-state){aspect-ratio:auto;min-height:min(56vw,240px)}
+.fake-video{position:absolute;inset:0;transform:scaleX(-1);
+  background:
+    radial-gradient(38% 46% at 54% 44%, #6b5c4a 0%, #4a4136 46%, rgba(42,38,33,0) 100%),
+    linear-gradient(160deg,#2f2a24 0%,#1c1b1c 58%,#141517 100%)}
+
+.stage-controls{position:absolute;left:0;right:0;bottom:0;height:96px;display:flex;
+  align-items:flex-end;justify-content:center;gap:12px;padding-bottom:16px;
+  background:linear-gradient(to top,var(--scrim) 0%,rgba(14,16,19,0) 100%)}
+.round{width:48px;height:48px;border-radius:999px;display:grid;place-items:center;cursor:pointer;
+  border:1px solid var(--on-scrim-muted);background:var(--scrim);color:var(--on-scrim);
+  transition:background-color .12s,transform .08s}
+.round:hover{background:rgba(36,40,48,.9)}
+.round:active{transform:scale(.96)}
+.round[aria-pressed="true"]{background:#242830;border-color:var(--on-scrim)}
+.round:focus-visible{outline:2px solid var(--on-scrim);outline-offset:2px}
+
+.meter{height:4px;border-radius:999px;background:var(--muted);margin-top:12px;overflow:hidden}
+.meter i{display:block;height:100%;width:38%;background:var(--foreground);border-radius:999px;
+  transition:width .06s linear}
+
+.stage-state{position:relative;display:grid;place-items:center;text-align:center;
+  padding:36px 24px;min-height:100%}
+.stage-state .inner{max-width:340px}
+.stage-state .glyph{margin:0 auto 14px;color:var(--muted-foreground)}
+.stage-state h3{font-size:15px;font-weight:600;margin-bottom:6px}
+.stage-state p{font-size:13px;line-height:18px;color:var(--muted-foreground);margin-bottom:16px}
+
+.eyebrow{font-size:13px;line-height:18px;color:var(--muted-foreground);margin-bottom:4px}
+.code{font-size:13px;line-height:18px;letter-spacing:.06em;color:var(--muted-foreground);margin-top:6px}
+.panel{padding:20px;margin-top:20px}
+.panel-foot{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted-foreground);margin-top:14px}
+.stack{display:flex}
+.av{width:24px;height:24px;border-radius:999px;background:var(--secondary);
+  border:2px solid var(--background);display:grid;place-items:center;font-size:11px;font-weight:600;margin-left:-6px}
+.av:first-child{margin-left:0}
+.hint{display:flex;gap:8px;padding:12px;border-radius:var(--radius);background:var(--muted);
+  font-size:13px;line-height:18px;color:var(--muted-foreground)}
+
+/* device selects behind a disclosure: one camera and one mic on a phone,
+   and the join button should not sit four fields down the page */
+.devices{border-top:1px solid var(--border);margin-top:16px;padding-top:8px}
+.devices>summary{list-style:none;cursor:pointer;display:flex;align-items:center;
+  justify-content:space-between;min-height:44px;font-size:13px;font-weight:500;color:var(--muted-foreground)}
+.devices>summary::-webkit-details-marker{display:none}
+.devices>summary:hover{color:var(--foreground)}
+.devices>summary svg{transition:transform .12s;flex:none}
+.devices[open]>summary svg{transform:rotate(180deg)}
+.dbody{padding:8px 0 4px}
+.dbody > * + *{margin-top:16px}
+
+.mobile-join{display:none}
+
+/* ================= MOBILE ================= */
+@media (max-width:900px){
+  .topbar{padding:0 16px}
+  .prejoin-wrap{padding:0;display:flex;flex-direction:column;align-items:stretch;flex:1;min-height:0}
+  .prejoin{display:flex;flex-direction:column;align-items:stretch;
+    max-width:none;gap:0;flex:1;min-height:0}
+  .stage{border-radius:0;border-left:0;border-right:0;border-top:0}
+  .meter{margin:0;border-radius:0}
+  .col-left{flex:none}
+  .col-right{padding:20px 16px 24px;flex:1}
+  .panel{margin-top:16px;padding:16px}
+  .signin-wrap{padding:32px 16px}
+  .signin-card{padding:20px}
+  .desktop-join{display:none}
+  .mobile-join{display:block;position:sticky;bottom:0;z-index:2;margin-top:auto;
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:var(--background);border-top:1px solid var(--border)}
+}
+
+/* ---------- demo scaffolding — DELETE when translating ---------- */
+.demo-nav{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99;display:flex;
+  gap:4px;padding:6px;border-radius:999px;background:var(--popover);border:1px solid var(--boundary)}
+.demo-nav button{font:inherit;font-size:12px;font-weight:500;padding:6px 12px;border-radius:999px;
+  border:none;background:none;color:var(--muted-foreground);cursor:pointer;white-space:nowrap}
+.demo-nav button[data-on]{background:var(--secondary);color:var(--foreground)}
+.screen{display:none}
+.screen[data-on]{display:flex}
+body.phone{background:#08090b;padding:24px 0 96px;display:grid;place-items:start center;height:auto}
+body.phone .screen[data-on]{width:390px;height:844px;min-height:0;overflow-y:auto;overflow-x:hidden;
+  border-radius:28px;border:1px solid #2a2e35;background:var(--background)}
+body.phone .page{min-height:0}
+</style>
+</head>
+<body>
+
+<!-- ============ SIGN IN ============ -->
+<div class="page screen" id="s-signin">
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <button class="icon-btn" aria-label="Switch theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+  </header>
+  <main class="signin-wrap">
+    <div class="signin">
+      <div class="signin-head">
+        <svg class="mark" width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>
+        <h1 class="t-h1">Sign in</h1>
+        <p class="t-body dim">You only need an account to host.<br>Joining a meeting never does.</p>
+      </div>
+      <div class="card signin-card stackv">
+        <button class="btn btn-secondary" style="width:100%">
+          <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.35 11.1H12v2.99h5.35c-.23 1.45-1.63 4.25-5.35 4.25-3.22 0-5.85-2.67-5.85-5.95S8.78 6.44 12 6.44c1.83 0 3.06.78 3.76 1.45l2.56-2.47C16.68 3.9 14.53 3 12 3 6.98 3 2.9 7.03 2.9 12s4.08 9 9.1 9c5.25 0 8.73-3.69 8.73-8.89 0-.6-.06-1.05-.15-1.51z"/></svg>
+          Continue with Google
+        </button>
+        <div class="divider">or</div>
+        <div>
+          <label class="label" for="email">Email</label>
+          <input class="input" id="email" type="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <button class="btn btn-primary">Email me a sign-in link</button>
+        <p class="t-caption dim" style="text-align:center">No password. The link signs you in and expires after use.</p>
+      </div>
+      <div class="signin-foot">
+        <a class="t-small" href="#" style="color:var(--muted-foreground)">Have a meeting code? Join without an account →</a>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ PRE-JOIN · ASK ============ -->
+<div class="page screen" id="s-ask">
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <button class="icon-btn" aria-label="Switch theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+  </header>
+  <main class="prejoin-wrap">
+    <div class="prejoin">
+      <div class="col-left">
+        <div class="stage">
+          <div class="stage-state"><div class="inner">
+            <svg class="glyph" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            <h3>Camera and microphone</h3>
+            <p>Parley needs them to put you in the meeting. Nothing is recorded, and you can turn either off before you join.</p>
+            <button class="btn btn-secondary">Allow camera and microphone</button>
+          </div></div>
+        </div>
+        <div class="meter" aria-hidden="true"><i style="width:0"></i></div>
+      </div>
+      <div class="col-right">
+        <p class="eyebrow">You're joining</p>
+        <h1 class="t-h1">Design review</h1>
+        <p class="code mono">wcz-4npm-hjd</p>
+        <div class="card panel stackv">
+          <div class="hint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span>Allow access above to choose which camera, microphone, and speaker to use.</span>
+          </div>
+          <button class="btn btn-primary desktop-join" disabled>Join meeting</button>
+        </div>
+        <div class="who"><div class="stack"><div class="av">A</div><div class="av">K</div></div>Ama and Kofi are already here</div>
+      </div>
+      <div class="mobile-join"><button class="btn btn-primary" disabled>Join meeting</button></div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ PRE-JOIN · READY ============ -->
+<div class="page screen" id="s-ready" data-on>
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <button class="icon-btn" aria-label="Switch theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+  </header>
+  <main class="prejoin-wrap">
+    <div class="prejoin">
+      <div class="col-left">
+        <div class="stage">
+          <div class="fake-video" aria-hidden="true"></div>
+          <div class="stage-controls">
+            <button class="round" aria-pressed="false" aria-label="Turn off microphone" title="Turn off microphone">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>
+            </button>
+            <button class="round" aria-pressed="false" aria-label="Turn off camera" title="Turn off camera">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="meter" aria-hidden="true"><i style="width:46%"></i></div>
+      </div>
+      <div class="col-right">
+        <p class="eyebrow">You're joining</p>
+        <h1 class="t-h1">Design review</h1>
+        <p class="code mono">wcz-4npm-hjd</p>
+        <div class="card panel">
+          <div>
+            <label class="label" for="nm">Your name</label>
+            <input class="input" id="nm" value="Ama Serwaa">
+          </div>
+          <details class="devices">
+            <summary>Camera, microphone and speaker
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </summary>
+            <div class="dbody">
+              <div><label class="label" for="cam">Camera</label>
+                <select class="input" id="cam"><option>MacBook Pro Camera (Built-in)</option><option>Logitech BRIO</option></select></div>
+              <div><label class="label" for="mic">Microphone</label>
+                <select class="input" id="mic"><option>MacBook Pro Microphone (Built-in)</option><option>AirPods Pro</option></select></div>
+              <div><label class="label" for="spk">Speaker</label>
+                <select class="input" id="spk"><option>Default — MacBook Pro Speakers</option><option>AirPods Pro</option></select></div>
+            </div>
+          </details>
+          <button class="btn btn-primary desktop-join" style="margin-top:16px">Join meeting</button>
+          <div class="panel-foot">
+            <button class="btn btn-ghost" style="width:100%">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy link
+            </button>
+          </div>
+        </div>
+        <div class="who"><div class="stack"><div class="av">A</div><div class="av">K</div></div>Ama and Kofi are already here</div>
+      </div>
+      <div class="mobile-join"><button class="btn btn-primary">Join meeting</button></div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ PRE-JOIN · DENIED ============ -->
+<div class="page screen" id="s-denied">
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <button class="icon-btn" aria-label="Switch theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+  </header>
+  <main class="prejoin-wrap">
+    <div class="prejoin">
+      <div class="col-left">
+        <div class="stage">
+          <div class="stage-state"><div class="inner">
+            <svg class="glyph" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--state-warning)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <h3>Camera and microphone are blocked</h3>
+            <p>The page can't ask again — the browser remembers the choice. Open the icon at the left of the address bar, set Camera and Microphone to Allow, then reload.</p>
+            <button class="btn btn-secondary">Reload the page</button>
+          </div></div>
+        </div>
+        <div class="meter" aria-hidden="true"><i style="width:0"></i></div>
+      </div>
+      <div class="col-right">
+        <p class="eyebrow">You're joining</p>
+        <h1 class="t-h1">Design review</h1>
+        <p class="code mono">wcz-4npm-hjd</p>
+        <div class="card panel stackv">
+          <div>
+            <label class="label" for="nm2">Your name</label>
+            <input class="input" id="nm2" value="Ama Serwaa">
+          </div>
+          <div class="hint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span>You can still join and listen. Others won't see or hear you until access is allowed.</span>
+          </div>
+          <button class="btn btn-primary desktop-join">Join without camera or mic</button>
+        </div>
+        <div class="who"><div class="stack"><div class="av">A</div><div class="av">K</div></div>Ama and Kofi are already here</div>
+      </div>
+      <div class="mobile-join"><button class="btn btn-primary">Join without camera or mic</button></div>
+    </div>
+  </main>
+</div>
+
+<!-- DEMO SCAFFOLDING — delete entirely when translating -->
+<nav class="demo-nav">
+  <button data-go="s-signin">Sign in</button>
+  <button data-go="s-ask">Ask</button>
+  <button data-go="s-ready" data-on>Ready</button>
+  <button data-go="s-denied">Denied</button>
+  <button id="phone">Phone</button>
+  <button id="theme">Theme</button>
+</nav>
+<script>
+document.querySelectorAll('.demo-nav [data-go]').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.screen').forEach(s=>s.removeAttribute('data-on'));
+    document.querySelectorAll('.demo-nav [data-go]').forEach(x=>x.removeAttribute('data-on'));
+    document.getElementById(b.dataset.go).setAttribute('data-on','');
+    b.setAttribute('data-on','');
+  };
+});
+document.getElementById('theme').onclick=()=>document.documentElement.classList.toggle('dark');
+document.getElementById('phone').onclick=e=>{
+  document.body.classList.toggle('phone');
+  e.target.toggleAttribute('data-on');
+};
+setInterval(()=>{
+  const m=document.querySelector('#s-ready .meter i');
+  if(m) m.style.width=(22+Math.random()*46)+'%';
+},110);
+</script>
+</body>
+</html>

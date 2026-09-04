@@ -42,6 +42,8 @@ Every label, badge, and control sits on `--scrim`. Contrast against arbitrary vi
 
 The scrim is sufficient for neutral foreground and not for hue. Composited over white video it resolves to roughly `#515355`, where `--foreground` still clears 7.01:1 but `--state-warning` drops to 3.79:1 and `--state-critical` to 2.53:1 — both under their floor, and the critical one badly.
 
+**`--foreground` is not permitted on `--scrim`. Use `--on-scrim`.** The scrim is theme-invariant and always dark; `--foreground` flips with the theme. In light mode that puts `#16181D` on a scrim that resolves to `#515355` — **2.3:1, and effectively invisible.** Any label, icon, or control drawn on the scrim uses `--on-scrim` or `--on-scrim-muted`, both fixed. This is the same permitted-surfaces failure as the tile edge and the form border, in a third place: a token evaluated in one context and used in another.
+
 **Hued state indicators therefore sit on an opaque chip at `--popover`, never on the scrim.** That restores the verified figures (warning 8.11:1, critical 5.42:1) because the background stops depending on what is on camera. Raising the scrim alpha would need roughly 0.90 to carry critical text, which is a near-solid panel over the video — worse than a chip, and it would darken every neutral label with it.
 
 Dropping hue instead is not the answer here: §4.2 spends the entire chroma budget on exactly two things, and connection state is one of them. This is the case where hue *is* the meaning.
@@ -101,6 +103,8 @@ If a spec is ambiguous, ask. Do not pick silently and move on.
 Dark is the default, and the only mode for the in-call surface. Video is the light source; chrome recedes. Dashboard and scheduling screens follow system theme.
 
 **Follow shadcn's class convention: `:root` holds light, `.dark` holds dark.** Set `next-themes` to `defaultTheme="system"` with `enableSystem`, and force `.dark` on `/j/[code]` and `/room/[code]` regardless of user preference — see rule 8b. Inverting the convention would fight every shadcn component and third-party library that expects `.dark`.
+
+**Declare `color-scheme`.** `:root{color-scheme:light}` and `.dark{color-scheme:dark}`; the room forces dark. Native controls paint their own parts — the date picker glyph, the select dropdown list, scrollbars, spinners — and without this the browser draws them for a light UI. That is a dark calendar icon on a dark field, and an unreadable white dropdown list behind a dark trigger. It matters more now that Radix `Select` is being replaced with native `<select>`: the closed state is ours to style, the open list is the operating system's, and `color-scheme` is the only thing that tells it which way round we are.
 
 **Keep these hex values verbatim.** Do not convert to OKLCH — the conversion shifts computed values and invalidates the verified contrast table below. Map them through `@theme inline` and override whatever `shadcn init` writes.
 
@@ -166,9 +170,11 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
   }
 
   /* theme-invariant: the scrim always sits over video, and video
-     surfaces are always dark */
+     surfaces are always dark — so anything drawn on it must be too */
   :root, .dark, .light {
-    --scrim:  rgba(14, 16, 19, 0.72);
+    --scrim:            rgba(14, 16, 19, 0.72);
+    --on-scrim:         #F2F4F7;   /* 7.01:1 over the brightest video */
+    --on-scrim-muted:   #C6CAD1;   /* 4.70:1 */
     --radius: 0.5rem;
   }
 }
@@ -195,11 +201,19 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 `--input` is not a boundary token and must not be used as one. At 1.44:1 dark and 1.25:1 light it was failing SC 1.4.11 on every `Input` and every `SelectTrigger`, invisibly, because `check:contrast` only ever evaluated it as a surface for text.
 
 **`check:contrast` must evaluate every token in both roles it is used in.** A value can pass as a text surface and fail as a boundary; the script comparing token against token in one role only is how both this and the tile edge shipped.
-| — | `scrim-over-white` permits `--foreground` only | 4.5 | 7.01 |
+| `--on-scrim` / `--on-scrim-muted` | `scrim-over-white` only. **`--foreground` is not permitted here** — it flips with the theme and the scrim does not. | 4.5 | 4.70 |
 
 **`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` currently computes foreground against opaque tokens only, so the one rule the room chrome depends on is enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
 
-Model it as `0.72 × #0E1013 + 0.28 × #FFFFFF` — white is the worst case for light text, and video can be anything. That resolves to roughly `#515355`, where `--foreground` clears at 7.01:1 while `--state-warning` falls to 3.79:1 and `--state-critical` to 2.53:1. Add it as a surface, permit only `--foreground` on it, and the existing permitted-surfaces machinery does the rest: any future hued-on-scrim element fails the check instead of shipping.
+Model it as `0.72 × #0E1013 + 0.28 × #FFFFFF` — white is the worst case for light text, and video can be anything. That resolves to roughly `#515355`, where `--state-warning` falls to 3.79:1 and `--state-critical` to 2.53:1, and light-mode `--foreground` collapses to 2.3:1.
+
+Add `scrim-over-white` as a surface permitting **only `--on-scrim` (7.01:1) and `--on-scrim-muted` (4.70:1)**, both theme-invariant.
+
+**That is necessary and it is not sufficient, and the difference is the whole lesson of this section.** A permitted-surface rule answers *would this pairing pass*. It is never shown a pairing that exists. `--state-critical` is simply absent from the scrim's list, and an unlisted pairing is not a failure — nothing asks. `RoomControls` drew its device-error message as `text-[var(--state-critical)]` on `var(--scrim)` for the whole of v1.2 — **2.53:1, on the sentence telling you your camera did not start** — while the matrix ran green, and while the paragraph above claimed a hued element "fails the check instead of shipping".
+
+A source scan cannot close it either: the scrim is on a parent and the colour on a child, so the two never appear in one element's attributes. **`npm run check:scrim` measures it** — it walks the rendered room, finds every element whose nearest painted backdrop is the scrim, and compares the colour the browser actually resolved. The ancestor walk stops at the first opaque background, which is what makes rule 4's hued-chip exemption fall out of the geometry rather than out of an exception list.
+
+Same rule as the letterboxed tile and the touch-target floor, for the third time: **writing the check is not the fix; the check asserting the actual thing is the fix.**
 
 Validation error text sits below a field on the ground, never inside the filled input.
 

@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parley — meetings & scheduling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ===== TOKENS — verbatim from CLAUDE.md. Translate token NAMES. ===== */
+:root{
+  --background:#FFFFFF; --foreground:#16181D; --card:#F7F8F9; --popover:#FFFFFF;
+  --primary:#16181D; --primary-foreground:#FFFFFF; --secondary:#F0F2F4;
+  --muted:#F0F2F4; --muted-foreground:#5C636E; --accent:#F0F2F4;
+  --destructive:#C62B31; --destructive-foreground:#FFFFFF;
+  --border:#E3E6EA; --input:#E3E6EA; --ring:#16181D;
+  --state-critical:#C62B31; --state-warning:#8A5300; --boundary:#687284;
+}
+.dark{
+  --background:#0E1013; --foreground:#F2F4F7; --card:#171A1F; --popover:#1B1F25;
+  --primary:#F2F4F7; --primary-foreground:#0E1013; --secondary:#242830;
+  --muted:#1F232A; --muted-foreground:#9AA1AC; --accent:#242830;
+  --destructive:#D32F2F; --destructive-foreground:#FFFFFF;
+  --border:#242830; --input:#2B303A; --ring:#F2F4F7;
+  --state-critical:#F26669; --state-warning:#F5A524; --boundary:#687284;
+}
+:root,.dark,.light{--radius:.5rem}
+
+
+/* Native controls draw their own parts — the date picker glyph, the select
+   dropdown list, scrollbars, spinners. Without color-scheme the browser
+   paints them for a light UI, which is why the calendar icon was a dark
+   glyph on a dark field. Declaring it is what makes the OS match the theme. */
+:root{color-scheme:light}
+.dark{color-scheme:dark}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator{
+  opacity:.55;cursor:pointer;transition:opacity .12s}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover{opacity:1}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--background);color:var(--foreground);
+  font-family:"Instrument Sans",ui-sans-serif,system-ui,"Noto Sans",sans-serif;
+  font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",monospace}
+.t-h1{font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em}
+.t-h2{font-size:20px;line-height:26px;font-weight:600}
+.t-small{font-size:13px;line-height:18px}
+.t-caption{font-size:12px;line-height:16px;font-weight:500}
+.dim{color:var(--muted-foreground)}
+
+/* primitives */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;
+  padding:0 16px;border-radius:var(--radius);font:inherit;font-weight:500;font-size:15px;
+  cursor:pointer;border:1px solid transparent;background:none;color:inherit;white-space:nowrap;
+  transition:background-color .12s cubic-bezier(.2,0,0,1),transform .08s}
+.btn:active{transform:scale(.98)}
+.btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn-primary{background:var(--primary);color:var(--primary-foreground)}
+.btn-primary:hover{opacity:.92}
+.btn-secondary{background:var(--secondary);color:var(--foreground);border-color:var(--boundary)}
+.btn-secondary:hover{background:var(--accent)}
+.btn-ghost{color:var(--muted-foreground)}
+.btn-ghost:hover{background:var(--secondary);color:var(--foreground)}
+.btn-sm{min-height:36px;padding:0 12px;font-size:13px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn-danger{color:var(--state-critical)}
+.btn-danger:hover{background:var(--secondary)}
+
+.label{display:block;font-size:13px;line-height:18px;font-weight:500;margin-bottom:6px}
+.input{width:100%;min-height:44px;padding:0 12px;border-radius:var(--radius);background:transparent;
+  border:1px solid var(--boundary);color:var(--foreground);font:inherit;
+  transition:border-color .12s,box-shadow .12s}
+.input::placeholder{color:var(--muted-foreground)}
+.input:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 1px var(--ring)}
+textarea.input{min-height:88px;padding:11px 12px;resize:vertical;line-height:22px}
+select.input{appearance:none;padding-right:36px;cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888F9A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center}
+.card{background:var(--card);border:1px solid var(--boundary);border-radius:12px}
+
+/* chrome */
+.topbar{height:60px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;
+  background:var(--background)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
+.icon-btn{width:40px;height:40px;border-radius:var(--radius);display:grid;place-items:center;
+  color:var(--muted-foreground);cursor:pointer;border:none;background:none}
+.icon-btn:hover{background:var(--secondary);color:var(--foreground)}
+.acct{position:relative}
+.acct .trigger{display:flex;align-items:center;gap:8px;height:40px;padding:0 8px 0 4px;
+  border-radius:999px;border:1px solid transparent;background:none;cursor:pointer;color:inherit;font:inherit}
+.acct .trigger:hover{background:var(--secondary)}
+.acct .trigger:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.acct .trigger .chev{transition:transform .12s}
+.acct .trigger[aria-expanded="true"]{background:var(--secondary)}
+.acct .trigger[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.acct .av{width:30px;height:30px;border-radius:999px;background:var(--secondary);
+  display:grid;place-items:center;font-size:13px;font-weight:600}
+.acct .menu{position:absolute;top:calc(100% + 8px);right:0;min-width:260px;padding:6px;
+  border-radius:12px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.18);z-index:20}
+.dark .acct .menu{box-shadow:0 12px 32px rgba(0,0,0,.5)}
+.acct .menu[hidden]{display:none}
+.acct .menu .who{padding:8px 10px 10px;border-bottom:1px solid var(--border);margin-bottom:6px}
+.acct .menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:0 10px;
+  border-radius:var(--radius);border:none;background:none;color:var(--foreground);font:inherit;
+  font-size:14px;cursor:pointer;text-align:left}
+.acct .menu button:hover{background:var(--secondary)}
+
+.wrap{max-width:760px;margin:0 auto;padding:32px 24px 96px}
+.pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
+.actions{display:flex;gap:8px;flex:none}
+
+/* filter */
+.seg{display:inline-flex;padding:3px;border-radius:999px;background:var(--muted);margin-bottom:20px}
+.seg button{min-height:34px;padding:0 14px;border-radius:999px;border:none;background:none;
+  color:var(--muted-foreground);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--background);color:var(--foreground);
+  box-shadow:0 1px 2px rgba(0,0,0,.10)}
+.dark .seg button[aria-selected="true"]{background:var(--secondary);box-shadow:none}
+
+/* live block — its own section, never mixed into upcoming */
+.live{border:1px solid var(--boundary);border-radius:12px;background:var(--card);
+  padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:28px}
+.dot{width:8px;height:8px;border-radius:999px;background:var(--state-critical);flex:none;
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--state-critical) 22%,transparent)}
+.live .meta{flex:1;min-width:0}
+.live .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* day groups — 41 rows in one list is a wall */
+.daygroup+.daygroup{margin-top:28px}
+.dayhead{font-size:12px;line-height:16px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted-foreground);padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.row{display:flex;align-items:center;gap:16px;padding:14px 8px;border-radius:var(--radius);
+  margin:0 -8px;transition:background-color .12s}
+.row:hover{background:var(--card)}
+.row+.row{border-top:1px solid var(--border)}
+.when{width:96px;flex:none;font-size:13px;line-height:18px}
+.when b{display:block;font-weight:600;font-size:15px;line-height:20px}
+.row .body{flex:1;min-width:0}
+.row .ttl{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .sub{font-size:13px;line-height:18px;color:var(--muted-foreground);
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row .ops{display:flex;gap:4px;flex:none;opacity:0;transition:opacity .12s}
+.row:hover .ops,.row:focus-within .ops{opacity:1}
+.tag{font-size:11px;line-height:16px;font-weight:500;padding:1px 8px;border-radius:999px;
+  border:1px solid var(--boundary);color:var(--muted-foreground)}
+
+.empty{text-align:center;padding:56px 24px}
+.empty h3{font-size:17px;font-weight:600;margin-bottom:6px}
+.empty p{color:var(--muted-foreground);margin-bottom:20px}
+
+/* forms */
+.section+.section{margin-top:28px}
+.section h2{font-size:13px;line-height:18px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted-foreground);margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field+.field{margin-top:16px}
+.hintline{font-size:12px;line-height:16px;color:var(--muted-foreground);margin-top:6px}
+
+/* the preview earns its space by pre-empting the timezone trap */
+.preview{padding:16px;border-radius:12px;background:var(--card);border:1px solid var(--boundary)}
+.preview .big{font-size:17px;font-weight:600;margin-bottom:2px}
+.preview .lines{font-size:13px;line-height:20px;color:var(--muted-foreground)}
+.preview .lines b{color:var(--foreground);font-weight:500}
+
+/* detail */
+.linkrow{display:flex;gap:8px;align-items:center}
+.linkbox{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;padding:0 12px;
+  border-radius:var(--radius);background:var(--muted);font-size:13px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;color:var(--muted-foreground)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.rule{height:1px;background:var(--border);margin:28px 0}
+
+/* mobile */
+@media (max-width:760px){
+  .topbar{padding:0 16px}
+  .wrap{padding:24px 16px 96px}
+  .pagehead{flex-direction:column;align-items:stretch}
+  .actions{width:100%}
+  .actions .btn{flex:1}
+  .grid2{grid-template-columns:1fr}
+  .row{align-items:flex-start;gap:12px}
+  .when{width:64px}
+  .row .ops{opacity:1}
+  .seg{display:flex;width:100%}
+  .seg button{flex:1}
+}
+
+/* demo scaffolding — DELETE when translating */
+.demo-nav{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:99;display:flex;
+  gap:4px;padding:6px;border-radius:999px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.demo-nav button{font:inherit;font-size:12px;font-weight:500;padding:6px 12px;border-radius:999px;
+  border:none;background:none;color:var(--muted-foreground);cursor:pointer;white-space:nowrap}
+.demo-nav button[data-on]{background:var(--secondary);color:var(--foreground)}
+.screen{display:none}
+.screen[data-on]{display:block}
+body.phone{background:#08090b;padding:20px 0 88px;display:grid;place-items:start center;height:auto}
+body.phone .screen[data-on]{width:390px;height:800px;border-radius:28px;overflow:auto;
+  border:1px solid #2a2e35;background:var(--background)}
+body.phone .topbar{position:static}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 · MEETINGS ============ -->
+<div class="screen" id="s-list" data-on>
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <div class="acct">
+      <button class="trigger" aria-expanded="false" aria-haspopup="menu"><span class="av">A</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="menu" hidden>
+        <div class="who"><div style="font-weight:500">Austine Eluro</div><div class="t-small dim">euroaustine3@gmail.com</div></div>
+        <button role="menuitem" class="themebtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Switch theme</button>
+        <button><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="pagehead">
+      <div><h1 class="t-h1">Meetings</h1></div>
+      <div class="actions">
+        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Start meeting</button>
+        <button class="btn btn-secondary">Schedule</button>
+      </div>
+    </div>
+
+    <!-- live is its own section: it is neither upcoming nor past -->
+    <div class="live">
+      <span class="dot"></span>
+      <div class="meta">
+        <div class="nm">Design review</div>
+        <div class="t-small dim">Started 14 minutes ago · 3 people</div>
+      </div>
+      <button class="btn btn-primary btn-sm">Join</button>
+    </div>
+
+    <div class="seg" role="tablist">
+      <button role="tab" aria-selected="true">Upcoming <span class="dim">6</span></button>
+      <button role="tab" aria-selected="false">Past <span class="dim">12</span></button>
+    </div>
+
+    <div class="daygroup">
+      <div class="dayhead">Today · Friday 4 September</div>
+      <div class="row">
+        <div class="when"><b>10:34</b><span class="dim">GMT</span></div>
+        <div class="body"><div class="ttl">Test with wifey</div>
+          <div class="sub"><span class="mono">bbw-bf5u-c23</span> · 30 min</div></div>
+        <div class="ops">
+          <button class="btn btn-ghost btn-sm" title="Copy link"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          <button class="btn btn-ghost btn-sm">Details</button>
+          <button class="btn btn-secondary btn-sm">Join</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="when"><b>16:00</b><span class="dim">GMT</span></div>
+        <div class="body"><div class="ttl">Roadmap planning</div>
+          <div class="sub"><span class="mono">tgr-6xkv-bqs</span> · 60 min</div></div>
+        <div class="ops">
+          <button class="btn btn-ghost btn-sm" title="Copy link"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          <button class="btn btn-ghost btn-sm">Details</button>
+          <button class="btn btn-secondary btn-sm">Join</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="daygroup">
+      <div class="dayhead">Tuesday 15 September</div>
+      <div class="row">
+        <div class="when"><b>14:30</b><span class="dim">GMT</span></div>
+        <div class="body"><div class="ttl">Quarterly planning</div>
+          <div class="sub"><span class="mono">us5-dxwv-zb9</span> · 90 min</div></div>
+        <div class="ops">
+          <button class="btn btn-ghost btn-sm" title="Copy link"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          <button class="btn btn-ghost btn-sm">Details</button>
+          <button class="btn btn-secondary btn-sm">Join</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ 2 · EMPTY ============ -->
+<div class="screen" id="s-empty">
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <div class="acct">
+      <button class="trigger" aria-expanded="false" aria-haspopup="menu"><span class="av">A</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="menu" hidden role="menu">
+        <div class="who"><div style="font-weight:500">Austine Eluro</div><div class="t-small dim">euroaustine3@gmail.com</div></div>
+        <button role="menuitem" class="themebtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Switch theme</button>
+        <button role="menuitem"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sign out</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="pagehead">
+      <div><h1 class="t-h1">Meetings</h1></div>
+      <div class="actions">
+        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Start meeting</button>
+        <button class="btn btn-secondary">Schedule</button>
+      </div>
+    </div>
+    <div class="card empty">
+      <h3>No meetings yet</h3>
+      <p>Start one now and share the link, or schedule for later.</p>
+      <button class="btn btn-primary">Start a meeting</button>
+    </div>
+  </main>
+</div>
+
+<!-- ============ 3 · SCHEDULE ============ -->
+<div class="screen" id="s-form">
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <div class="acct">
+      <button class="trigger" aria-expanded="false" aria-haspopup="menu"><span class="av">A</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="menu" hidden role="menu">
+        <div class="who"><div style="font-weight:500">Austine Eluro</div><div class="t-small dim">euroaustine3@gmail.com</div></div>
+        <button role="menuitem" class="themebtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Switch theme</button>
+        <button role="menuitem"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sign out</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap" style="max-width:620px">
+    <a href="#" class="t-small dim" style="color:var(--muted-foreground)">← Meetings</a>
+    <h1 class="t-h1" style="margin:8px 0 28px">Schedule a meeting</h1>
+
+    <div class="section">
+      <h2>What it is</h2>
+      <div class="field"><label class="label" for="ti">Title</label>
+        <input class="input" id="ti" value="Design review"></div>
+      <div class="field"><label class="label" for="de">Description <span class="dim" style="font-weight:400">(optional)</span></label>
+        <textarea class="input" id="de" placeholder="What this is about, and anything people should bring."></textarea></div>
+    </div>
+
+    <div class="section">
+      <h2>When it is</h2>
+      <div class="grid2">
+        <div><label class="label" for="dt">Date</label><input class="input" id="dt" type="date" value="2026-09-11"></div>
+        <div><label class="label" for="tm">Start time</label>
+          <select class="input" id="tm">
+            <option>09:45</option><option selected>10:00</option><option>10:15</option>
+            <option>10:30</option><option>10:45</option><option>11:00</option>
+          </select>
+          <p class="hintline">15-minute steps. Type to jump.</p>
+        </div>
+      </div>
+      <div class="grid2" style="margin-top:16px">
+        <div><label class="label" for="du">Duration</label>
+          <select class="input" id="du"><option>15 minutes</option><option selected>30 minutes</option><option>45 minutes</option><option>60 minutes</option><option>90 minutes</option></select></div>
+        <div><label class="label" for="tz">Timezone</label>
+          <select class="input" id="tz">
+            <option value="GMT|0" selected>Africa/Accra — GMT</option>
+            <option value="BST|1">Europe/London — BST</option>
+            <option value="EDT|-4">America/New_York — EDT</option>
+            <option value="GST|4">Asia/Dubai — GST</option>
+          </select></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Check it</h2>
+      <div class="preview">
+        <div class="big" id="pv-title">Design review</div>
+        <div class="lines">
+          <div id="pv-when"></div>
+          <div id="pv-dur"></div>
+          <div style="margin-top:6px">A link is generated when you schedule. Anyone with it can join without an account.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:28px">
+      <button class="btn btn-primary">Schedule meeting</button>
+      <button class="btn btn-ghost">Cancel</button>
+    </div>
+  </main>
+</div>
+
+<!-- ============ 4 · MEETING DETAIL ============ -->
+<div class="screen" id="s-detail">
+  <header class="topbar">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/></svg>Parley</div>
+    <div class="acct">
+      <button class="trigger" aria-expanded="false" aria-haspopup="menu"><span class="av">A</span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="menu" hidden role="menu">
+        <div class="who"><div style="font-weight:500">Austine Eluro</div><div class="t-small dim">euroaustine3@gmail.com</div></div>
+        <button role="menuitem" class="themebtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>Switch theme</button>
+        <button role="menuitem"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sign out</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap" style="max-width:620px">
+    <a href="#" class="t-small dim" style="color:var(--muted-foreground)">← Meetings</a>
+    <h1 class="t-h1" style="margin:8px 0 4px">Design review</h1>
+    <p class="dim" style="margin-bottom:24px">Friday 11 September, 10:00 – 10:30 GMT · 30 minutes</p>
+
+    <div class="section">
+      <h2>Meeting link</h2>
+      <div class="linkrow">
+        <span class="linkbox mono">parley.app/j/wcz-4npm-hjd</span>
+        <button class="btn btn-secondary">Copy</button>
+      </div>
+      <p class="hintline">Anyone with the link can join. They don't need an account.</p>
+    </div>
+
+    <div class="section">
+      <h2>Invite people</h2>
+      <div class="chips">
+        <button class="btn btn-secondary btn-sm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>Email an invite</button>
+        <button class="btn btn-secondary btn-sm">Download .ics</button>
+        <button class="btn btn-secondary btn-sm">Google Calendar</button>
+        <button class="btn btn-secondary btn-sm">Outlook</button>
+      </div>
+      <p class="hintline">The email opens in your own mail app with the time and link filled in. The .ics works with Apple Calendar, Thunderbird, and anything else that reads invites.</p>
+    </div>
+
+    <div class="rule"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary">Edit</button>
+      <button class="btn btn-danger">Cancel meeting</button>
+    </div>
+  </main>
+</div>
+
+<!-- DEMO SCAFFOLDING — delete when translating -->
+<nav class="demo-nav">
+  <button data-go="s-list" data-on>Meetings</button>
+  <button data-go="s-empty">Empty</button>
+  <button data-go="s-form">Schedule</button>
+  <button data-go="s-detail">Detail</button>
+  <button id="phone">Phone</button>
+  <button id="theme">Theme</button>
+</nav>
+<script>
+document.querySelectorAll('.demo-nav [data-go]').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.screen').forEach(s=>s.removeAttribute('data-on'));
+    document.querySelectorAll('.demo-nav [data-go]').forEach(x=>x.removeAttribute('data-on'));
+    document.getElementById(b.dataset.go).setAttribute('data-on','');
+    b.setAttribute('data-on','');
+  };
+});
+document.getElementById('theme').onclick=()=>document.documentElement.classList.toggle('dark');
+document.getElementById('phone').onclick=e=>{
+  document.body.classList.toggle('phone'); e.target.toggleAttribute('data-on');
+};
+document.querySelectorAll('.acct .trigger').forEach(b=>{
+  const m=b.nextElementSibling;
+  b.onclick=e=>{e.stopPropagation();const o=!m.hidden;
+    document.querySelectorAll('.acct .menu').forEach(x=>x.hidden=true);
+    m.hidden=o;b.setAttribute('aria-expanded',String(!o));};
+});
+document.addEventListener('click',()=>{
+  document.querySelectorAll('.acct .menu').forEach(m=>m.hidden=true);
+  document.querySelectorAll('.acct .trigger').forEach(b=>b.setAttribute('aria-expanded','false'));
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){
+  document.querySelectorAll('.acct .menu').forEach(m=>m.hidden=true);
+  document.querySelectorAll('.acct .trigger').forEach(b=>b.setAttribute('aria-expanded','false'));
+}});
+document.querySelectorAll('.themebtn').forEach(b=>{
+  b.onclick=e=>{e.stopPropagation();document.documentElement.classList.toggle('dark');};
+});
+// the preview is computed from the form, not copy that goes stale
+(function(){
+  const $=id=>document.getElementById(id);
+  const ti=$('ti'), dt=$('dt'), tm=$('tm'), du=$('du'), tz=$('tz');
+  if(!ti) return;
+  const pad=n=>String(n).padStart(2,'0');
+  const hhmm=m=>pad(Math.floor(((m%1440)+1440)%1440/60))+':'+pad(m%60);
+  function render(){
+    $('pv-title').textContent = ti.value.trim() || 'Untitled meeting';
+    const [zl,off] = tz.value.split('|'); const offset=Number(off);
+    const mins = parseInt(du.value,10);
+    const [h,mi] = tm.value.split(':').map(Number);
+    const start = h*60+mi, end = start+mins;
+    const d = new Date(dt.value+'T00:00:00');
+    const day = isNaN(d) ? '—' :
+      d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
+    $('pv-when').innerHTML =
+      `<b>${day}</b>, ${hhmm(start)} – ${hhmm(end)} <b>${zl}</b>`;
+    const utc = offset===0 ? 'same as UTC'
+      : `${hhmm(start-offset*60)} – ${hhmm(end-offset*60)} UTC`;
+    $('pv-dur').textContent = `${mins} minutes · ${utc}`;
+  }
+  [ti,dt,tm,du,tz].forEach(el=>{el.addEventListener('input',render);el.addEventListener('change',render);});
+  render();
+})();
+
+document.querySelectorAll('.seg button').forEach(b=>{
+  b.onclick=()=>{b.parentElement.querySelectorAll('button').forEach(x=>x.ariaSelected='false');b.ariaSelected='true';};
+});
+</script>
+</body>
+</html>

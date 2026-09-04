@@ -26,6 +26,7 @@
     "dev:signin": "node --env-file=.env.local scripts/dev-signin.mjs",
     "check:a11y": "node scripts/check-a11y.mjs",
     "check:targets": "node --env-file=.env.local node_modules/@playwright/test/cli.js test --project=app --project=media -g \"touch targets\"",
+    "check:scrim": "node --env-file=.env.local node_modules/@playwright/test/cli.js test --project=app scrim.spec.ts",
     "check:connection": "node scripts/check-connection.mjs",
     "check:deps": "node scripts/check-deps.mjs"
   },

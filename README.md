@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Parley — project documents
 
-## Getting Started
+Everything Claude Code needs. Drop these into the repo root; **the repo is the single copy from here on.**
 
-First, run the development server:
+## Read in this order
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+| File | What it is |
+|---|---|
+| **`CLAUDE.md`** | Rules, design tokens, testing rules, accessibility floor. Auto-loaded every session. **Authoritative** — where it and any other document disagree, this one wins. |
+| **`BUILD-PLAN-v1.3.md`** | Current work: field-test defects and the interface pass. **Start here.** |
+| **`PRD.md`** | The specification. Product decisions and the reasoning behind them. |
+| **`BRAND.md`** | Name, logomark, wordmark, assets, voice, product vocabulary. |
+| `BUILD-PLAN.md` | The original eleven phases. History. |
+| `BUILD-PLAN-v1.2.md` | The first interface pass. History. |
+| `ACCOUNTS.md` | LiveKit, Supabase, Google Cloud setup. Done, kept for reference. |
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Folders
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**`design/`** — the visual specification for v1.3, as working HTML. Open in a browser; each file has a **Phone** toggle and, where the surface is theme-responsive, a **Theme** toggle.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Every colour is a `var()` copied verbatim from `CLAUDE.md`. **Translate the token names, not the computed values** — `var(--popover)` becomes `bg-popover`, `var(--boundary)` becomes `border-boundary`. Delete the `.demo-nav` block and its script.
 
-## Learn More
+- `01-signin-prejoin.html` — sign in, pre-join (asking / ready / denied)
+- `02-room.html` — grid, panel, watching a share, sharing, host ended it
+- `03-dashboard-schedule.html` — meetings, empty, schedule, meeting detail
 
-To learn more about Next.js, take a look at the following resources:
+**`brand/`** — generated assets. `favicon.ico` is multi-resolution with the correct mark variant per slice; `icon.svg` is the self-contained badge for `app/icon.svg`, not `mark.svg`. **Strip C2PA metadata when copying into `app/` and `public/`** — it can be 7.7KB around 410 bytes of artwork, on a file served with every page load.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**`scaffold/`** — `.env.example`, `lib/env.ts`, `check-env.mjs`. Already in the repo; kept for reference.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Two standing rules
 
-## Deploy on Vercel
+**Never read, `cat`, or print `.env.local`.** Verify with `npm run check:env`, which reports names and pass/fail, never values.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**When a document and the build disagree about a dependency, the build is usually right** and the document is describing a plan reality overtook. Fix the document.

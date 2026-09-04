@@ -114,28 +114,39 @@ const RULES = [
   // The focus ring is a non-text indicator under WCAG 1.4.11.
   { token: "--ring", surfaces: ALL_SURFACES, threshold: NON_TEXT },
   /**
-   * Only `--foreground` is permitted on the scrim. `--state-warning` falls to
-   * 3.79:1 there and `--state-critical` to 2.53:1, which is why rule 4 sends
-   * hued state indicators to an opaque `--popover` chip instead.
+   * The scrim's two permitted foregrounds, and no others.
    *
-   * This computes the permitted pairing. It does not detect a *use* of a
-   * forbidden one — the permitted-surfaces machinery verifies combinations, it
-   * does not scan components. `npm run check:connection` carries that scan,
-   * and is weaker for being a scan.
+   * `--state-warning` falls to 3.79:1 here and `--state-critical` to 2.53:1,
+   * which is why rule 4 sends hued state indicators to an opaque `--popover`
+   * chip instead.
+   *
+   * **`--foreground` used to hold this permission and no longer does.** It
+   * flips with the theme and the scrim does not, so in light mode it is
+   * `#16181D` on `#515355` — 2.30:1. That pairing does not render today only
+   * because every scrim in the product happens to sit inside a route layout
+   * that forces `.dark`; the guarantee belonged to two files rather than to the
+   * token. `--on-scrim` and `--on-scrim-muted` are theme-invariant, so it now
+   * belongs to the value.
+   *
+   * No `themes` scoping any more, and that is the point of the change: these
+   * two are the same in both palettes, so there is no longer a pairing the
+   * product cannot produce that has to be excused with a note.
+   *
+   * This still computes a permitted *pairing*. It cannot see a forbidden *use*
+   * — that is `e2e/scrim.spec.ts`, which measures rendered colour against
+   * rendered backdrop in a real browser.
    */
   {
-    token: "--foreground",
+    token: "--on-scrim",
     surfaces: [SCRIM_OVER_WHITE],
     threshold: TEXT,
-    label: "scrim over white",
-    // Dark only, and not as a convenience. The scrim exists over video and
-    // nowhere else, and rule 8b forces `.dark` on /j/[code] and /room/[code]
-    // regardless of preference — so a light `--foreground` never meets a
-    // scrim. Checking it anyway reports 2.30:1 for a pairing the product
-    // cannot produce, which is a false failure, and the way those get resolved
-    // is by lowering a threshold. Scoping the rule to where the surface
-    // actually exists is the honest fix.
-    themes: ["dark"],
+    label: "on-scrim over white",
+  },
+  {
+    token: "--on-scrim-muted",
+    surfaces: [SCRIM_OVER_WHITE],
+    threshold: TEXT,
+    label: "on-scrim-muted over white",
   },
 ];
 
@@ -259,12 +270,35 @@ const scrimOverWhite = composite(scrimDeclaration[1], "#ffffff");
 /** The declaration itself, for the og.tsx literal comparison below. */
 const scrimSource = scrimDeclaration[1];
 
+/**
+ * The scrim's foregrounds, which live beside it outside the palette blocks.
+ *
+ * They are declared once for `:root`, `.light` and `.dark` together, so
+ * `parseBlock` never sees them — it reads the two palette blocks, and finding
+ * a token missing there is a hard failure rather than a skip. That is the
+ * behaviour we want, and it means these have to be collected deliberately.
+ *
+ * Being outside the palette is the property under test, not an inconvenience:
+ * a `--on-scrim` that appeared in `.dark` and `.light` separately could drift
+ * between them, which is precisely the failure `--foreground` had on this
+ * surface.
+ */
+const INVARIANT = {};
+for (const token of ["--on-scrim", "--on-scrim-muted"]) {
+  const declared = css.match(new RegExp(`${token}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
+  if (!declared) {
+    throw new Error(`No ${token} declaration in globals.css — rule 4 is unchecked`);
+  }
+  INVARIANT[token] = declared[1];
+}
+
 const themes = {
   dark: parseBlock(css, ".dark {"),
   light: parseBlock(css, ".light {"),
 };
 for (const tokens of Object.values(themes)) {
   tokens[SCRIM_OVER_WHITE] = scrimOverWhite;
+  Object.assign(tokens, INVARIANT);
 }
 
 /**

@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parley — the room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOKENS — verbatim from CLAUDE.md. Translate token NAMES.
+   The room is FORCED DARK regardless of theme (PRD §4.2).
+   ============================================================ */
+.dark{
+  --background:#0E1013; --foreground:#F2F4F7; --card:#171A1F; --popover:#1B1F25;
+  --primary:#F2F4F7; --primary-foreground:#0E1013; --secondary:#242830;
+  --muted:#1F232A; --muted-foreground:#9AA1AC; --accent:#242830;
+  --destructive:#D32F2F; --destructive-foreground:#FFFFFF;
+  --border:#242830; --input:#2B303A; --ring:#F2F4F7;
+  --state-critical:#F26669; --state-warning:#F5A524; --boundary:#687284;
+}
+:root,.dark,.light{
+  --scrim:rgba(14,16,19,.72);
+  --on-scrim:#F2F4F7;        /* 7.01:1 — --foreground is NOT permitted here */
+  --on-scrim-muted:#C6CAD1;  /* 4.70:1 */
+  --radius:.5rem;
+}
+
+/* Native controls draw their own parts — the date picker glyph, the select
+   dropdown list, scrollbars, spinners. Without color-scheme the browser
+   paints them for a light UI, which is why the calendar icon was a dark
+   glyph on a dark field. Declaring it is what makes the OS match the theme. */
+:root,.dark{color-scheme:dark}   /* the room is always dark */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator{
+  opacity:.55;cursor:pointer;transition:opacity .12s}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover{opacity:1}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--background);color:var(--foreground);overflow:hidden;
+  font-family:"Instrument Sans",ui-sans-serif,system-ui,"Noto Sans",sans-serif;
+  font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",monospace}
+.t-small{font-size:13px;line-height:18px}
+.t-caption{font-size:12px;line-height:16px;font-weight:500}
+.dim{color:var(--muted-foreground)}
+
+/* ============ shell ============ */
+.room{height:100%;display:flex;flex-direction:column}
+.room-main{flex:1;min-height:0;display:flex;align-items:stretch}
+.stagearea{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px;gap:8px}
+
+/* ============ tiles ============ */
+.grid{flex:1;min-height:0;display:grid;gap:8px;
+  grid-template-columns:repeat(2,minmax(0,1fr));align-content:stretch}
+.grid.one{grid-template-columns:1fr}
+.tile{position:relative;border-radius:.75rem;overflow:hidden;background:var(--card);
+  border:1px solid var(--boundary);min-height:0;
+  transition:border-color .12s linear,border-width .12s linear}
+/* speaking: weight and value, no hue */
+.tile.speaking{border-width:2px;border-color:var(--foreground)}
+.tile .vid{position:absolute;inset:0}
+.v1{background:radial-gradient(40% 48% at 52% 42%,#6b5c4a 0%,#4a4136 46%,rgba(42,38,33,0) 100%),
+  linear-gradient(160deg,#2f2a24 0%,#1c1b1c 58%,#141517 100%)}
+.v2{background:radial-gradient(42% 50% at 46% 40%,#3f5563 0%,#2b3a44 48%,rgba(30,38,44,0) 100%),
+  linear-gradient(200deg,#26333b 0%,#1a2126 60%,#141719 100%)}
+/* camera off: the initial scales with the tile, it does not float in a void */
+.tile .off{position:absolute;inset:0;display:grid;place-items:center}
+.tile .off span{width:clamp(48px,28%,120px);aspect-ratio:1;border-radius:999px;
+  background:var(--secondary);display:grid;place-items:center;font-weight:600;
+  font-size:clamp(18px,10cqw,34px);color:var(--foreground)}
+.tile{container-type:inline-size}
+/* the label sits on a bottom-only scrim, never on raw video */
+.tile .label{position:absolute;left:0;right:0;bottom:0;height:56px;display:flex;align-items:flex-end;
+  justify-content:space-between;padding:0 10px 8px;gap:8px;color:var(--on-scrim);
+  background:linear-gradient(to top,var(--scrim) 0%,rgba(14,16,19,0) 100%);
+  font-size:13px;line-height:18px}
+.tile .label .muted-ic{color:var(--on-scrim-muted)}
+/* connection: an OPAQUE chip, because hue on a scrim fails contrast */
+.pill{position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:6px;
+  padding:4px 8px;border-radius:999px;background:var(--popover);border:1px solid var(--boundary);
+  font-size:12px;line-height:16px;font-weight:500}
+.pill.warn{color:var(--state-warning)}
+.pill.crit{color:var(--state-critical)}
+
+/* self view — a corner PiP, not a peer tile */
+.stage-inner{position:relative;flex:1;min-height:0;display:flex}
+.stage-inner>.grid,.stage-inner>.shareview{flex:1;min-width:0}
+.pip{position:absolute;right:16px;bottom:16px;width:200px;aspect-ratio:16/9;border-radius:.75rem;
+  overflow:hidden;border:1px solid var(--boundary);background:var(--card);z-index:3;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);cursor:grab;touch-action:none;user-select:none}
+.pip:active{cursor:grabbing}
+.pip .label{height:40px;font-size:12px}
+.pip .grip{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:28px;height:3px;
+  border-radius:999px;background:var(--on-scrim-muted);opacity:0;transition:opacity .12s}
+.pip:hover .grip{opacity:.8}
+
+/* ============ share ============ */
+.shareview{flex:1;min-height:0;display:flex;gap:8px}
+.sharebox{flex:1;min-width:0;border-radius:.75rem;border:1px solid var(--boundary);
+  background:#0a0b0d;display:grid;place-items:center;position:relative;overflow:hidden}
+.sharebox .fake-screen{width:92%;aspect-ratio:16/10;border-radius:6px;
+  background:linear-gradient(150deg,#1e2937 0%,#16202b 40%,#101820 100%);
+  border:1px solid #2b3a49}
+.share-tools{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+.tool{width:36px;height:36px;border-radius:var(--radius);display:grid;place-items:center;
+  background:var(--scrim);border:1px solid var(--on-scrim-muted);color:var(--on-scrim);cursor:pointer}
+.tool:hover{background:rgba(36,40,48,.9)}
+.filmstrip{width:220px;flex:none;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.filmstrip .tile{aspect-ratio:16/9;flex:none}
+/* B1: when YOU share, the share region is not rendered at all — you get the
+   grid at full size and one compact bar. Said once, not three times. */
+.sharebar{display:flex;align-items:center;justify-content:center;gap:12px;flex:none}
+.sharebar .inner{display:flex;align-items:center;gap:12px;padding:8px 8px 8px 14px;
+  border-radius:999px;background:var(--popover);border:1px solid var(--boundary);font-size:13px}
+
+/* ============ control bar ============ */
+.bar{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px}
+.grp{display:flex;align-items:center;gap:8px}
+.grp+.grp{margin-left:16px}
+.ctl{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 16px;
+  border-radius:999px;border:1px solid var(--boundary);background:var(--secondary);
+  color:var(--foreground);font:inherit;font-size:14px;font-weight:500;cursor:pointer;
+  transition:background-color .12s cubic-bezier(.2,0,0,1),transform .08s}
+.ctl:hover{background:var(--accent);transform:scale(1.04)}
+.ctl:active{transform:scale(.96)}
+.ctl:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.ctl.off{background:var(--secondary)}
+.ctl.off svg{opacity:.9}
+/* secondary tier: ghost until hover or active */
+.ctl.sec{width:44px;height:44px;padding:0;background:transparent;border-color:transparent;
+  color:var(--muted-foreground)}
+.ctl.sec:hover{background:var(--secondary);color:var(--foreground)}
+.ctl.sec[aria-expanded="true"]{background:var(--secondary);border-color:var(--boundary);color:var(--foreground)}
+.sec-wrap .count{position:absolute;top:0;right:0;min-width:16px;height:16px;padding:0 4px;
+  border-radius:999px;background:var(--foreground);color:var(--background);
+  font-size:10px;line-height:16px;font-weight:600;text-align:center;pointer-events:none}
+.sec-wrap{position:relative;display:inline-flex}
+/* leave: the only non-circular control, split for the host */
+.leave{display:inline-flex;align-items:center;gap:8px;height:48px;padding:0 16px 0 18px;
+  border-radius:999px;border:1px solid transparent;cursor:pointer;
+  background:var(--destructive);color:var(--destructive-foreground);
+  font:inherit;font-size:14px;font-weight:500;
+  transition:background-color .12s cubic-bezier(.2,0,0,1),transform .08s}
+.leave:hover{background:#B92A2A}
+.leave:active{transform:scale(.98)}
+.leave:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.leave .chev{opacity:.85;transition:transform .12s}
+.leave[aria-expanded="true"] .chev{transform:rotate(180deg)}
+
+/* ============ side panel ============ */
+.panel{width:360px;flex:none;border-left:1px solid var(--boundary);background:var(--popover);
+  display:flex;flex-direction:column;min-height:0}
+.panel-head{flex:none;display:flex;align-items:center;gap:4px;padding:8px 8px 0}
+.tab{flex:1;height:40px;border-radius:var(--radius);border:none;background:none;cursor:pointer;
+  font:inherit;font-size:14px;font-weight:500;color:var(--muted-foreground)}
+.tab[aria-selected="true"]{background:var(--secondary);color:var(--foreground)}
+.panel-close{width:40px;height:40px;border-radius:var(--radius);border:none;background:none;
+  color:var(--muted-foreground);cursor:pointer;display:grid;place-items:center;flex:none}
+.panel-close:hover{background:var(--secondary);color:var(--foreground)}
+.panel-body{flex:1;min-height:0;overflow-y:auto;padding:16px}
+.panel-foot{flex:none;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--border)}
+.composer-row{display:flex;gap:8px;align-items:flex-end}
+.composer{flex:1;min-width:0;min-height:44px;max-height:120px;padding:11px 12px;
+  border-radius:var(--radius);resize:none;background:transparent;border:1px solid var(--boundary);
+  color:var(--foreground);font:inherit;font-size:15px}
+.composer:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 1px var(--ring)}
+.send{flex:none;width:44px;height:44px;border-radius:var(--radius);border:none;cursor:pointer;
+  background:var(--primary);color:var(--primary-foreground);display:grid;place-items:center;
+  transition:opacity .12s,transform .08s}
+.send:hover{opacity:.92}
+.send:active{transform:scale(.96)}
+.send:disabled{opacity:.35;cursor:not-allowed}
+.send:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+
+/* chat: metadata against body is the hierarchy that matters */
+.msg+.msg{margin-top:16px}
+.msg .meta{display:flex;gap:8px;align-items:baseline;font-size:12px;line-height:16px;
+  font-weight:500;color:var(--muted-foreground);margin-bottom:4px}
+.msg .meta time{font-weight:400}
+.sys{text-align:center;font-size:12px;line-height:16px;color:var(--muted-foreground);margin:24px 0}
+.empty{text-align:center;font-size:13px;line-height:18px;color:var(--muted-foreground);padding:8px 12px}
+
+/* people */
+.copyrow{display:flex;gap:8px;align-items:center;padding:12px;border-radius:var(--radius);
+  background:var(--muted);margin-bottom:16px}
+.copyrow .url{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:13px;color:var(--muted-foreground)}
+.copybtn{flex:none;height:36px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--boundary);
+  background:var(--secondary);color:var(--foreground);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.copybtn:hover{background:var(--accent)}
+.person{display:flex;align-items:center;gap:10px;min-height:44px}
+.person+.person{margin-top:4px}
+.person .av{width:32px;height:32px;border-radius:999px;background:var(--secondary);flex:none;
+  display:grid;place-items:center;font-size:13px;font-weight:600}
+.person .nm{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:11px;line-height:16px;font-weight:500;padding:1px 7px;border-radius:999px;
+  border:1px solid var(--boundary);color:var(--muted-foreground);flex:none}
+.person .st{display:flex;gap:8px;color:var(--muted-foreground);flex:none}
+
+/* reactions float from the sender's tile, 2400ms, staggered */
+.rx{position:absolute;bottom:56px;font-size:30px;pointer-events:none;
+  animation:rise 2400ms cubic-bezier(.22,.6,.3,1) forwards}
+@keyframes rise{
+  0%{opacity:0;transform:translate(0,0) scale(.8)}
+  8%{opacity:1;transform:translate(0,-6%) scale(1)}
+  70%{opacity:1}
+  100%{opacity:0;transform:translate(var(--dx,8px),-40%) scale(1) rotate(var(--rot,6deg))}
+}
+@media (prefers-reduced-motion:reduce){
+  .rx{animation:fade 2400ms linear forwards}
+  @keyframes fade{0%,10%{opacity:0}20%,70%{opacity:1}100%{opacity:0}}
+  .ctl:hover{transform:none}
+}
+
+/* reaction picker */
+.picker{position:absolute;bottom:64px;left:50%;transform:translateX(-50%);display:flex;gap:4px;
+  padding:6px;border-radius:999px;background:var(--popover);border:1px solid var(--boundary)}
+.picker button{width:44px;height:44px;border-radius:999px;border:none;background:none;cursor:pointer;
+  font-size:22px;transition:transform .12s,background-color .12s}
+.picker button:hover{background:var(--secondary);transform:scale(1.12)}
+
+/* overflow menu — keeps the bar to what you reach for under pressure */
+.menu-wrap{position:relative;display:inline-flex}
+.menu{position:absolute;bottom:calc(100% + 8px);right:0;min-width:232px;padding:6px;
+  border-radius:12px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:30}
+.menu[hidden]{display:none}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 10px;
+  border-radius:var(--radius);border:none;background:none;color:var(--foreground);
+  font:inherit;font-size:14px;cursor:pointer;text-align:left}
+.menu button:hover{background:var(--secondary)}
+.menu button .k{margin-left:auto;font-size:12px;color:var(--muted-foreground)}
+.menu hr{border:0;border-top:1px solid var(--border);margin:6px 4px}
+.menu .grey{color:var(--muted-foreground)}
+.menu .only-mobile{display:none}
+@media (max-width:900px){
+  .menu .only-mobile{display:flex}
+  .menu .desk-only{display:none}
+}
+
+/* leave menu — the destructive option lives behind the chevron, never
+   beside Leave where a mis-click ends everyone else's meeting */
+.leave-wrap{position:relative;display:inline-flex}
+.leave-menu{position:absolute;bottom:calc(100% + 8px);right:0;min-width:260px;padding:6px;
+  border-radius:12px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:30}
+.leave-menu[hidden]{display:none}
+.leave-menu button{display:flex;gap:10px;width:100%;padding:10px;border-radius:var(--radius);
+  border:none;background:none;color:var(--foreground);font:inherit;font-size:14px;
+  cursor:pointer;text-align:left;align-items:flex-start}
+.leave-menu button:hover{background:var(--secondary)}
+.leave-menu button svg{flex:none;margin-top:2px}
+.leave-menu .sub{display:block;font-size:12px;line-height:16px;color:var(--muted-foreground);
+  margin-top:2px;font-weight:400}
+.leave-menu hr{border:0;border-top:1px solid var(--border);margin:6px 4px}
+.leave-menu .danger{color:var(--state-critical)}
+.leave-menu .danger .sub{color:var(--muted-foreground)}
+
+/* confirm — a real <dialog>, so focus trapping is the platform's job.
+   Modal surfaces trap; non-modal panels do not. */
+dialog.confirm{border:1px solid var(--boundary);background:var(--popover);color:var(--foreground);
+  border-radius:14px;padding:24px;max-width:400px;width:calc(100% - 32px)}
+dialog.confirm::backdrop{background:rgba(6,7,9,.66)}
+dialog.confirm h2{font-size:20px;line-height:26px;font-weight:600;margin-bottom:8px}
+dialog.confirm p{font-size:15px;line-height:22px;color:var(--muted-foreground);margin-bottom:20px}
+dialog.confirm .row{display:flex;gap:8px;justify-content:flex-end}
+dialog.confirm button{min-height:44px;padding:0 16px;border-radius:var(--radius);font:inherit;
+  font-size:15px;font-weight:500;cursor:pointer;border:1px solid transparent}
+dialog.confirm .cancel{background:var(--secondary);border-color:var(--boundary);color:var(--foreground)}
+dialog.confirm .end{background:var(--destructive);color:var(--destructive-foreground)}
+@media (max-width:900px){ dialog.confirm .row{flex-direction:column-reverse}
+  dialog.confirm button{width:100%} }
+
+/* what everyone else lands on */
+.ended{flex:1;display:grid;place-items:center;text-align:center;padding:32px}
+.ended .inner{max-width:360px}
+.ended h1{font-size:24px;line-height:30px;font-weight:600;margin:20px 0 8px}
+.ended p{color:var(--muted-foreground);margin-bottom:24px}
+.ended .btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;
+  border-radius:var(--radius);border:1px solid transparent;font:inherit;font-size:15px;
+  font-weight:500;cursor:pointer;background:var(--primary);color:var(--primary-foreground)}
+.ended .btn.sec{background:var(--secondary);border-color:var(--boundary);color:var(--foreground);
+  margin-top:8px}
+
+/* ================= MOBILE ================= */
+@media (max-width:900px){
+  .room-main{flex-direction:column}
+  .stagearea{padding:8px;gap:6px}
+  .grid{grid-template-columns:1fr;grid-auto-rows:1fr}
+  .pip{right:12px;bottom:12px;width:112px}
+  .pip .label{height:32px;font-size:11px;padding:0 6px 5px}
+  /* F3: a horizontal strip, not a 2-up grid eating the top third */
+  .shareview{flex-direction:column}
+  .filmstrip{width:auto;flex-direction:row;height:96px;overflow-x:auto;overflow-y:hidden;order:-1}
+  .filmstrip .tile{height:96px;width:auto;aspect-ratio:16/9;flex:none}
+  /* one row, Leave inline. Present and reactions move into the overflow
+     menu — six controls fit a 390px bar, eight do not. */
+  .bar{padding:8px;gap:4px}
+  .grp{gap:4px}
+  .grp+.grp{margin-left:8px}
+  .bar .ctl{height:40px;width:40px;padding:0}
+  .bar .ctl .lbl{display:none}
+  .leave{height:40px;padding:0 12px 0 14px;gap:6px}
+  .leave .lbl{display:inline}
+  .leave-menu{right:0;min-width:min(300px,calc(100vw - 32px))}
+  .mobile-hide{display:none!important}
+  .menu{right:auto;left:50%;transform:translateX(-50%);min-width:min(280px,calc(100vw - 32px))}
+  /* full-width bar, not a pill that wraps its own button */
+  .sharebar .inner{width:100%;justify-content:space-between;border-radius:var(--radius);
+    padding:8px 8px 8px 12px}
+  .sharebar .inner{font-size:13px}
+  .sharebar .inner .ctl{flex:none;width:auto;height:34px;padding:0 12px;white-space:nowrap}
+  .sharebar .inner .lbl{display:inline}
+  /* the box hugs its content instead of drawing a large empty rectangle */
+  .sharebox{flex:none}
+  .sharebox .fake-screen{width:100%}
+  /* panel becomes a sheet, capped so the video stays visible above it */
+  .panel{position:fixed;left:0;right:0;bottom:0;width:auto;max-height:55dvh;z-index:20;
+    border-left:0;border-top:1px solid var(--boundary);border-radius:16px 16px 0 0}
+  .panel::before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);
+    width:36px;height:4px;border-radius:999px;background:var(--boundary)}
+  .panel-head{padding-top:20px}
+}
+
+/* ---------- demo scaffolding — DELETE when translating ---------- */
+.demo-nav{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:99;display:flex;
+  gap:4px;padding:6px;border-radius:999px;background:var(--popover);border:1px solid var(--boundary)}
+.demo-nav button{font:inherit;font-size:12px;font-weight:500;padding:6px 12px;border-radius:999px;
+  border:none;background:none;color:var(--muted-foreground);cursor:pointer;white-space:nowrap}
+.demo-nav button[data-on]{background:var(--secondary);color:var(--foreground)}
+.screen{display:none;height:100%}
+.screen[data-on]{display:flex}
+body.phone{background:#08090b;padding:20px 0 88px;display:grid;place-items:start center;
+  height:auto;overflow:auto}
+body.phone .screen[data-on]{width:390px;height:800px;border-radius:28px;overflow:hidden;
+  border:1px solid #2a2e35;background:var(--background);position:relative}
+body.phone .panel{position:absolute}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 · GRID ============ -->
+<div class="room screen" id="s-grid" data-on>
+  <div class="room-main">
+    <div class="stagearea">
+      <div class="stage-inner"><div class="grid">
+        <div class="tile speaking">
+          <div class="vid v1"></div>
+          <div class="rx" style="left:22%;--dx:14px;--rot:8deg">🎉</div>
+          <div class="label"><span>Kofi Mensah</span></div>
+        </div>
+        <div class="tile">
+          <div class="off"><span>A</span></div>
+          <div class="pill warn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 20h.01"/></svg>
+            Unstable connection
+          </div>
+          <div class="label"><span>Ama Serwaa</span>
+            <svg class="muted-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V4a3 3 0 0 0-5.9-.7M19 10v2a7 7 0 0 1-.8 3.3M12 19v4"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="pip"><div class="grip"></div>
+        <div class="vid v2"></div>
+        <div class="label"><span>You</span></div>
+      </div></div>
+      <div class="bar">
+        <div class="grp">
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span class="lbl">Mute</span></button>
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="lbl">Stop video</span></button>
+          <button class="ctl mobile-hide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">Present</span></button>
+        </div>
+        <div class="grp">
+          <button class="ctl sec mobile-hide" aria-label="Reactions" title="Reactions"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></button>
+          <button class="ctl sec" aria-label="Chat" title="Chat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg></button>
+          <span class="sec-wrap">
+            <button class="ctl sec" aria-label="People, 3 in the meeting" title="People"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg></button>
+            <span class="count">3</span></span>
+          
+          <span class="menu-wrap">
+            <button class="ctl sec more-btn" aria-label="More options" aria-expanded="false" title="More"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            <div class="menu" hidden>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>Send a reaction</button>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Share your screen</button>
+              <hr class="only-mobile">
+              <button><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>Audio and video settings</button>
+              <button class="desk-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>Keyboard shortcuts<span class="k">?</span></button>
+            </div>
+          </span>
+        </div>
+        <div class="grp">
+          <span class="leave-wrap">
+            <button class="leave" aria-haspopup="menu" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.7 13.3a11 11 0 0 0 5 3l1.6-2a1 1 0 0 1 1.2-.3l3 1.3a1 1 0 0 1 .6 1.1l-.5 2.4a1 1 0 0 1-1 .8A17 17 0 0 1 3.4 4a1 1 0 0 1 .8-1l2.4-.5a1 1 0 0 1 1.1.6l1.3 3a1 1 0 0 1-.3 1.2l-2 1.6"/><path d="M1 1l22 22"/></svg><span class="lbl">Leave</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+            <div class="leave-menu" hidden role="menu">
+              <button role="menuitem" data-leave><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                <span>Leave the meeting<span class="sub">It carries on without you. Your link still works.</span></span>
+              </button>
+              <hr>
+              <button role="menuitem" class="danger" data-end><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                <span>End meeting for everyone<span class="sub">Everyone is disconnected and the link stops working.</span></span>
+              </button>
+            </div>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2 · PANEL OPEN ============ -->
+<div class="room screen" id="s-panel">
+  <div class="room-main">
+    <div class="stagearea">
+      <div class="stage-inner"><div class="grid one">
+        <div class="tile speaking"><div class="vid v1"></div><div class="label"><span>Kofi Mensah</span></div></div>
+      </div>
+      <div class="pip"><div class="grip"></div><div class="vid v2"></div><div class="label"><span>You</span></div></div></div>
+      <div class="bar">
+        <div class="grp">
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span class="lbl">Mute</span></button>
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="lbl">Stop video</span></button>
+          <button class="ctl mobile-hide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">Present</span></button>
+        </div>
+        <div class="grp">
+          <button class="ctl sec mobile-hide" aria-label="Reactions"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></button>
+          <button class="ctl sec" aria-label="Chat" aria-expanded="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg></button>
+          <span class="sec-wrap"><button class="ctl sec" aria-label="People, 3 in the meeting"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg></button><span class="count">3</span></span>
+          <span class="menu-wrap">
+            <button class="ctl sec more-btn" aria-label="More options" aria-expanded="false" title="More"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            <div class="menu" hidden>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>Send a reaction</button>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Share your screen</button>
+              <hr class="only-mobile">
+              <button><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>Audio and video settings</button>
+              <button class="desk-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>Keyboard shortcuts<span class="k">?</span></button>
+            </div>
+          </span>
+        </div>
+        <div class="grp">
+          <span class="leave-wrap">
+            <button class="leave" aria-haspopup="menu" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.7 13.3a11 11 0 0 0 5 3l1.6-2a1 1 0 0 1 1.2-.3l3 1.3a1 1 0 0 1 .6 1.1l-.5 2.4a1 1 0 0 1-1 .8A17 17 0 0 1 3.4 4a1 1 0 0 1 .8-1l2.4-.5a1 1 0 0 1 1.1.6l1.3 3a1 1 0 0 1-.3 1.2l-2 1.6"/><path d="M1 1l22 22"/></svg><span class="lbl">Leave</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+            <div class="leave-menu" hidden role="menu">
+              <button role="menuitem" data-leave><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                <span>Leave the meeting<span class="sub">It carries on without you. Your link still works.</span></span>
+              </button>
+              <hr>
+              <button role="menuitem" class="danger" data-end><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                <span>End meeting for everyone<span class="sub">Everyone is disconnected and the link stops working.</span></span>
+              </button>
+            </div>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- one panel, two tabs — not two panels that fight -->
+    <aside class="panel">
+      <div class="panel-head">
+        <button class="tab" aria-selected="true" id="tab-chat">Chat</button>
+        <button class="tab" aria-selected="false" id="tab-people">People&nbsp;<span class="dim">3</span></button>
+        <button class="panel-close" aria-label="Close panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+
+      <div class="panel-body" id="pane-chat">
+        <p class="empty">Messages are only visible to people in the meeting, and disappear when it ends.</p>
+        <p class="sys">Ama Serwaa joined</p>
+        <div class="msg">
+          <div class="meta">Kofi Mensah <time>10:04</time></div>
+          <div>Sharing my screen in a second — the new grid breakpoints are in.</div>
+        </div>
+        <div class="msg">
+          <div class="meta">Ama Serwaa <time>10:05</time></div>
+          <div>Perfect. Can you start at four participants?</div>
+        </div>
+        <p class="sys">3 people joined</p>
+      </div>
+
+      <div class="panel-body" id="pane-people" hidden>
+        <div class="copyrow">
+          <span class="url mono">parley.app/j/wcz-4npm-hjd</span>
+          <button class="copybtn">Copy link</button>
+        </div>
+        <div class="person"><span class="av">K</span><span class="nm">Kofi Mensah</span><span class="chip">Host</span>
+          <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span></div>
+        <div class="person"><span class="av">A</span><span class="nm">Ama Serwaa</span>
+          <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V4a3 3 0 0 0-5.9-.7M19 10v2a7 7 0 0 1-.8 3.3M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M16 16v2a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2M9.5 5H14a2 2 0 0 1 2 2v3.5l7-4.5v11"/></svg></span></div>
+        <div class="person"><span class="av">Y</span><span class="nm">You</span>
+          <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span></div>
+      </div>
+
+      <div class="panel-foot" id="foot-chat">
+        <div class="composer-row">
+          <textarea class="composer" rows="1" placeholder="Message everyone"></textarea>
+          <button class="send" aria-label="Send message" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ============ 3 · SOMEONE ELSE IS SHARING ============ -->
+<div class="room screen" id="s-watch">
+  <div class="room-main">
+    <div class="stagearea">
+      <div class="stage-inner"><div class="shareview">
+        <div class="sharebox">
+          <div class="fake-screen"></div>
+          <div class="share-tools">
+            <button class="tool" aria-label="Fit to width" title="Fit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+            <button class="tool" aria-label="Fullscreen" title="Fullscreen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+          </div>
+          <div class="label" style="position:absolute;left:0;right:0;bottom:0;height:52px;padding:0 12px 10px">
+            <span>Kofi Mensah is sharing</span></div>
+        </div>
+        <div class="filmstrip">
+          <div class="tile speaking"><div class="vid v1"></div><div class="label"><span>Kofi</span></div></div>
+          <div class="tile"><div class="off"><span>A</span></div><div class="label"><span>Ama</span></div></div>
+          <div class="tile"><div class="vid v2"></div><div class="label"><span>You</span></div></div>
+        </div>
+      </div></div>
+      <div class="bar">
+        <div class="grp">
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span class="lbl">Mute</span></button>
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="lbl">Stop video</span></button>
+          <button class="ctl mobile-hide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">Present</span></button>
+        </div>
+        <div class="grp">
+          <button class="ctl sec mobile-hide" aria-label="Reactions"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></button>
+          <button class="ctl sec" aria-label="Chat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg></button>
+          <span class="sec-wrap"><button class="ctl sec" aria-label="People, 3 in the meeting"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg></button><span class="count">3</span></span>
+          <span class="menu-wrap">
+            <button class="ctl sec more-btn" aria-label="More options" aria-expanded="false" title="More"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            <div class="menu" hidden>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>Send a reaction</button>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Share your screen</button>
+              <hr class="only-mobile">
+              <button><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>Audio and video settings</button>
+              <button class="desk-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>Keyboard shortcuts<span class="k">?</span></button>
+            </div>
+          </span>
+        </div>
+        <div class="grp">
+          <span class="leave-wrap">
+            <button class="leave" aria-haspopup="menu" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.7 13.3a11 11 0 0 0 5 3l1.6-2a1 1 0 0 1 1.2-.3l3 1.3a1 1 0 0 1 .6 1.1l-.5 2.4a1 1 0 0 1-1 .8A17 17 0 0 1 3.4 4a1 1 0 0 1 .8-1l2.4-.5a1 1 0 0 1 1.1.6l1.3 3a1 1 0 0 1-.3 1.2l-2 1.6"/><path d="M1 1l22 22"/></svg><span class="lbl">Leave</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+            <div class="leave-menu" hidden role="menu">
+              <button role="menuitem" data-leave><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                <span>Leave the meeting<span class="sub">It carries on without you. Your link still works.</span></span>
+              </button>
+              <hr>
+              <button role="menuitem" class="danger" data-end><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                <span>End meeting for everyone<span class="sub">Everyone is disconnected and the link stops working.</span></span>
+              </button>
+            </div>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4 · YOU ARE SHARING (B1) ============ -->
+<div class="room screen" id="s-share">
+  <div class="room-main">
+    <div class="stagearea">
+      <div class="sharebar">
+        <div class="inner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          You're sharing your screen
+          <button class="ctl" style="height:34px;font-size:13px;padding:0 12px">Stop sharing</button>
+        </div>
+      </div>
+      <div class="stage-inner"><div class="grid">
+        <div class="tile speaking"><div class="vid v1"></div><div class="label"><span>Kofi Mensah</span></div></div>
+        <div class="tile"><div class="off"><span>A</span></div><div class="label"><span>Ama Serwaa</span></div></div>
+      </div>
+      <div class="pip"><div class="grip"></div><div class="vid v2"></div><div class="label"><span>You</span></div></div></div>
+      <div class="bar">
+        <div class="grp">
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span class="lbl">Mute</span></button>
+          <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span class="lbl">Stop video</span></button>
+          <button class="ctl off mobile-hide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">Stop</span></button>
+        </div>
+        <div class="grp">
+          <button class="ctl sec mobile-hide" aria-label="Reactions"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></button>
+          <button class="ctl sec" aria-label="Chat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg></button>
+          <span class="sec-wrap"><button class="ctl sec" aria-label="People, 3 in the meeting"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/></svg></button><span class="count">3</span></span>
+          <span class="menu-wrap">
+            <button class="ctl sec more-btn" aria-label="More options" aria-expanded="false" title="More"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            <div class="menu" hidden>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>Send a reaction</button>
+              <button class="only-mobile"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Share your screen</button>
+              <hr class="only-mobile">
+              <button><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>Audio and video settings</button>
+              <button class="desk-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>Keyboard shortcuts<span class="k">?</span></button>
+            </div>
+          </span>
+        </div>
+        <div class="grp">
+          <span class="leave-wrap">
+            <button class="leave" aria-haspopup="menu" aria-expanded="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.7 13.3a11 11 0 0 0 5 3l1.6-2a1 1 0 0 1 1.2-.3l3 1.3a1 1 0 0 1 .6 1.1l-.5 2.4a1 1 0 0 1-1 .8A17 17 0 0 1 3.4 4a1 1 0 0 1 .8-1l2.4-.5a1 1 0 0 1 1.1.6l1.3 3a1 1 0 0 1-.3 1.2l-2 1.6"/><path d="M1 1l22 22"/></svg><span class="lbl">Leave</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+            <div class="leave-menu" hidden role="menu">
+              <button role="menuitem" data-leave><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                <span>Leave the meeting<span class="sub">It carries on without you. Your link still works.</span></span>
+              </button>
+              <hr>
+              <button role="menuitem" class="danger" data-end><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                <span>End meeting for everyone<span class="sub">Everyone is disconnected and the link stops working.</span></span>
+              </button>
+            </div>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<dialog class="confirm" id="dlg-end">
+  <h2>End this meeting for everyone?</h2>
+  <p>Everyone is disconnected straight away and the link stops working. This can't be undone.</p>
+  <div class="row">
+    <button class="cancel" value="cancel">Cancel</button>
+    <button class="end" value="end">End meeting</button>
+  </div>
+</dialog>
+
+<!-- ============ 5 · WHAT EVERYONE ELSE SEES ============ -->
+<div class="room screen" id="s-ended">
+  <div class="ended">
+    <div class="inner">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color:var(--foreground)">
+        <rect x="1" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14" y="1" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="1" y="14" width="9" height="9" rx="2.4" fill="currentColor"/><rect x="14.75" y="14.75" width="7.5" height="7.5" rx="1.65" stroke="currentColor" stroke-width="1.5" opacity=".4"/>
+      </svg>
+      <h1>The host ended the meeting</h1>
+      <p>Design review ran for 42 minutes. The link no longer works.</p>
+      <button class="btn">Back to meetings</button>
+      <button class="btn sec">Start a new meeting</button>
+    </div>
+  </div>
+</div>
+
+<!-- DEMO SCAFFOLDING — delete entirely when translating -->
+<nav class="demo-nav">
+  <button data-go="s-grid" data-on>Grid</button>
+  <button data-go="s-panel">Panel</button>
+  <button data-go="s-watch">Watching a share</button>
+  <button data-go="s-share">You sharing</button>
+  <button data-go="s-ended">Host ended it</button>
+  <button id="phone">Phone</button>
+</nav>
+<script>
+document.querySelectorAll('.demo-nav [data-go]').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.screen').forEach(s=>s.removeAttribute('data-on'));
+    document.querySelectorAll('.demo-nav [data-go]').forEach(x=>x.removeAttribute('data-on'));
+    document.getElementById(b.dataset.go).setAttribute('data-on','');
+    b.setAttribute('data-on','');
+  };
+});
+document.getElementById('phone').onclick=e=>{
+  document.body.classList.toggle('phone');
+  e.target.toggleAttribute('data-on');
+};
+// panel tabs
+const tc=document.getElementById('tab-chat'), tp=document.getElementById('tab-people');
+if(tc){
+  const pc=document.getElementById('pane-chat'), pp=document.getElementById('pane-people'),
+        fc=document.getElementById('foot-chat');
+  tc.onclick=()=>{tc.ariaSelected='true';tp.ariaSelected='false';pc.hidden=false;pp.hidden=true;fc.style.display='';};
+  tp.onclick=()=>{tp.ariaSelected='true';tc.ariaSelected='false';pp.hidden=false;pc.hidden=true;fc.style.display='none';};
+}
+// PiP drag — constrained to the video area, which is why it is anchored there
+document.querySelectorAll('.pip').forEach(pip=>{
+  let sx,sy,ox=0,oy=0,dragging=false;
+  pip.addEventListener('pointerdown',e=>{
+    dragging=true; pip.setPointerCapture(e.pointerId);
+    sx=e.clientX-ox; sy=e.clientY-oy;
+  });
+  pip.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    const box=pip.parentElement.getBoundingClientRect(), me=pip.getBoundingClientRect();
+    ox=e.clientX-sx; oy=e.clientY-sy;
+    const maxX=box.width-me.width-32, maxY=box.height-me.height-32;
+    ox=Math.max(-maxX,Math.min(0,ox)); oy=Math.max(-maxY,Math.min(0,oy));
+    pip.style.transform=`translate(${ox}px,${oy}px)`;
+  });
+  pip.addEventListener('pointerup',()=>dragging=false);
+  pip.addEventListener('pointercancel',()=>dragging=false);
+});
+
+// leave split — chevron opens the destructive option, confirm before acting
+// The whole Leave button opens the menu for a host. A guest has no second
+// option, so for them this button leaves directly and renders no chevron.
+document.querySelectorAll('button.leave').forEach(btn=>{
+  const menu=btn.parentElement.querySelector('.leave-menu');
+  btn.onclick=e=>{
+    e.stopPropagation();
+    const open=!menu.hidden;
+    document.querySelectorAll('.leave-menu,.menu').forEach(m=>m.hidden=true);
+    document.querySelectorAll('button.leave').forEach(b=>b.setAttribute('aria-expanded','false'));
+    menu.hidden=open;
+    btn.setAttribute('aria-expanded',String(!open));
+  };
+});
+document.querySelectorAll('[data-leave]').forEach(b=>{
+  b.onclick=e=>{ e.stopPropagation();
+    document.querySelectorAll('.leave-menu').forEach(m=>m.hidden=true); };
+});
+document.querySelectorAll('[data-end]').forEach(b=>{
+  b.onclick=e=>{
+    e.stopPropagation();
+    document.querySelectorAll('.leave-menu').forEach(m=>m.hidden=true);
+    document.getElementById('dlg-end').showModal();   // native = focus trapped
+  };
+});
+document.getElementById('dlg-end').addEventListener('close',function(){
+  if(this.returnValue==='end'){
+    document.querySelectorAll('.screen').forEach(s=>s.removeAttribute('data-on'));
+    document.querySelectorAll('.demo-nav [data-go]').forEach(x=>x.removeAttribute('data-on'));
+    document.getElementById('s-ended').setAttribute('data-on','');
+    document.querySelector('[data-go="s-ended"]').setAttribute('data-on','');
+  }
+});
+document.querySelectorAll('#dlg-end button').forEach(b=>{
+  b.onclick=()=>document.getElementById('dlg-end').close(b.value);
+});
+
+// overflow menu
+document.querySelectorAll('.more-btn').forEach(b=>{
+  const m=b.nextElementSibling;
+  b.onclick=e=>{
+    e.stopPropagation();
+    const open=!m.hidden;
+    document.querySelectorAll('.menu').forEach(x=>x.hidden=true);
+    document.querySelectorAll('.more-btn').forEach(x=>x.setAttribute('aria-expanded','false'));
+    m.hidden=open; b.setAttribute('aria-expanded',String(!open));
+  };
+});
+document.addEventListener('click',()=>{
+  document.querySelectorAll('.menu,.leave-menu').forEach(m=>m.hidden=true);
+  document.querySelectorAll('.more-btn,button.leave').forEach(b=>b.setAttribute('aria-expanded','false'));
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')
+  document.querySelectorAll('.menu,.leave-menu').forEach(m=>m.hidden=true); });
+
+// send enables only with content
+const ta=document.querySelector('.composer'), sb=document.querySelector('.send');
+if(ta&&sb) ta.addEventListener('input',()=>{ sb.disabled=!ta.value.trim(); });
+
+// reactions, so the motion reads
+const EMOJI=['👍','❤️','😂','🎉','👏','😮'];
+setInterval(()=>{
+  const t=document.querySelector('.screen[data-on] .tile.speaking');
+  if(!t) return;
+  const r=document.createElement('div');
+  r.className='rx'; r.textContent=EMOJI[Math.floor(Math.random()*6)];
+  r.style.left=(18+Math.random()*60)+'%';
+  r.style.setProperty('--dx',(Math.random()*40-20)+'px');
+  r.style.setProperty('--rot',(Math.random()*24-12)+'deg');
+  t.appendChild(r); setTimeout(()=>r.remove(),2500);
+},2000);
+</script>
+</body>
+</html>

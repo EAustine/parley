@@ -124,6 +124,42 @@ This parses and validates every variable and refuses to pass if a secret has lan
 
 ---
 
+## Who runs what
+
+Three buckets. The dividing line is secrets: anything that touches one is yours.
+
+### Browser only — no terminal
+
+All of sections 1, 2, and 3 above. LiveKit signup and keys, Supabase project and auth config, Google Cloud consent screen and OAuth client. Nothing here has a command-line equivalent worth using.
+
+### Your terminal — because secrets pass through
+
+```bash
+cp .env.example .env.local
+```
+
+Then **open `.env.local` in your editor** and paste the seven values. Not through Claude Code — anything it reads enters its context.
+
+```bash
+npx supabase login                       # paste the access token when prompted
+npx supabase link --project-ref <ref>    # prompts for the database password
+npm run check:env                        # confirm before handing back
+```
+
+Both `supabase` commands are interactive and expect a secret at a prompt. `check:env` prints variable names and pass/fail only, never values — run it yourself once so you know the state before delegating.
+
+### Claude Code's terminal — everything else
+
+Scaffold placement, `package.json` scripts, `.gitignore`, migrations, SQL, RLS policies, installs, builds, the dev server. None of it needs a secret in the clear; the Supabase CLI reads the link you already authorised.
+
+Hand off with something like:
+
+> `.env.local` is filled and `npm run check:env` passes. The `scaffold/` folder is in the project root — move `.env.example` and `lib/env.ts` into place, `check-env.mjs` into `scripts/`, add the `check:env` and `predev` scripts to `package.json`, then start Phase 1.
+
+Do not paste any value into that message. Claude Code needs to know the environment is *configured*, not what it contains.
+
+---
+
 ## What goes where
 
 | Value | Variable | Exposure |

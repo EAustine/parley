@@ -5007,3 +5007,154 @@ down then, and it was written down with its own calibration attached.
 
 Documentation only. `check:contrast` 25, `check:bundle` 11/11 — unchanged, and
 neither touched by this.
+
+---
+
+## v1.3 — the token foundation, and a live 2.53:1 in the room
+
+The v1.3 document bundle arrived as a zip: an updated `CLAUDE.md`, a new
+`BUILD-PLAN-v1.3.md`, a new `README.md`, an updated `ACCOUNTS.md`, and a
+`design/` folder of three working-HTML screens that are the visual
+specification for the whole pass.
+
+### The sync was not a copy
+
+Two of the seven documents in the bundle were **older than the repo's**, and
+copying the folder wholesale would have reverted work from the last two
+commits.
+
+`PRD.md` in the bundle is the 01:34 snapshot: it still carries `/sign-in | see
+below` in §10's table, "It builds at 249 kB" in the present tense, "measured at
+273 kB and 264 kB" for the scheduling routes, "At 160 kB" for the shared
+baseline, and the "four figures went stale in a single batch of Track F work"
+attribution that `860f074` replaced. `BUILD-PLAN.md` is the pre-reconciliation
+version: it asks for a blanket 44px touch target, a per-meeting OG card showing
+meeting title *and host*, a live favicon, and a 180 kB dashboard budget — four
+lines that Phase 10 struck with reasons.
+
+So the sync was selective: `CLAUDE.md`, `ACCOUNTS.md`, `README.md`,
+`BUILD-PLAN-v1.3.md`, `design/`. The repo's `PRD.md` and `BUILD-PLAN.md` stand.
+`BRAND.md` and `BUILD-PLAN-v1.2.md` were byte-identical. The repo's old
+`README.md` was untouched `create-next-app` boilerplate, so that one is a
+straight improvement.
+
+### The new tokens check out
+
+Every figure in the new `CLAUDE.md` was recomputed before being wired in, against
+the scrim composited over white — `0.72 × #0E1013 + 0.28 × #FFFFFF` = `#515355`:
+
+| | claimed | computed |
+|---|---|---|
+| `--on-scrim` `#F2F4F7` | 7.01 | **7.01** |
+| `--on-scrim-muted` `#C6CAD1` | 4.70 | **4.69** |
+| `--foreground` light `#16181D` | 2.3 | **2.30** |
+| `--state-warning` `#F5A524` | 3.79 | **3.78** |
+| `--state-critical` `#F26669` | 2.53 | **2.53** |
+
+`color-scheme` was already declared in `globals.css`, and both `/j` and `/room`
+layouts already carry `[color-scheme:dark]` beside their `.dark`. That half of
+the section was done.
+
+### The light-mode scrim bug is latent, not live — and that is the argument
+
+`BUILD-PLAN-v1.3` calls it "a live bug: every control and label drawn on a
+scrim was invisible in light mode". It is not, and the distinction is worth
+keeping straight: every scrim in the product sits inside `/j/[code]` or
+`/room/[code]`, both of which force `.dark` on a route-group wrapper, so
+light-mode `--foreground` never meets a scrim today.
+
+That is not a reason to skip the tokens. It is the reason to have them. The
+guarantee currently belongs to two route layouts rather than to the token, and
+the next scrim added outside them inherits nothing. `--on-scrim` moves the
+guarantee into the value, where it cannot be lost by putting a scrim somewhere
+new.
+
+### What was live: 2.53:1, in the room, on a device failure
+
+`RoomControls` drew its device-error message — *"Your camera didn't turn on"* —
+as `text-[var(--state-critical)]` on `style={{ background: "var(--scrim)" }}`.
+That is **2.53:1 over bright video**, a little over half its floor, on the
+sentence whose entire job is to be read when something has gone wrong.
+`ConnectionPill` and `ConnectionBar` both carry rule 4's opaque-chip narrowing
+in their headers; this one was missed. On `--popover` the same red is 5.42:1.
+
+**The permitted-surface matrix was green for the whole of v1.2**, and could not
+have been anything else. `CLAUDE.md` said adding `scrim-over-white` as a surface
+means "any hued element … fails the check instead of shipping". It does not. A
+matrix answers *would this pairing pass*; it is never shown a pairing that
+exists. `--state-critical` is absent from the scrim's permitted list, and an
+unlisted pairing is not a failure — nothing asks.
+
+This is the third time in this file: `--input` cleared every surface rule it had
+while drawing every field's border at 1.44:1; the tile declared `aspect-ratio:
+16/9` correctly and rendered 1956px into 1337px; the touch-target script
+resolved size classes and reported 44px for controls that were smaller.
+**Writing the check is not the fix. The check asserting the actual thing is.**
+
+### `check:scrim` — measured, because a scan cannot see this shape
+
+A source scan was considered and rejected on evidence, not taste: the scrim is
+on a **parent** and the colour on a **child** (`Tile` puts the gradient on the
+label row and `text-foreground` on the span inside it), so the two never appear
+in one element's attributes. Any regex that caught the `RoomControls` case would
+have missed every `Tile` label.
+
+`e2e/scrim.ts` walks the rendered room instead. For every element that paints
+text or an icon, it climbs to the first **painted** background: if that is the
+scrim, the element is over video; if it is opaque, it is not. That single rule
+is why `ConnectionPill` needs no exemption — it paints its own `--popover`, so
+the walk stops there and rule 4's hued-chip carve-out falls out of the geometry
+rather than out of a list.
+
+Three tests, and the third exists because the first two are not enough:
+
+- **the resting room** — the tile labels, the mic icon, the bar
+- **the camera failing to start** — the state the check was written for
+- **the detector, proved able to fail** — hued text injected under a scrim
+  gradient, colour on the child, and the walk required to name it
+
+### Two things went wrong while building it, and both were mine
+
+**The first device-failure test could not have passed.** It toggled a live
+camera off and on with `getUserMedia` patched to reject, and timed out after two
+minutes waiting for a message that cannot appear: LiveKit keeps the track and
+unmutes it, so the second toggle never re-acquires. `withMedia: false` is what
+makes the failure reachable — a participant who joined with the camera off has
+no track to unmute, so turning it on *has* to acquire. (Worth noting against
+**A3**, which is about exactly this path.)
+
+**The detector test failed on its first run, and was right to.** It injected the
+offender into `document.body`, which is outside the room's `.dark` wrapper —
+where `--scrim` resolves (it is on `:root`) but `--state-critical` does not. The
+span inherited a permitted colour, so the injected defect was not one. The same
+blind spot inside the detector would have looked identical from outside, which
+is the argument for having the test at all.
+
+### Mutation
+
+`components/room/RoomControls.tsx` reverted to the scrim; `check:scrim` fails,
+naming it:
+
+```
+color: "rgb(242, 102, 105)"
+text:  "Your camera didn't turn on. Check it isn't in use by another"
+where: "div > div > p"
+```
+
+Restored; green. The guard credits the code it names.
+
+### CLAUDE.md corrected
+
+The sentence claiming the permitted-surface machinery catches hued-on-scrim now
+says what it actually does, and points at `check:scrim` for what it does not.
+Leaving a false mechanism claim in the authoritative file is the failure this
+whole section is about.
+
+### Checks
+
+`check:contrast` 28/28 (was 25 — the two on-scrim rules, in both themes, minus
+the retired dark-only `--foreground` row), `check:scrim` 3/3, `check:deps` 5/5,
+typecheck and lint clean.
+
+Both on-scrim tokens report **7.01 and 4.70 in light and dark alike**, which is
+the invariance being asserted rather than described.

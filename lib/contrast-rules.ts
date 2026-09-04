@@ -75,13 +75,36 @@ export const RULES: ContrastRule[] = [
   },
   { token: "--ring", surfaces: ALL_SURFACES, threshold: NON_TEXT },
   {
-    token: "--foreground",
+    token: "--on-scrim",
     surfaces: [SCRIM_OVER_WHITE],
     threshold: TEXT,
-    label: "--foreground over video",
-    note: "Only --foreground is permitted on the scrim: --state-warning falls to 3.79:1 there and --state-critical to 2.53:1, which is why rule 4 sends hued state indicators to an opaque --popover chip. Dark only — the scrim exists over video, and rule 8b forces .dark on /j/[code] and /room/[code].",
+    label: "--on-scrim over video",
+    note: "7.01:1. Theme-invariant, because the scrim is: --foreground is no longer permitted here, since in light mode it lands at 2.30:1 on a scrim that does not flip with it.",
+  },
+  {
+    token: "--on-scrim-muted",
+    surfaces: [SCRIM_OVER_WHITE],
+    threshold: TEXT,
+    label: "--on-scrim-muted over video",
+    note: "4.70:1 — the quieter of the two, for secondary labels and icons. --state-warning falls to 3.79:1 on the scrim and --state-critical to 2.53:1, which is why rule 4 sends hued state to an opaque --popover chip.",
   },
 ];
+
+/**
+ * The scrim's permitted foregrounds, as the values a browser reports.
+ *
+ * `e2e/scrim.ts` compares computed colours against these. It lives here so the
+ * matrix and the measured check cannot drift: this file is the one place that
+ * says what may sit on the scrim, and both readers take it from here.
+ *
+ * **The matrix alone was not enough, and the wording in `CLAUDE.md` overstated
+ * it.** Adding `scrim-over-white` as a surface makes the check able to say
+ * whether a pairing *would* pass; it never sees a pairing that exists. A hued
+ * token is not listed against the scrim, and an unlisted pairing is not a
+ * failure — nothing asks. `RoomControls` drew its device-error message at
+ * 2.53:1 on the scrim for the whole of v1.2 with this table green.
+ */
+export const ON_SCRIM_TOKENS = ["--on-scrim", "--on-scrim-muted"] as const;
 
 /**
  * The boundary role: the token *is* the line, and the question is whether it is

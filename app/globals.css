@@ -32,6 +32,8 @@
   /* room surface only */
   --color-boundary: var(--boundary);
   --color-scrim: var(--scrim);
+  --color-on-scrim: var(--on-scrim);
+  --color-on-scrim-muted: var(--on-scrim-muted);
 
   --font-sans: var(--font-instrument-sans);
   --font-mono: var(--font-jetbrains-mono);
@@ -147,11 +149,21 @@
   }
 
   /* theme-invariant: the scrim always sits over video, and video
-     surfaces are always dark */
+     surfaces are always dark — so anything drawn on it must be too.
+
+     `--foreground` is NOT permitted here. It flips with the theme and the
+     scrim does not: in light mode it is #16181D on a scrim that composites
+     to #515355, which is 2.30:1. Every scrim in the product currently sits
+     inside a forced-dark subtree, so that pairing does not render today —
+     but the guarantee is a property of two route layouts rather than of the
+     token, and the next scrim added outside them inherits nothing. These
+     two are fixed, so the contrast holds wherever the scrim is used. */
   :root,
   .light,
   .dark {
     --scrim: rgba(14, 16, 19, 0.72);
+    --on-scrim: #f2f4f7; /* 7.01:1 over the brightest video */
+    --on-scrim-muted: #c6cad1; /* 4.70:1 */
     --radius: 0.5rem;
   }
 
