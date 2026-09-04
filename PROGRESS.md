@@ -4959,3 +4959,51 @@ justification rather than a figure, so it is raised rather than edited.
 
 `check:contrast` 25, `check:bundle` 11/11. Documentation only this time; no
 code changed, so 95/95 stands.
+
+---
+
+## v1.2 close-out, part eight — the attribution, from the record
+
+§10 said the four figures "went stale in a single batch of Track F work". That
+was my phrasing of the history in the previous entry, and it was wrong twice
+over. Corrected from this file rather than from memory.
+
+**What the record says.** `/schedule` at 273 kB and `/schedule/[code]` at 264
+were written on 2 September during the rule-9 dependency work — *before v1.2
+began* — and they were not guesses: line 2293 records `273 ✓` and "gap exactly
+10 ✓", line 2327 records two builds of byte-identical source producing the same
+table twice. The shared baseline at 160 was recorded during the Phase 2 → 3
+housekeeping and reproduced at 156 after the ten unrendered components went.
+`/sign-in` at 249 was correct when it was written, three days later.
+
+**Then they rotted in three separate places, none of them Track F.** The
+baseline drifted 160 → 164 somewhere across Tracks A–F with nothing recording
+it. `/schedule` was **279** by the time anything measured it again — line 4568
+catches it going 279 → 263 when Radix's `Select` went native, which means the
+273 → 279 drift also happened unmeasured during the tracks. `/sign-in` went 249
+→ 166 at the server-action refactor.
+
+**And the reason none of it was caught is the sharpest part.** Tracks D and F
+both record `check:bundle 10/10` and no figures. There is no bundle measurement
+anywhere in this file between the Phase 10 reconciliation and close-out part
+three — the entire v1.2 track window. The gate was green the whole time, because
+a budget check passes a budget and cannot notice a document.
+
+That is a better argument for the rule than "a single batch" was. A table that
+goes wrong piecemeal has no moment at which someone would think to look.
+
+### Method, and what could not be run
+
+The plan was to re-measure at `6a24fa9` and `e9b8aeb` in isolated worktrees.
+Both agents failed at setup — worktree isolation is unavailable in this
+environment — so no build was run at an earlier commit.
+
+The evidence used instead is this file's own contemporaneous records, which is
+the better source anyway: a re-measurement today tells you what a commit builds
+*now*, on today's toolchain and lockfile. What was true then is what was written
+down then, and it was written down with its own calibration attached.
+
+### Checks
+
+Documentation only. `check:contrast` 25, `check:bundle` 11/11 — unchanged, and
+neither touched by this.

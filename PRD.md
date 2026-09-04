@@ -754,7 +754,11 @@ All figures are **First Load JS totals, gzipped** — the units Next reports, an
 | `/schedule` | ≤ 290 kB |
 | `/schedule/[code]` | ≤ 290 kB |
 
-**Budgets only. Measured figures are not recorded here.** Earlier drafts carried the current size of each route beside its budget, and every commit that changed a bundle made this table wrong — four figures went stale in a single batch of Track F work. `check:bundle` knows the real numbers and enforces the budgets; a `--snapshot` flag can emit them when someone wants a reading. A budget is a decision and belongs in a document. A measurement is a fact about the current commit and belongs in the tool.
+**Budgets only. Measured figures are not recorded here.** Earlier drafts carried the current size of each route beside its budget, and every commit that changed a bundle made this table wrong.
+
+Not in one batch, and not in Track F. The scheduling figures and the baseline were measured, reproduced across clean builds, and correct — before v1.2 began. They then rotted in three separate places: the baseline drifted somewhere across Tracks A–F with nothing recording it, `/schedule` moved when Radix's `Select` went native, `/sign-in` moved when its auth calls became server actions. The last two were deliberate improvements. **Nothing caught any of it, because `check:bundle` passes a budget and cannot notice a document** — Tracks D and F each recorded a clean 10/10 while the numbers here were going stale behind them. A table that goes wrong piecemeal is worse than one that goes wrong all at once: there is no single moment at which someone would think to look.
+
+`check:bundle` knows the real numbers and enforces the budgets; a `--snapshot` flag can emit them when someone wants a reading. A budget is a decision and belongs in a document. A measurement is a fact about the current commit and belongs in the tool.
 
 Same split as the contrast table, §9's mechanics, and §4.4's motion table.
 
