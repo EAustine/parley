@@ -422,7 +422,7 @@ Earned the hard way; each one comes from a check that passed while exercising th
 ```
 app/
   icon.svg  apple-icon.png  opengraph-image.tsx  twitter-image.tsx
-  (marketing)/page.tsx
+  (marketing)/page.tsx           — two states: signed out and signed in
   (dev)/dev/tokens/page.tsx      — gated on NODE_ENV !== 'production'
   (app)/dashboard/page.tsx
   (app)/schedule/page.tsx

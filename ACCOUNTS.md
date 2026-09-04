@@ -50,6 +50,16 @@ Depending on when the project was created you'll see either the legacy pair (`an
 
 The `<ref>` in the project URL is your project reference. You'll need it again in a moment.
 
+### Deployment Protection — turn it off, or the product does not work
+
+**Vercel enables Standard Protection by default on new deployments**, which bounces any visitor who is not a Vercel user with access to the project to a Vercel login page. Its scope exempts production *custom* domains — a generated `*.vercel.app` URL is inside the protected set.
+
+The failure is invisible to whoever built the project, because they are signed into Vercel. Everyone else — every guest, which is the highest-traffic flow in this product — hits a login wall for a service they have never heard of.
+
+**Project → Settings → Deployment Protection → Vercel Authentication → Disabled.** Or add a custom domain, which removes the problem structurally rather than by toggle.
+
+Verify from a device that has never signed into Vercel or Parley, in a private window, opening a real `/j/[code]` link. Not your own laptop with the session cleared.
+
 ### Configure auth URLs
 
 **Authentication → URL Configuration:**

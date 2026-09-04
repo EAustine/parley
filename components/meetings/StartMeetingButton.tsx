@@ -14,7 +14,28 @@ import { Button } from "@/components/ui/button";
  * Flow A in `PRD.md` §2: the host sees pre-join before the room like everyone
  * else, so this routes to `/j/[code]` rather than jumping into the room.
  */
-export function StartMeetingButton() {
+export function StartMeetingButton({
+  className,
+  size,
+  label = "Start meeting",
+}: {
+  /**
+   * v1.3 E3 renders this full-width inside the landing page's card, where it
+   * is the primary action. The dashboard keeps the intrinsic width it has
+   * always had, so both are opt-in rather than a default anyone inherits.
+   */
+  className?: string;
+  size?: "default" | "touch";
+  /**
+   * "Start meeting" in the dashboard's action row, "Start a meeting" on the
+   * landing page — both from the design files, and the difference is density
+   * rather than drift. `CLAUDE.md`'s rule that an action keeps its name is
+   * about a *flow* — "Copy link" producing "Link copied" — not about one label
+   * fitting two very different contexts. The vocabulary is unchanged either
+   * way: it is a **meeting**, and it is **started**.
+   */
+  label?: string;
+} = {}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -44,7 +65,7 @@ export function StartMeetingButton() {
   }
 
   return (
-    <Button onClick={start} disabled={busy}>
+    <Button onClick={start} disabled={busy} className={className} size={size}>
       <HugeiconsIcon
         icon={ICONS.plus.icon}
         size={20}
@@ -52,7 +73,7 @@ export function StartMeetingButton() {
         color="currentColor"
         aria-hidden
       />
-      {busy ? "Starting…" : "Start meeting"}
+      {busy ? "Starting…" : label}
     </Button>
   );
 }

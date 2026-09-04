@@ -118,6 +118,21 @@ export const PUBLIC_STATES: State<string>[] = [
  */
 export const SIGNED_IN_STATES: State<string>[] = [
   {
+    /**
+     * v1.3 E3 gave `/` a second state, and a state only one audience can see is
+     * exactly the kind that goes unscanned — the public walk above reaches this
+     * URL and gets the *other* page.
+     */
+    name: "the landing page, signed in",
+    floor: 24,
+    atLeast: 5,
+    themes: RESPONSIVE,
+    reach: async (page) => {
+      await at("/")(page);
+      await expect(page.getByRole("button", { name: "Start a meeting" })).toBeVisible();
+    },
+  },
+  {
     name: "the dashboard, with an upcoming and a past meeting",
     floor: 24,
     atLeast: 9,

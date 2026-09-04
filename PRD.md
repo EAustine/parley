@@ -316,9 +316,30 @@ Empty state is an invitation, not an apology: "No meetings yet. Start one now, o
 
 ### 3.10a Landing page
 
-`/` has two jobs and no third. It carries the two entry points §2's flow C names — a meeting-code field and sign-in — plus the wordmark and the tagline. Nothing else is specified, deliberately: the product is not seeking users, and an unscoped marketing page built in a final phase is a design exercise with nothing to check it against.
+`/` has two jobs and no third. It carries the two entry points §2's flow C names, plus the tagline. Nothing else is specified, deliberately: the product is not seeking users, and an unscoped marketing page built in a final phase is a design exercise with nothing to check it against.
 
 The code field must live here and not only on the unknown-code page. Mounting it exclusively on a dead end makes joining by code reachable only after failing to join.
+
+**The tagline is the heading, not the wordmark.** An earlier build set "Parley" at display size in the page body, repeating what the header already says and pushing both entry points below the fold. "A link is all anyone needs" is the actual proposition and earns the display size; the product name does not.
+
+**The code field validates before enabling Join.** Match `xxx-xxxx-xxx` against the real alphabet. A permanently grey button that does nothing when pressed is worse than no button.
+
+### Signed in is a different page, not the same page with a swapped button
+
+"Sign in to start a meeting" is meaningless to someone already signed in, and the hierarchy inverts:
+
+| | Signed out | Signed in |
+|---|---|---|
+| Primary | Join with a code | **Start a meeting** |
+| Secondary | Sign in | Join with a code |
+| Absent | — | Sign in |
+| Also | — | Which account, and a quiet link to Your meetings |
+
+Naming the account matters: someone with two Google accounts should know which one they are in *before* they create a meeting under it.
+
+**Do not redirect a signed-in visitor to `/dashboard`.** They typed the domain or followed a bookmark; a redirect they did not ask for is worse than a page that does the two things they came for. This decision is what makes the signed-in state worth building — without it, `/` is unreachable for signed-in users and the state is dead code.
+
+Both states are specified in `design/01-signin-prejoin.html`.
 
 ---
 

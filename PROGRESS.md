@@ -5927,3 +5927,128 @@ Full suite **100 + 24 = 124 passing** (one new). `check:a11y` 58/58 —
 gate that fails on purpose until a new one is declared. `check:bundle` 11/11 —
 `/sign-in` 167 kB against 190, `/j/[code]` 174 against 230. `check:contrast` 28,
 `check:room` 106/106, `check:deps` 5/5, typecheck, lint.
+
+---
+
+## v1.3 E3 — the landing page, in two states
+
+An updated bundle added **A5** (Vercel Deployment Protection — a settings change,
+not code) and **E3**.
+
+### The doc sync was a merge this time, not a copy
+
+The bundle's `PRD.md` is the same 01:34 snapshot as the first drop: it reverts
+§3.7's C5 rewrite and all of §10's corrections while carrying genuinely new
+§3.10a content. Its `CLAUDE.md` likewise reverts the scrim paragraph and adds one
+real file-layout line. So `ACCOUNTS.md`, `README.md`, `BUILD-PLAN-v1.3.md` and
+`design/01-signin-prejoin.html` were taken wholesale; §3.10a was spliced into the
+repo's `PRD.md`; and one line was taken from `CLAUDE.md`. `BUILD-PLAN.md` is
+still the pre-reconciliation version and still skipped.
+
+### What was built
+
+The tagline is the heading. It was a 64px stacked `Lockup` with "Parley" at
+display size beneath it — the product's name twice, above the name of the thing
+you came to do, with both entry points pushed below the fold.
+
+Signed in is a different page: Start a meeting primary, joining by code
+secondary, sign-in absent, the account named, and a quiet link through to what
+you scheduled. **No redirect to `/dashboard`** — without that decision the state
+is unreachable and the work is dead code.
+
+The code field validates against `normaliseMeetingCode` — the same function the
+route handlers use, so the alphabet cannot drift between what the button accepts
+and what the server resolves.
+
+### `/` is 178 kB against 190, and the 18 kB is measured
+
+`StartMeetingButton` is the whole increase: `/` builds at 159 kB without it. A
+signed-out visitor never renders it and pays for it anyway, on the coldest,
+most public route in the product.
+
+`next/dynamic` does not fix it — in a Server Component `ssr` defaults to true, so
+the chunk is in the initial payload either way. Tried, measured at exactly 177 kB
+again, removed. What would fix it is a server action, the same move that took
+`/sign-in` from 249 kB to 166. That is a refactor E3 did not ask for, and 178
+against 190 leaves room to make it deliberately. Recorded in the file so the next
+person meets a decision rather than a number.
+
+### An adversarial review, and what it caught
+
+Four independent lenses over the diff — design fidelity, `CLAUDE.md` compliance,
+correctness, test quality — each finding then handed to a separate agent whose
+job was to **refute** it. 18 raised, **9 survived**. Half the findings were wrong,
+which is the point of the second pass.
+
+The three that mattered:
+
+**The error branch was unreachable, and my comment about it was confidently
+wrong.** I wrote that "Enter performs implicit submission regardless" of a
+disabled button. It does not — implicit submission requires a non-disabled submit
+button. So a person typing ten characters containing an `o` got a grey button and
+no reason at all, and the code asserted the opposite. Replaced with live guidance
+that fires at full length (incomplete input says nothing — that is a person still
+typing), and the submit guard is kept and *named* as a backstop.
+
+**`toast.error` on `/` rendered nothing.** `StartMeetingButton` reports a failed
+creation with a toast, and the marketing layout mounted no `<Toaster />` — the
+meeting silently failed to be made and the button returned to idle. That is the
+never-do list's "silent failure is the worst outcome in this product", and worse,
+`/` was already paying for sonner in that 18 kB to render a toast it could not
+show.
+
+**`Label` has been discarding its type class everywhere, for the whole project.**
+`.type-small` is declared in `@layer components` and `.text-sm` / `.leading-none`
+in `@layer utilities`, so the utilities win on **layer order** regardless of
+specificity — and twMerge drops neither, because it does not know they conflict.
+Every `<Label className="type-small">` in the codebase — sign-in, schedule,
+pre-join, device selects, join code — has rendered **14px/14px** against the type
+table's 13/18. One line in `label.tsx` fixes all of them.
+
+That last one is the same trap as `Input`'s height, which I documented in
+`JoinCodeForm` two hours earlier and then walked straight past one element above.
+
+Also fixed: `min-h-[calc(100dvh-4rem)]` under-counted the header by its 1px
+border, giving a permanent document overflow (now `h-full` off the shell's own
+`flex-1`); the divider label was Caption where the design resolves to Small; the
+code field was tracked at the Code role's 0.08em where the design pins 0.06em;
+and the card's rhythm broke to 12px inside the form where the design is a uniform
+16.
+
+Two were confirmed and left, with reasons in the code: the landing `<h1>` uses
+arbitrary values because the design's 32/38/−0.02em and the table's Display
+32/36 differ and §3.10a makes the design authoritative for this page; and the
+design's signed-in header avatar is deferred to Track D, which replaces that
+corner with a full account menu.
+
+### And the tests it caught
+
+`submit()` was invoked by **no test in the repository** — the spec asserted the
+button's *attribute* and never pressed it, so the navigation the form exists for
+was unverified. Three tests added: a valid code navigates to that meeting; the
+malformed hint appears at full length and not before; and spaces, capitals and
+missing hyphens all resolve, which pins the *choice* of `normaliseMeetingCode`
+over a bare pattern test rather than leaving the paragraph justifying it
+decorative.
+
+### One flake, checked rather than waved away
+
+`chat.spec`'s latency assertion failed once at 3313ms against its 500ms target,
+then measured 197ms alone and 199ms on a full re-run. It is a wall-clock
+assertion through a real SFU under four workers, and nothing in Track E touches
+chat.
+
+### Checks
+
+Full suite **106 + 24 = 130 passing** (six new). `check:bundle` 11/11 — `/` 178
+kB against 190. `check:a11y` 58/58, `check:contrast` 28, `check:room` 106/106,
+`check:partition` 20/20, `check:deps` 5/5, `check:codes` 6/6, typecheck, lint.
+
+### Not done, and not mine to do
+
+**A5.** Vercel Deployment Protection bounces every guest to a Vercel login page,
+and it is invisible to whoever built the project because they are signed in.
+Project → Settings → Deployment Protection → Vercel Authentication → Disabled, or
+add a custom domain. Then verify from a device that has never signed into Vercel
+or Parley. Until that passes, "guests can join in production" is unverified — and
+it is the claim the product is built around.

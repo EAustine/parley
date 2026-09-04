@@ -8,7 +8,7 @@ Read `CLAUDE.md` for rules and tokens, `PRD.md` for spec, `BUILD-PLAN-v1.2.md` f
 
 | File | Screens | Tracks |
 |---|---|---|
-| `design/01-signin-prejoin.html` | Sign in · pre-join (asking, ready, denied) | E |
+| `design/01-signin-prejoin.html` | Landing (signed out, signed in) · sign in · pre-join (asking, ready, denied) | E |
 | `design/02-room.html` | Grid · panel · watching a share · sharing · host ended it | B, C, F |
 | `design/03-dashboard-schedule.html` | Meetings · empty · schedule · meeting detail | A, D |
 
@@ -43,6 +43,18 @@ Check three things in order: the webhook route is deployed and reachable at its 
 Distinguish before fixing. If `localParticipant.videoTrackPublications` shows a live track while the element is blank, it is attachment. If there is no track, it is acquisition.
 
 This is also a **mute-state truth** failure in the sense rule 3 means: the UI says camera on while nothing is published.
+
+### A5. Vercel Deployment Protection is blocking every guest
+
+**Fix this before anything else.** A visitor joining from another device was redirected to Vercel.
+
+Vercel enables Standard Protection by default on new deployments, bouncing anyone who is not a Vercel user with project access to a Vercel login page. Its scope exempts production *custom* domains, and this project has none — a generated `*.vercel.app` URL sits inside the protected set.
+
+It is invisible to whoever built the project, because they are signed into Vercel. Everyone else hits a login wall for a service they have never heard of. **That is the guest flow, which is the highest-traffic path in the product and the thing the tagline is about.**
+
+Project → Settings → Deployment Protection → Vercel Authentication → **Disabled**. Or add a custom domain, which removes it structurally. If a domain is added, update Supabase's Site URL and redirect list, and `NEXT_PUBLIC_APP_URL`; the Google callback does not change, it is Supabase's.
+
+**Then verify from a device that has never signed into Vercel or Parley**, private window, on a real `/j/[code]` link. Until that passes, "guests can join in production" is **unverified** — it rests on one observation that may have worked for the wrong reason, and it is the claim the product is built around.
 
 ### A4. The seed data has become litter
 
@@ -198,6 +210,18 @@ Split layout: preview left, meeting title and panel right. Better use of horizon
 
 Fix A3's camera bug first. There is nothing to design around a dead preview.
 
+### E3. The landing page, in two states
+
+`PRD.md` §3.10a, now specified in `design/01-signin-prejoin.html`.
+
+**The tagline is the heading, not the wordmark.** The current build sets "Parley" at display size in the page body, repeating the header and pushing both entry points below the fold. "A link is all anyone needs" is the proposition and earns the size.
+
+**The code field validates before enabling Join** — `xxx-xxxx-xxx` against the real alphabet. A permanently grey button that does nothing when pressed is worse than no button.
+
+**Signed in is a different page, not the same page with a swapped button.** Start a meeting becomes primary, joining by code drops to secondary, sign-in disappears, the account is named, and there is a quiet link to Your meetings. Naming the account matters — someone with two Google accounts should know which one they are in before creating a meeting under it.
+
+**Do not redirect a signed-in visitor to `/dashboard`.** They typed the domain or followed a bookmark. Without that decision the signed-in state is unreachable and the work is wasted.
+
 ---
 
 ## Tokens and rules added during this pass
@@ -226,15 +250,16 @@ Three things learned building it that will bite in the port:
 
 ## Sequence
 
-1. **A1, A2** — partition and webhook. Everything on the dashboard is wrong until these are right, and D1 and D5 build on A1.
-2. **A3** — camera restore. A core control that does not work, and E2 has nothing to design around without it.
-3. **A4** — reseed, so the dashboard is legible while working on it.
-4. **B1, B2** — the two pieces of unfinished spec.
-5. **C5** — feature-detect share, correct §3.7.
-6. **Track E** — sign in and pre-join, from `01-signin-prejoin.html`.
-7. **Track C** — the room, from `02-room.html`. The largest surface, best done once the device work in B2 exists.
-8. **Track D** — meetings and scheduling, from `03-dashboard-schedule.html`.
-9. **C6** — reactions last. Most subjective, least blocking.
+1. **A5** — Deployment Protection. Nothing else matters while no guest can reach the app.
+2. **A1, A2** — partition and webhook. Everything on the dashboard is wrong until these are right, and D1 and D5 build on A1.
+3. **A3** — camera restore. A core control that does not work, and E2 has nothing to design around without it.
+4. **A4** — reseed, so the dashboard is legible while working on it.
+5. **B1, B2** — the two pieces of unfinished spec.
+6. **C5** — feature-detect share, correct §3.7.
+7. **Track E** — sign in and pre-join, from `01-signin-prejoin.html`.
+8. **Track C** — the room, from `02-room.html`. The largest surface, best done once the device work in B2 exists.
+9. **Track D** — meetings and scheduling, from `03-dashboard-schedule.html`.
+10. **C6** — reactions last. Most subjective, least blocking.
 
 ## Guardrails
 

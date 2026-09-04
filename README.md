@@ -20,7 +20,7 @@ Everything Claude Code needs. Drop these into the repo root; **the repo is the s
 
 Every colour is a `var()` copied verbatim from `CLAUDE.md`. **Translate the token names, not the computed values** — `var(--popover)` becomes `bg-popover`, `var(--boundary)` becomes `border-boundary`. Delete the `.demo-nav` block and its script.
 
-- `01-signin-prejoin.html` — sign in, pre-join (asking / ready / denied)
+- `01-signin-prejoin.html` — landing (signed out / signed in), sign in, pre-join (asking / ready / denied)
 - `02-room.html` — grid, panel, watching a share, sharing, host ended it
 - `03-dashboard-schedule.html` — meetings, empty, schedule, meeting detail
 
