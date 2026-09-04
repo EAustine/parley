@@ -1,4 +1,4 @@
-import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { devices, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import { signIn } from "./auth";
 
@@ -79,6 +79,16 @@ export async function joinAs(
     withMedia?: boolean;
     viewport?: { width: number; height: number };
     /**
+     * Emulate an Android phone — touch, no hover, mobile user agent.
+     *
+     * v1.3 C5: the suite could not have caught the screen-share bug, because
+     * it only ever set a *viewport*. A narrow window on a laptop still reports
+     * `(hover: hover)`, so the rule that hid Present on touch devices was
+     * green at 375px for the whole of v1.2. "Phone-sized" and "a phone" are
+     * different machines, and only one of them is the one people use.
+     */
+    android?: boolean;
+    /**
      * Sign in as this account before joining, so the participant is the
      * meeting's host rather than a guest.
      *
@@ -92,6 +102,8 @@ export async function joinAs(
   },
 ): Promise<Participant> {
   const context = await browser.newContext({
+    // Spread first, so an explicit `viewport` below still wins.
+    ...(options.android ? devices["Pixel 5"] : {}),
     permissions: ["camera", "microphone"],
     extraHTTPHeaders: { "x-real-ip": nextClientIp() },
     // Phase 10 checks the room at phone width. Set on the context rather than

@@ -58,7 +58,7 @@ export function RoomControls({
   chatOpen: boolean;
   participantsOpen: boolean;
   participantCount: number;
-  /** §3.7 is desktop only, so this is absent rather than disabled elsewhere. */
+  /** §3.7 is capability-gated, so this is absent rather than disabled. */
   share: { supported: boolean; sharing: boolean; toggle: () => void };
   onToggleChat: () => void;
   onToggleParticipants: () => void;
@@ -229,9 +229,11 @@ export function RoomControls({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* §3.7: desktop only. Hidden rather than disabled — a control that
-              can never work on this device is not a control, and a tooltip
-              explaining why is worse than the space it takes. */}
+          {/* §3.7, as v1.3 C5 restates it: wherever `getDisplayMedia` exists,
+              which includes Android Chrome and excludes iOS Safari. Hidden
+              rather than disabled — a control that can never work on this
+              device is not a control, and a tooltip explaining why is worse
+              than the space it takes. */}
           {share.supported && (
             <Tooltip>
               <TooltipTrigger asChild>

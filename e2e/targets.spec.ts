@@ -156,6 +156,44 @@ test.describe("touch targets, in the room", () => {
   });
 
   /**
+   * A real Android phone — v1.3 C5.
+   *
+   * C5 makes screen share available wherever `getDisplayMedia` exists, which
+   * adds a control to the bar on Android that was previously hidden there. The
+   * sweep above sets a *viewport* and nothing more, so it renders the desktop
+   * bar at 375px and would never see the extra control on a touch device.
+   *
+   * C2 will move Present into the overflow menu on mobile. Until it does, the
+   * bar carries one more circle than it was laid out for, and the claim that it
+   * "wraps rather than shrinks" is exactly the sort of thing that should be a
+   * measurement rather than a comment — the last time it was a comment, the
+   * controls went under the floor for months with a green check.
+   */
+  test("the Android control bar clears the 44px floor with share offered", async ({
+    browser,
+    meetingCode,
+  }) => {
+    test.setTimeout(120_000);
+    participant = await joinAs(browser, "Ama Serwaa", {
+      code: meetingCode,
+      android: true,
+    });
+    const { page } = participant;
+
+    await wakeControls(page);
+    await expect(
+      page.getByRole("button", { name: "Share your screen" }),
+      "C5: share is offered on Android, so this is the bar being measured",
+    ).toBeVisible();
+
+    await assertFloor(page, {
+      floor: 44,
+      atLeast: 6,
+      label: "the room on an Android phone, share offered",
+    });
+  });
+
+  /**
    * The host's two extra surfaces — v1.3 B1.
    *
    * A separate test because they need a separate fixture: the sweep above

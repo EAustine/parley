@@ -7,7 +7,8 @@ import { Track, type Participant } from "livekit-client";
 import { displayNameOf } from "@/lib/room/participant";
 
 /**
- * §3.7. One share at a time, desktop only, and stoppable from either end.
+ * §3.7. One share at a time, wherever `getDisplayMedia` exists, and stoppable
+ * from either end.
  *
  * §3.7 singles out the browser's own "Stop sharing" bar: someone who uses it
  * has genuinely stopped, and a UI that keeps the control lit is confidently
@@ -46,7 +47,7 @@ export type ScreenShareState = {
   /** Set for the person who was replaced — a notice, not a question. */
   replacedBy: string | null;
   dismissReplaced: () => void;
-  /** Available at all — §3.7 is desktop only. */
+  /** Whether this browser has `getDisplayMedia` at all — §3.7, and C5. */
   supported: boolean;
   /** This participant is sharing. Derived from the publication, not a boolean. */
   sharing: boolean;
@@ -82,14 +83,32 @@ export function useScreenShare(): ScreenShareState {
    */
   const takingOver = useRef(false);
 
-  // §3.7: desktop only. Decided by whether the API exists and whether the
-  // device has a pointer — iOS Safari exposes `getDisplayMedia` on iPad and
-  // then refuses, so presence alone is not the question.
+  /**
+   * §3.7: **where `getDisplayMedia` is available** — v1.3 C5.
+   *
+   * This used to be `hasApi && matchMedia("(hover: hover)")`, and C5 reports
+   * the consequence three times: **Android Chrome supports `getDisplayMedia`
+   * and has no hover**, so the control was hidden on a device that can do it.
+   * "Desktop only" was never the right rule; it was a proxy for the right rule,
+   * and it excluded exactly the platform that breaks the correlation.
+   *
+   * The pointer test was there because of a claim about iPadOS — that it
+   * exposes the API and then refuses. C5 says the opposite and is a field
+   * report: "`getDisplayMedia` is unsupported on iOS Safari entirely." If the
+   * API is absent the check below already hides the control, and if some
+   * version does expose it and refuse, `begin` has a designed state for that —
+   * which is a better answer than hiding the feature from every Android phone
+   * to pre-empt it.
+   *
+   * Detected rather than inferred, for the same reason as `canChooseSpeaker`:
+   * the capability moves between releases and a device table would be wrong
+   * within one.
+   */
   useEffect(() => {
-    const hasApi =
+    setSupported(
       typeof navigator !== "undefined" &&
-      typeof navigator.mediaDevices?.getDisplayMedia === "function";
-    setSupported(hasApi && window.matchMedia("(hover: hover)").matches);
+        typeof navigator.mediaDevices?.getDisplayMedia === "function",
+    );
   }, []);
 
   const shares = useTracks([Track.Source.ScreenShare], { onlySubscribed: false });
@@ -113,6 +132,18 @@ export function useScreenShare(): ScreenShareState {
       // error state for it would be noise.
       const name = cause instanceof Error ? cause.name : "";
       if (name === "NotAllowedError" || name === "AbortError") return;
+      /**
+       * A platform that exposes the API and refuses gets its own sentence.
+       *
+       * C5's rule is that "a disabled control invites someone to keep trying",
+       * and "Try again" is that same invitation wearing different clothes. If
+       * this browser cannot share at all, saying so once is kinder than
+       * offering a retry that can only fail the same way.
+       */
+      if (name === "NotSupportedError") {
+        setError("This browser can't share a screen. Try a laptop, or Chrome on Android.");
+        return;
+      }
       setError("Couldn't start sharing. Try again, or pick a different window.");
     }
   }, [localParticipant]);

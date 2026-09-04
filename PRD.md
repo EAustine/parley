@@ -185,7 +185,7 @@ A floating bar, bottom-centre, on a scrim. Auto-hides after 4s of pointer inacti
 |---|---|---|
 | Mic | 48px circle | Toggle. Off = filled `--secondary` with a struck-through icon |
 | Camera | 48px circle | Toggle. Off = same treatment |
-| Screen share | 44px circle | Desktop only. Active = filled `--primary` |
+| Screen share | 44px circle | Where `getDisplayMedia` exists. Active = filled `--primary` |
 | Reactions | 44px circle | Opens a popover of six emoji |
 | Chat | 44px circle | Toggles panel. Unread dot |
 | Participants | 44px circle | Toggles panel, shows count |
@@ -249,7 +249,11 @@ Under `prefers-reduced-motion`, reactions appear and fade in place with no trave
 
 ### 3.7 Screen share
 
-Desktop only. `getDisplayMedia`. One share at a time. **The confirmation goes to the person taking the action, not the person being replaced.**
+**Where `getDisplayMedia` is available.** One share at a time. **The confirmation goes to the person taking the action, not the person being replaced.**
+
+**This said "Desktop only", and that was never the right rule** — v1.3 C5, after the same report three times. It was a proxy for the real one, and it excluded the single platform that breaks the correlation: **Android Chrome supports `getDisplayMedia` and has no hover**, so a device that can share was told it could not. iOS Safari does not implement it at all, which the capability check catches on its own without a pointer test standing in.
+
+Feature-detect, and **hide rather than disable** where it is absent. A disabled control invites someone to keep trying — and so does an error saying "try again" on a browser that can never succeed, which is why `NotSupportedError` gets its own sentence rather than the generic one.
 
 A second sharer sees "Ama is presenting. Sharing will replace theirs." with Continue and Cancel. The replaced person gets a non-modal notice: "Kofi is now presenting."
 

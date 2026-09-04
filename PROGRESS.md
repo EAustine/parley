@@ -5735,3 +5735,92 @@ precisely where WebKit and Safari diverge.
 Full suite **95 + 23 = 118 passing** (five new). `check:bundle` 11/11 —
 `/room/[code]` 160 kB against 250, `/j/[code]` 173 against 230. `check:room`
 106/106, `check:contrast` 28, `check:deps` 5/5, typecheck, lint.
+
+---
+
+## v1.3 C5 — "desktop only" was a proxy, and it excluded Android
+
+§3.7 said *Desktop only*, and the code implemented it as:
+
+```js
+setSupported(hasApi && window.matchMedia("(hover: hover)").matches);
+```
+
+Right for two platforms out of three, and wrong for the one that breaks the
+correlation. **Android Chrome supports `getDisplayMedia` and has no hover**, so
+a device that can share a screen was told it could not. Reported three times.
+
+The pointer conjunct existed because of a claim in the code's own comment — that
+"iOS Safari exposes `getDisplayMedia` on iPad and then refuses, so presence
+alone is not the question". C5 says the opposite from the field: it is
+"unsupported on iOS Safari entirely". If the API is absent the capability check
+hides the control on its own; and if some version does expose it and refuse,
+`begin` already has a designed state for that. Hiding the feature from every
+Android phone to pre-empt a maybe is the worse trade.
+
+### The suite could not have caught it
+
+This is the more useful finding. Every mobile test sets a **viewport** and
+nothing else — and a 375px window on a laptop still reports `(hover: hover)`. So
+the conjunct that hid the control on touch devices was **never false in a test
+run**, at any width.
+
+"Phone-sized" and "a phone" are different machines, and only one of them is the
+one people use. `joinAs({ android: true })` spreads Playwright's Pixel 5
+descriptor, and the new test asserts the emulation before asserting the
+behaviour — that the API is present *and* hover is absent, which together are
+exactly the combination the old rule got wrong. Without that check it would be
+the old test at a smaller size.
+
+### Three cases, and what each is for
+
+- **pointer device with the API** — the case that already worked, kept because
+  the assertion below it would otherwise pass on a browser that simply cannot
+  share
+- **touch device with the API** — C5's bug, and the one the mutation kills
+- **API absent** — removed from `MediaDevices.prototype` via `addInitScript`,
+  because the capability check runs once in an effect and deleting the method
+  afterwards is a change nothing re-reads
+
+The third asserts a **count of zero**, not a disabled state. C5: "A disabled
+control invites someone to keep trying." A present-but-disabled button satisfies
+"cannot be used" and fails the rule. It also checks the bar's other controls
+survive, since hiding one must not take its neighbours with it.
+
+One thing the test found about itself: `delete navigator.mediaDevices.getDisplayMedia`
+is a **silent no-op** — the method is on the prototype. The premise assertion is
+what said so, which is why it is there.
+
+### "Try again" is a disabled control wearing different clothes
+
+`NotSupportedError` now gets its own sentence — *"This browser can't share a
+screen. Try a laptop, or Chrome on Android."* The generic message invites a
+retry that can only fail the same way, which is the thing C5's rule is against.
+
+### The Android bar is measured, not asserted in a comment
+
+Share is now offered on Android, so the bar carries one more circle than it was
+laid out for until C2 moves Present into the overflow. `RoomControls` claims it
+"wraps rather than shrinks" — and the last time that claim was a comment rather
+than a measurement, the controls sat under the floor for months with a green
+check. A new target test joins as a real phone, asserts share is visible, and
+measures. It clears 44px.
+
+### §3.7 rewritten
+
+The table row and the section both. "Desktop only" is gone from `PRD.md`,
+`RoomControls` and `useScreenShare`, replaced with the capability and the reason
+the proxy failed — so the next person reading §3.7 does not re-derive the same
+shortcut.
+
+### Mutation
+
+Restoring `hasApi && (hover: hover)` fails one test, with the message it was
+written to print: *"screen share is hidden on a touch device that supports it —
+C5's bug."* The other two still pass, which is the whole story of why the rule
+survived a year.
+
+### Checks
+
+Full suite **99 + 23 = 122 passing** (four new). `check:room` 106/106,
+`check:contrast` 28, `check:partition` 20/20, `check:deps` 5/5, typecheck, lint.
