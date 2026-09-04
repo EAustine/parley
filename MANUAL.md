@@ -271,15 +271,6 @@ neither item in this section.**
 
 ## 7. Server-side and account integration
 
-- **The LiveKit webhook** — needs a human.
-  `app/api/livekit/webhook/route.ts` cannot be exercised from this repo at all:
-  it needs a public URL and a signed request from LiveKit. Its shape is scanned;
-  its behaviour is manual. Point a LiveKit Cloud webhook at a deployed URL, run
-  a meeting to completion, and confirm `room_started` and `room_finished` land
-  on `meetings.status`, `started_at` and `ended_at` — and that the dashboard's
-  past section fills as a result, since without this `status` is effectively
-  write-once.
-
 - **Google OAuth, end to end** — needs a human.
   The provider is enabled, the client ID is real, and `/authorize` redirects to
   Google with this project's callback registered — but completing it needs
@@ -341,3 +332,32 @@ Kept so the list does not lose the record of what was once open.
 - **Marketing and sign-in scanned in both themes** — **verified** (`states.ts`
   carries `themes` per state and axe expands it, so a theme cannot be forgotten
   the way a duplicated test can).
+
+- **The LiveKit webhook** — **verified** (v1.3 A2, `npm run check:webhook`).
+  This was on the open list as "cannot be exercised from this repo at all: it
+  needs a public URL and a signed request from LiveKit". Half of that was
+  wrong. The signature is a JWT issued by the API key, carrying the base64
+  SHA-256 of the body — reproducible with `node:crypto` and the project's own
+  credentials, so the handler can be driven down exactly the path LiveKit takes,
+  minus the network.
+
+  Five assertions: unsigned refused, wrong-secret refused, signature-over-
+  different-bytes refused, and correctly signed `room_started` and
+  `room_finished` **accepted and written through to `status`, `started_at` and
+  `ended_at`**. That last pair is the one that matters, because A2's warning is
+  that "a webhook that 401s on every delivery looks exactly like one that was
+  never called" — three rejection tests pass against a handler that rejects
+  everything, and only an acceptance that changes the database separates them.
+  Mutation-tested: `receive(..., true)` fails the three, and the two would fail
+  if verification always threw.
+
+  **Production is answered too, by evidence rather than by a dashboard.**
+  `started_at` has exactly one writer in the codebase — the webhook route — and
+  LiveKit Cloud cannot reach localhost. Four rows carry it. Those can only have
+  been written by the deployed URL accepting a signed delivery, so it is
+  registered, reachable and verifying. Of the meetings that anyone actually
+  joined, **none is missing `started_at`**: no delivery has failed to land.
+
+  What remains genuinely manual is narrow: confirming the registered URL still
+  points at the current production deployment after a domain change. The
+  handler, the signature, and the write-through no longer need a human.

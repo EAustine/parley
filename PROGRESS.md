@@ -5158,3 +5158,120 @@ typecheck and lint clean.
 
 Both on-scrim tokens report **7.01 and 4.70 in light and dark alike**, which is
 the invariance being asserted rather than described.
+
+---
+
+## v1.3 A1 — the dashboard partition, and A2 cleared
+
+### A1: two field issues, one predicate, two defects in three lines
+
+The whole of it was this, inline in `app/(app)/dashboard/page.tsx`:
+
+```js
+if (status === "ended" || status === "cancelled") return true;
+if (!scheduled_start) return false;          // ← instant, upcoming forever
+return scheduled_start < now;                // ← wrong end of the slot
+```
+
+An instant meeting has no `scheduled_start`, so line two filed every one of
+them as upcoming permanently — **field issue 7**, Thursday's 22:22 meeting. And
+line three compares against the *start*, so a meeting moved to past the moment
+it began, while a `live` one — neither upcoming nor past but happening — had
+nowhere to go and stayed where it already was: **field issue 8**, Wednesday's
+live meeting in "Upcoming · 41".
+
+`lib/meetings/partition.ts` replaces it, as a pure function of the row and a
+clock. Three sections, and the belt A1 asked for: **a meeting whose end has
+passed reads as past whether or not anything told the database so.**
+
+### Two spec gaps, asked rather than picked
+
+A1's table does not cover every row it will meet, and rule 10 says ask.
+
+**A scheduled meeting inside its own slot that nothing has marked live** —
+10:15 in a 10:00–10:30 booking, nobody joined yet — matches none of the three
+rules: `status = 'live'` is false and `scheduled_start > now()` is false too.
+Decided: **upcoming, until its end passes.** That keeps "Live now" meaning what
+its pulsing dot and participant count promise, and the row leaves the list on
+its own when `scheduled_end` goes by — the belt doing the work rather than a
+second rule.
+
+**Instant meetings have no belt.** §3.2 expires them 12h after creation *if
+never joined*, which leaves joined-then-abandoned with nothing: no
+`scheduled_end` to compare, so with the webhook silent it would sit in Live
+forever. Decided: **the window runs from `started_at` when there is one**, which
+is a change to §3.2's wording and gives instant meetings the belt scheduled ones
+get.
+
+### The belt beats a stale `live`, and that ordering is the fix
+
+Worth stating because the natural reading of A1's table gets it backwards.
+"Live now — its own block, never inside either list" reads as *extract live
+first, then partition the rest* — and that ordering leaves Wednesday's meeting
+pulsing "Live now" indefinitely, which is field issue 8 with a nicer border.
+`room_finished` is what writes `status = 'ended'`, so a stale `live` is exactly
+what a missed delivery leaves behind. The belt has to win.
+
+The cost, stated rather than hidden: a meeting that genuinely overruns files as
+past at its scheduled end. That is the smaller error, it self-corrects on the
+next booking, and nothing here gates joining — the link keeps working.
+
+### The check that did not exist
+
+The partition had never been tested. The only thing asserting anything about it
+was `check:meetings`, which checked that the string **"Upcoming"** appeared in
+the HTML — and that passes against a section header above a list containing
+every meeting ever created, which is precisely what shipped.
+
+`check:partition` is 20 assertions on a **fixed clock**, every fixture an offset
+from it: a partition is a function of *now*, so a test that reads the wall clock
+owns nothing and the 12-hour window would need twelve hours to exercise. Both
+edges of that window are asserted to the millisecond, because 11h and 13h pass
+against `>` and `>=` alike — and against 11.5h, or 24h.
+
+Two guards beyond the cases: every meeting lands in **exactly one** section
+(otherwise three lists could be one array read three times), and all three
+sections are non-empty (otherwise the sort assertions are vacuous).
+
+### Mutation — three, each failing what it names
+
+| mutation | fails |
+|---|---|
+| `status === 'live'` checked before the belt | field issue 8, and the stale-live case — 18/20 |
+| instant meetings never expire | field issue 7, both expiry cases, the boundary — 16/20 |
+| belt compares `scheduled_start`, not `scheduled_end` | the in-slot case, and the end boundary — 18/20 |
+
+### A2: the webhook is fine, and that is the answer
+
+A2 suspected the webhook, reasonably: if `room_finished` were arriving, a
+meeting that ran and emptied would carry `status = 'ended'` and would have
+sorted correctly without the fallback.
+
+It is arriving. `check:webhook` signs a real event with the project's own
+credentials — the JWT the receiver wants carries the **base64 SHA-256 of the
+body**, reproducible with `node:crypto` — and drives the handler down the exact
+path LiveKit takes, minus the network. Five assertions, all green: unsigned
+refused, wrong secret refused, signature-over-different-bytes refused, and both
+`room_started` and `room_finished` accepted and **written through** to `status`,
+`started_at` and `ended_at`.
+
+That last pair is the whole point. A2: "a webhook that 401s on every delivery
+looks exactly like one that was never called." Three rejection tests pass
+against a handler that rejects everything; only an acceptance that changes the
+database tells them apart. Mutated with `receive(..., true)`: the three
+rejections fail, the two acceptances hold — 2/5.
+
+**And production is answered by evidence rather than by a dashboard.**
+`started_at` has exactly one writer in the codebase, and LiveKit Cloud cannot
+reach localhost. Four rows carry it, so the deployed URL is registered,
+reachable and verifying. Of the meetings anyone actually joined, **none is
+missing `started_at`** — no delivery has failed to land.
+
+So A1's predicate was the entire cause of both field issues. A2 needed checking
+and is now checked; `MANUAL.md` moves the webhook to closed, leaving only
+"confirm the URL still points at production after a domain change".
+
+### Checks
+
+`check:partition` 20/20 (new), `check:webhook` 5/5 (new), `check:meetings`
+68/68, `check:contrast` 28/28, `check:deps` 5/5, typecheck, lint.

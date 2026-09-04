@@ -8,27 +8,11 @@ import Link from "next/link";
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
 import { Button } from "@/components/ui/button";
 import { MeetingRow, type MeetingRowData } from "@/components/meetings/MeetingRow";
+import { partitionMeetings } from "@/lib/meetings/partition";
 
 export const metadata: Metadata = {
   title: "Meetings",
 };
-
-/**
- * Upcoming and past. Past means ended, or scheduled for a time that has gone —
- * so an unstarted meeting whose slot has passed still appears rather than
- * vanishing, which §3.9 asks for explicitly.
- *
- * An instant meeting that was never joined is upcoming until it is ended: it
- * has no scheduled time to fall behind. The 12h expiry in §3.2 is a Phase 8
- * concern, driven by the LiveKit webhook.
- */
-function isPast(m: { status: string; scheduled_start: string | null }) {
-  // §3.2: "cancelled meetings leave the upcoming list and appear under past".
-  // A meeting that is not going to happen is not something to be at.
-  if (m.status === "ended" || m.status === "cancelled") return true;
-  if (!m.scheduled_start) return false;
-  return new Date(m.scheduled_start).getTime() < Date.now();
-}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -40,42 +24,43 @@ export default async function DashboardPage() {
   // a guard upstream of it held.
   if (!user) redirect("/sign-in?next=/dashboard");
 
-  // Every row here is reached through RLS as this user. The count comes from
-  // the same query rather than a second round trip per row.
+  /**
+   * Every row here is reached through RLS as this user, and the count comes
+   * from the same query rather than a round trip per row.
+   *
+   * `scheduled_end` and `started_at` are new to this select, and A1's partition
+   * cannot be computed without them. That is part of why the old predicate
+   * could not have been right: it compared against `scheduled_start` not
+   * because that was the intended rule, but because it was the only end of the
+   * slot the query had fetched.
+   */
   const { data, error } = await supabase
     .from("meetings")
-    .select("id, code, title, scheduled_start, status, created_at, meeting_participants(count)");
+    .select(
+      "id, code, title, scheduled_start, scheduled_end, status, created_at, started_at, meeting_participants(count)",
+    );
 
   const meetings: MeetingRowData[] = (data ?? []).map((m) => ({
     id: m.id,
     code: m.code,
     title: m.title,
     scheduled_start: m.scheduled_start,
+    scheduled_end: m.scheduled_end,
     status: m.status,
     created_at: m.created_at,
+    started_at: m.started_at,
     participantCount:
       (m.meeting_participants as unknown as { count: number }[] | null)?.[0]
         ?.count ?? 0,
   }));
 
-  // The two sections sort in opposite directions, which is why this is not a
-  // single ORDER BY. Upcoming reads soonest-first — the next thing you have to
-  // be at. Past reads most-recent-first — the thing you just came out of.
-  // Instant meetings have no scheduled time and are startable now, so they lead
-  // the upcoming list, newest first.
-  const at = (m: MeetingRowData) =>
-    new Date(m.scheduled_start ?? m.created_at).getTime();
-
-  const upcoming = meetings
-    .filter((m) => !isPast(m))
-    .sort((a, b) => {
-      if (!a.scheduled_start && !b.scheduled_start) return at(b) - at(a);
-      if (!a.scheduled_start) return -1;
-      if (!b.scheduled_start) return 1;
-      return at(a) - at(b);
-    });
-
-  const past = meetings.filter(isPast).sort((a, b) => at(b) - at(a));
+  /**
+   * Computed from `now()` at render, which is the half of D5 that A1 delivers
+   * on its own. The other half — `router.refresh()` on window focus — is Track
+   * D and is not here yet, so a dashboard left open still goes stale; it is
+   * simply correct every time the page is rendered.
+   */
+  const { live, upcoming, past } = partitionMeetings(meetings, Date.now());
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-12">
@@ -122,6 +107,26 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <div className="space-y-10">
+          {/*
+            Live is its own block above the two lists — A1: "never inside
+            either list", because a meeting that is happening is neither
+            something to be at nor something you came out of.
+
+            Plain for now. D1 gives it the pulsing dot, the elapsed time and
+            the participant count from `design/03-dashboard-schedule.html`;
+            what matters here is that the partition has somewhere to put these
+            rows, rather than leaving them in Upcoming until Track D arrives.
+          */}
+          {live.length > 0 && (
+            <Section title="Live now" count={live.length}>
+              <ul className="divide-y divide-border">
+                {live.map((m) => (
+                  <MeetingRow key={m.id} meeting={m} past={false} />
+                ))}
+              </ul>
+            </Section>
+          )}
+
           <Section title="Upcoming" count={upcoming.length}>
             {upcoming.length === 0 ? (
               <p className="type-small py-4 text-muted-foreground">

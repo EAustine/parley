@@ -12,8 +12,11 @@ export type MeetingRowData = {
   code: string;
   title: string;
   scheduled_start: string | null;
+  /** Both read by `partitionMeetings` — see `lib/meetings/partition.ts`. */
+  scheduled_end: string | null;
   status: MeetingStatus;
   created_at: string;
+  started_at: string | null;
   participantCount: number;
 };
 

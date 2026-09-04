@@ -14,6 +14,8 @@
     "check:rls": "node --env-file=.env.local scripts/check-rls.mjs",
     "check:codes": "node scripts/check-codes.mjs",
     "check:meetings": "node --env-file=.env.local scripts/check-meetings.mjs",
+    "check:webhook": "node --env-file=.env.local scripts/check-webhook.mjs",
+    "check:partition": "node scripts/check-partition.mjs",
     "seed:dev": "node --env-file=.env.local scripts/seed-dev.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",
