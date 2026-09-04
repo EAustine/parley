@@ -27,24 +27,44 @@ import {
 // room could not fill at speed, this test would stop passing.
 const JOIN_INTERVAL_MS = 0;
 
-/** §3.4, desktop column. [participants, columns, rows, tiles rendered, +N] */
+/**
+ * §3.4's desktop column — **indexed by people in the room, asserted against the
+ * grid**, and v1.3 C1 moved those two apart.
+ *
+ * The local participant is no longer a tile: they are a corner PiP, so a room
+ * of N people renders a grid of N−1. The table below therefore reads "with this
+ * many people present, the grid is this shape", and every row after the first
+ * has shifted by one — 2 people is now one full-size tile rather than two
+ * halves, which is the change C1 exists to make.
+ *
+ * **One exception, and it is why row one is unchanged.** Alone, there is no PiP
+ * and you are the grid: an empty grid with a corner self-view reads as broken
+ * rather than as waiting. `RoomGrid` carries that reasoning.
+ *
+ * The overflow row moved with everything else. Sixteen *remote* participants
+ * fill a 4×4 exactly, so the "+N" cell now needs eighteen people in the room
+ * rather than seventeen — and seventeen becomes the row that proves the grid
+ * fills completely before it starts counting.
+ *
+ * [people in the room, columns, rows, tiles rendered, +N]
+ */
 const EXPECTED: [number, number, number, number, number][] = [
   [1, 1, 1, 1, 0],
-  [2, 2, 1, 2, 0],
-  [3, 2, 2, 3, 0],
-  [4, 2, 2, 4, 0],
-  [5, 3, 2, 5, 0],
-  [6, 3, 2, 6, 0],
-  [7, 3, 3, 7, 0],
-  [9, 3, 3, 9, 0],
-  [10, 4, 4, 10, 0],
-  [16, 4, 4, 16, 0],
-  // 17+: the last cell stops being a person and becomes the count of everyone
+  [2, 1, 1, 1, 0],
+  [3, 2, 1, 2, 0],
+  [4, 2, 2, 3, 0],
+  [5, 2, 2, 4, 0],
+  [6, 3, 2, 5, 0],
+  [7, 3, 2, 6, 0],
+  [8, 3, 3, 7, 0],
+  [10, 3, 3, 9, 0],
+  [17, 4, 4, 16, 0],
+  // 18+: the last cell stops being a person and becomes the count of everyone
   // who isn't shown, so fifteen faces fit rather than sixteen.
-  [17, 4, 4, 15, 2],
+  [18, 4, 4, 15, 2],
 ];
 
-test("every breakpoint from 1 to 17, with real participants", async ({ browser, meetingCode }) => {
+test("every breakpoint from 1 to 18, with real participants", async ({ browser, meetingCode }) => {
   test.setTimeout(600_000);
 
   const everyone: Participant[] = [];
@@ -71,7 +91,7 @@ test("every breakpoint from 1 to 17, with real participants", async ({ browser, 
       const shape = await gridShape(observer.page);
       expect(
         { count, ...shape, cells: shape.cells },
-        `${count} participants should be ${columns}×${rows}`,
+        `${count} people → grid should be ${columns}×${rows} (${tiles} tiles)`,
       ).toMatchObject({ columns, rows });
 
       // Cells include the +N tile when there is one.
@@ -85,10 +105,16 @@ test("every breakpoint from 1 to 17, with real participants", async ({ browser, 
         ).toBeAttached();
       }
 
-      // §3.4: a lone tile letterboxes; every other count fills the grid, where
-      // letterboxing individual tiles is explicitly forbidden.
+      /*
+       * §3.4: a lone *tile* letterboxes; every other count fills the grid,
+       * where letterboxing individual tiles is explicitly forbidden.
+       *
+       * Keyed on the tile count, not the head count — C1 made those different.
+       * One person and two people both produce one tile now, and both
+       * letterbox.
+       */
       expect(shape.aspectRatio, `${count} participants → aspect-ratio`).toBe(
-        count === 1 ? "16 / 9" : "auto",
+        tiles === 1 ? "16 / 9" : "auto",
       );
 
       console.log(
@@ -125,7 +151,15 @@ test("sixteen tiles reflow without dropping frames", async ({ browser, meetingCo
     });
     everyone.push(observer);
 
-    while (everyone.length < 16) {
+    /*
+     * Seventeen people for sixteen tiles — v1.3 C1.
+     *
+     * The observer is no longer one of them: their own face is a corner PiP, so
+     * a full 4×4 needs sixteen *remote* participants. The claim under test is
+     * unchanged — sixteen tiles is the worst reflow the product can produce —
+     * and it is the head count that had to move to keep producing it.
+     */
+    while (everyone.length < 17) {
       everyone.push(
         await joinAs(browser, `Guest ${everyone.length + 1}`, {
           code: meetingCode,
@@ -163,7 +197,7 @@ test("sixteen tiles reflow without dropping frames", async ({ browser, meetingCo
     });
 
     everyone.push(
-      await joinAs(browser, "Guest 17", { code: meetingCode, withMedia: false }),
+      await joinAs(browser, "Guest 18", { code: meetingCode, withMedia: false }),
     );
     const timing = await frames;
     await expect

@@ -12,6 +12,7 @@ import {
 import { useGridFlip } from "@/lib/hooks/useGridFlip";
 import { useViewport } from "@/lib/hooks/useViewport";
 import { OverflowTile, Tile } from "@/components/room/Tile";
+import { SelfViewPiP } from "@/components/room/SelfViewPiP";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -34,10 +35,39 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
     { onlySubscribed: false },
   );
 
+  /**
+   * Who the **grid** is for — v1.3 C1.
+   *
+   * "Your own face does not need equal weight with the people you are talking
+   * to. On a two-person call that is the difference between two half-screens
+   * and one full one." So the grid counts remote participants and the local one
+   * becomes a corner PiP.
+   *
+   * **Except when you are alone.** With nobody else there the grid would have
+   * zero tiles and the only thing on screen would be a 200px self-view in the
+   * corner of an empty room — which reads as broken rather than as waiting. So
+   * a lone participant is a full-size tile and there is no PiP; the first
+   * arrival takes the grid and you shrink into the corner, which is the same
+   * reflow the grid already animates.
+   *
+   * That also keeps the solo case identical to what it was, which is why the
+   * tests that measure a lone `[data-participant]` — the avatar's scale, the
+   * label's scrim, the sheet's clearance, the offline overlay — are untouched
+   * by this change.
+   *
+   * The **filmstrip is not affected**: `design/02-room.html`'s watching-a-share
+   * screen has no PiP and carries "You" as a strip tile. While someone shares,
+   * the strip is where everyone is.
+   */
+  const local = participants.find((p) => p.isLocal) ?? null;
+  const remote = participants.filter((p) => !p.isLocal);
+  const inGrid = filmstrip || remote.length === 0 ? participants : remote;
+  const selfIsPiP = !filmstrip && remote.length > 0 && local !== null;
+
   // §3.4: while someone is sharing, the grid collapses to a rail beside the
   // content. A different shape, not a narrower grid — see `filmstripLayout`.
   const strip = filmstripLayout(participants.length, viewport);
-  const layout = gridLayout(participants.length, viewport, page);
+  const layout = gridLayout(inGrid.length, viewport, page);
 
   // Paging past the end is not hypothetical: it is what happens when the
   // people on your current page leave.
@@ -50,7 +80,7 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
   // a field was added. Sorting at most sixteen participants is not the cost
   // worth guarding against here.
   const shown = visibleOrder(
-    participants.map((p) => ({
+    inGrid.map((p) => ({
       identity: p.identity,
       isLocal: p.isLocal,
       lastSpokeAt: p.lastSpokeAt ?? null,
@@ -185,10 +215,20 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
         {participants.length === 1 ? "participant" : "participants"}
       </h1>
 
-      {/* The stage. A size container so the grid below can be sized against
-          both of its dimensions at once — see the letterbox note there. */}
+      {/*
+        The stage. A size container so the grid below can be sized against both
+        of its dimensions at once — see the letterbox note there.
+
+        **And `relative`, which is C1's whole warning.** The PiP is
+        `position: absolute`, so it resolves against the nearest positioned
+        ancestor: "The first build of this mockup had it `position:absolute`
+        inside an unpositioned parent, so on mobile it resolved to the frame and
+        sat on top of the control bar." This element contains the grid and
+        nothing else, which is what makes "inside the video area" true rather
+        than approximately true.
+      */}
       <div
-        className="flex min-h-0 flex-1 items-center justify-center"
+        className="relative flex min-h-0 flex-1 items-center justify-center"
         style={{ containerType: "size" }}
       >
         {/* v1.2 B3: an 8px gutter, the same as the filmstrip's. */}
@@ -235,6 +275,16 @@ export function RoomGrid({ filmstrip = false }: { filmstrip?: boolean }) {
           ))}
           {layout.overflow > 0 && <OverflowTile count={layout.overflow} />}
         </div>
+
+        {/* v1.3 C1’s self view, a sibling of the grid inside the positioned
+            stage — not a child of the grid, which would give it a cell. */}
+        {selfIsPiP && local && (
+          <SelfViewPiP
+            participant={local}
+            track={cameraFor(local.identity)}
+            cameraOn={local.isCameraEnabled}
+          />
+        )}
       </div>
 
       {layout.pages > 1 && (

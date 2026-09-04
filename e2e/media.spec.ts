@@ -298,6 +298,11 @@ test.describe("the grid", () => {
     const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
 
     // One participant: §3.4 letterboxes to 16:9 rather than cropping.
+    /*
+     * v1.3 C1: alone, you *are* the grid — one tile, no PiP. The moment
+     * Kwabena joins he takes the grid and Ama shrinks into the corner, so the
+     * cell count stays 1 rather than going to 2.
+     */
     await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(1);
     expect(await gridShape(ama.page)).toMatchObject({
       columns: 1,
@@ -306,8 +311,10 @@ test.describe("the grid", () => {
     });
 
     const kwabena = await joinAs(browser, "Kwabena Osei", { code: meetingCode });
-    await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(2);
-    expect(await gridShape(ama.page)).toMatchObject({ columns: 2, rows: 1 });
+    await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(1);
+    expect(await gridShape(ama.page)).toMatchObject({ columns: 1, rows: 1 });
+    // And Ama is now the corner self-view rather than a peer tile.
+    await expect(ama.page.locator("[data-self-view]")).toHaveCount(1);
 
     await leave(kwabena);
     await expect.poll(async () => (await gridShape(ama.page)).cells).toBe(1);

@@ -215,27 +215,49 @@ test.describe("axe, in the room", () => {
     participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode });
     const { page } = participant;
 
-    expectClean(await scan(page), "the room, nothing open");
+    expectClean(await scan(page), "the room, alone");
 
-    // §3.4's panels — the surfaces the closed-room scan never reaches.
-    await wakeControls(page);
-    await page.getByRole("button", { name: "Chat" }).click();
-    await expect(page.getByRole("textbox", { name: /message/i })).toBeVisible();
-    expectClean(await scan(page), "the room, chat open");
+    /*
+     * And with somebody else in it — v1.3 C1.
+     *
+     * Every state below used to be scanned in a room of one, which after C1 is
+     * the one room shape that has no self-view PiP. So the sweep was green and
+     * silent about the newest surface in the product: thirty-one passing tests
+     * that never rendered the thing.
+     *
+     * Second participant first, then the panels, so each of those is scanned
+     * over the PiP rather than instead of it.
+     */
+    const other = await joinAs(browser, "Kwabena Mensah", {
+      code: meetingCode,
+      withMedia: false,
+    });
+    try {
+      await expect(page.locator("[data-self-view]")).toBeVisible();
+      expectClean(await scan(page), "the room, self-view showing");
 
-    await page.keyboard.press("Escape");
-    await wakeControls(page);
-    await page.getByRole("button", { name: "Participants" }).click();
-    expectClean(await scan(page), "the room, participants open");
+      // §3.4's panels — the surfaces the closed-room scan never reaches.
+      await wakeControls(page);
+      await page.getByRole("button", { name: "Chat" }).click();
+      await expect(page.getByRole("textbox", { name: /message/i })).toBeVisible();
+      expectClean(await scan(page), "the room, chat open");
 
-    await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await wakeControls(page);
+      await page.getByRole("button", { name: "Participants" }).click();
+      expectClean(await scan(page), "the room, participants open");
 
-    // The shortcuts dialog — a real modal, and the only trapped surface
-    // reachable without breaking the connection.
-    await page.keyboard.press("?");
-    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
-    expectClean(await scan(page), "the room, shortcuts dialog open");
-    await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+
+      // The shortcuts dialog — a real modal, and the only trapped surface
+      // reachable without breaking the connection.
+      await page.keyboard.press("?");
+      await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+      expectClean(await scan(page), "the room, shortcuts dialog open");
+      await page.keyboard.press("Escape");
+    } finally {
+      await other.context.close().catch(() => {});
+    }
   });
 });
 

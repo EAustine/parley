@@ -76,14 +76,35 @@ test.describe("screen share", () => {
     );
     expect(amaShareSurface, "the sharer is still rendering a share region").toBe(0);
 
-    // The grid, not a column beside dead space. One tile per participant, and
-    // the grid spanning the stage rather than a filmstrip's fixed width.
+    /*
+     * The grid, not a column beside dead space.
+     *
+     * A filmstrip renders no `.grid` at all — it is a flex column of tiles — so
+     * the null check below is what catches "the sharer got collapsed too". What
+     * the ratio catches is the other failure: a grid that *is* rendered but has
+     * a share region taking horizontal space beside it.
+     *
+     * That is a claim about the grid's **container**, and v1.3 C1 is why the
+     * distinction now matters. The measurement used to be the grid's own width
+     * against the stage, with a 0.8 floor calibrated on a two-tile grid. Ama is
+     * one of the two, and C1 moved her out of the grid and into a corner PiP —
+     * so the grid holds one tile, a single tile letterboxes to 16:9, and the
+     * grid legitimately measured 0.77 of the stage. Correct behaviour, failing
+     * a number that had quietly encoded the tile count.
+     *
+     * Measuring the stage wrapper instead removes the tile count from the claim
+     * entirely, and lets the threshold be *tighter* rather than looser: with no
+     * share region it is the full stage, and 0.95 is a bound a 220px rail could
+     * never clear. Relaxing 0.8 to fit would have left almost nothing that
+     * could fail.
+     */
     const amaGrid = await ama.page.evaluate(() => {
       const grid = document.querySelector<HTMLElement>(".grid");
       const stage = document.querySelector<HTMLElement>(".relative.h-dvh");
       if (!grid || !stage) return null;
+      const area = grid.parentElement as HTMLElement;
       return {
-        width: grid.getBoundingClientRect().width,
+        width: area.getBoundingClientRect().width,
         stageWidth: stage.getBoundingClientRect().width,
       };
     });
@@ -91,7 +112,11 @@ test.describe("screen share", () => {
     expect(
       amaGrid!.width / amaGrid!.stageWidth,
       "the sharer's grid is still squeezed beside a share region",
-    ).toBeGreaterThan(0.8);
+    ).toBeGreaterThan(0.95);
+
+    // And she is in the corner rather than the grid — C1, in the one room shape
+    // where the filmstrip would otherwise have put her back in line.
+    await expect(ama.page.locator("[data-self-view]")).toHaveCount(1);
 
     // At the other end it is real video, in the main area.
     await expect(kwabena.page.getByText("Ama Serwaa is sharing")).toBeVisible();

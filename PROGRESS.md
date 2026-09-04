@@ -6344,3 +6344,162 @@ not another meeting immediately.
 `Left` and `Failed` took the same mark treatment. They are one family rendered by
 the same wrapper, and leaving two of the three with a display-size wordmark would
 have been a worse inconsistency than the one being fixed.
+
+---
+
+## v1.3 C1 — the self-view is a corner PiP
+
+> "Your own face does not need equal weight with the people you are talking to.
+> On a two-person call that is the difference between two half-screens and one
+> full one."
+
+The grid now counts **remote** participants. The local one is lifted out of it
+and drawn as a corner tile over the video area.
+
+### Except when you are alone, and that exception is the interesting part
+
+With nobody else in the room the grid would have zero tiles, and the only thing
+on screen would be a 200px self-view in the corner of an empty rectangle. That
+reads as broken rather than as waiting. So a lone participant stays a full-size
+tile and there is no PiP; the first arrival takes the grid and you shrink into
+the corner, which is a reflow the grid already animates.
+
+It also happens to keep the solo case byte-identical to what it was, which is
+why every test that measures a lone `[data-participant]` — the avatar's scale,
+the label's scrim, the sheet's clearance, the offline overlay — is untouched.
+
+The **filmstrip is unaffected**. `design/02-room.html`'s watching-a-share screen
+has no PiP and carries "You" as a strip tile: while someone is sharing, the strip
+is where everyone is.
+
+### `grid.spec`'s table moved by one, and that is the whole change to it
+
+A room of N people renders N−1 tiles, so every row after the first shifted. The
+overflow row moved with it — sixteen *remote* participants fill a 4×4 exactly, so
+the "+N" cell now needs eighteen people rather than seventeen, and seventeen
+became the row proving the grid fills completely before it starts counting.
+
+The letterbox assertion is now keyed on the **tile** count rather than the head
+count, because C1 made those different: one person and two people both produce
+one tile, and both letterbox — something the old `count === 1` would have got
+wrong in the direction that still passed.
+
+The FLIP timing test needed seventeen people to produce sixteen tiles. The claim
+is unchanged — sixteen tiles is the worst reflow the product can make — and it
+was the head count that had to move to keep producing it.
+
+### The anchoring, which C1 warns about by name
+
+> "The first build of this mockup had it `position:absolute` inside an
+> unpositioned parent, so on mobile it resolved to the frame and sat on top of
+> the control bar."
+
+One `relative` on the stage wrapper, which contains the grid and nothing else.
+The test asserts what the PiP is *anchored to* — that its `offsetParent` holds
+the grid and does not hold the Leave button — rather than only where it lands at
+one viewport, because "resolved to the frame" is a statement about the ancestor
+and a coincidence of geometry could hide it.
+
+### It is a button, and C1 does not say so
+
+C1 says "draggable" and stops. The literal reading is a `<div>` with pointer
+handlers, and that does not meet the floor:
+
+- **SC 2.5.7 Dragging Movements** (2.2 AA — the level the touch-target floor is
+  already pinned to) wants a single-pointer alternative to any drag that is not
+  essential. Repositioning a corner tile is not essential in the standard's
+  sense.
+- **SC 2.1.1**, and the floor's own first line, want a keyboard one.
+
+So pressing it — click, tap, Enter, Space — steps it to the next corner,
+clockwise **from wherever it currently is** rather than from a counter, since
+after a drag a counter would send it somewhere unrelated to what you are looking
+at. The drag is exactly as C1 describes it; this is a path beside it.
+
+That also made the accessible name real. As a `<div>` with no role the
+`aria-label` was computed and then discarded — a generic element is not exposed
+with a name — so the label looked like it was doing the work while doing
+nothing. **axe does not flag this**, which is why it had to be reasoned about
+rather than waited for.
+
+### The clamp was off by a pixel, and only a number could have said so
+
+`offsetWidth`/`offsetHeight` are rounded integers, and this tile is 112.5px tall
+at 200px wide. Clamping against the rounded height put the far corner a pixel
+inside the near one.
+
+The fix is `getBoundingClientRect`, with the reason the original comment avoided
+it now stated precisely: the rect reports the **transformed** box, and this
+element carries the drag's own `translate`, so reading a *position* from it would
+feed the clamp its own output. **Sizes are safe** — a translation moves a box
+without resizing it.
+
+### A `cqmin` that resolved against the wrong box
+
+The camera-off avatar was `min(34cqmin, 44px)`, copied from `Tile`. `Tile`
+declares `containerType: size` on itself, and this does not — so `cqmin` looked
+past the PiP to the nearest size container it could find, which is the whole
+stage. 34cqmin of the stage is hundreds of pixels, the `min()` always returned
+44, and the proportion never applied at all. 44px inside a 63px-tall phone PiP
+is most of the tile.
+
+Two explicit sizes instead, 32 and 44 at the same 900px the tile's own width uses.
+A proportion that silently resolves against the wrong element is worse than a
+number, because it reads as if it had been thought about.
+
+### Two ways this nearly shipped green
+
+**The axe sweep never rendered the PiP.** Every in-room state was scanned in a
+room of one, which after C1 is the single room shape that has no self-view.
+Thirty-one passing accessibility tests, silent about the newest surface in the
+product. The sweep now adds a second participant before opening any panel, so
+each state is scanned *over* the PiP rather than instead of it.
+
+**The drag test read the box mid-transition.** Deleting the travel guard in
+`onClick` — the one thing stopping a drag from also being counted as a press —
+left all four tests green. The corner jump it caused takes 120ms, and the
+assertion was reading one frame into it, where an in-flight position is
+indistinguishable from not having moved. Waiting on `getAnimations()` first, the
+same deletion fails with `right: 1040` against an expected `76`.
+
+Both are the same shape as the letterboxed tile that declared `aspect-ratio`
+correctly and rendered 1956px into 1337px: a check that passes while exercising
+something adjacent to the claim.
+
+### And one real failure, in a test that had encoded the tile count
+
+`share.spec`'s "reaches the other participant" asserts that the **sharer** keeps
+an ordinary grid rather than being collapsed into a filmstrip beside dead space.
+It measured the grid's own width against the stage and wanted more than 0.8.
+
+Ama is the sharer, and C1 moved her out of the grid into the corner. The grid
+therefore holds one tile, a single tile letterboxes to 16:9, and it measured
+**0.77** — correct behaviour, failing a threshold that had quietly encoded "two
+tiles fill the width".
+
+Relaxing 0.8 would have been the wrong repair, and the file's own comments say
+why in a different context: a bound moved to fit is a bound with nothing left
+that could fail. The claim is about the grid's **container** — is there a share
+region taking horizontal space beside it — so the measurement moved to the stage
+wrapper, where the tile count is not part of the question and the threshold gets
+*tighter*: **0.95**, which a 220px rail could never clear.
+
+The filmstrip case was never what the ratio caught anyway. A filmstrip renders no
+`.grid` at all, so the null check above it is what catches that.
+
+### Mutation checks
+
+Five guards, each deleted, each proving a named test:
+
+| Deleted | Fails |
+|---|---|
+| the solo exception in `RoomGrid` | alone you are the grid |
+| `relative` on the stage wrapper | anchored to the video area |
+| `clamp` | cannot be thrown out of the room |
+| the travel guard in `onClick` | drags, and cannot be thrown out |
+| `nextCorner` | moves corner by corner from the keyboard |
+
+### Checks
+
+`check:contrast` 28, `check:room` 107/107, `check:deps` 5/5, `check:scrim` 4,
+`check:targets` and `check:a11y` clean with a second participant in the room.
