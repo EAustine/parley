@@ -31,7 +31,20 @@ const LOS_ANGELES = "America/Los_Angeles";
  * label, not a particular spelling, so asserting one spelling would fail in
  * half the world for a product that is working correctly.
  */
-const ZONE_LABEL = /\d{2}:\d{2} (GMT|UTC)([+-]\d{1,2}(:\d{2})?)?|\d{2}:\d{2} [A-Z]{2,5}\b/;
+/**
+ * The zone label, on its own — v1.3 D1.
+ *
+ * This replaced a pattern wanting a clock and a label welded into one string.
+ * D1 split the dashboard row's column into a 15px clock and a label beneath it,
+ * so on that surface the two are separate elements and the welded pattern could
+ * not see either half — it matched the bare clock and reported a missing zone
+ * label that was sitting in the sibling element.
+ *
+ * Both halves still get asserted, on every row — see the dashboard test below.
+ * A zone label that stopped being printed fails this exactly as it did before;
+ * what changed is where the test looks, not how much it demands.
+ */
+const ZONE_ONLY = /^(GMT|UTC)([+-]\d{1,2}(:\d{2})?)?$|^[A-Z]{2,5}$/;
 
 /**
  * A signed-in page in a given timezone.
@@ -245,11 +258,16 @@ test.describe("across timezones", () => {
     // §3.9 makes the label non-optional: it is what makes the number checkable.
     // Asserted on every row rather than on one, since a missing label on the
     // second row is as much a missed meeting as on the first.
-    const times = berlin.locator("li time, li span").filter({ hasText: /\d{2}:\d{2}/ });
-    const count = await times.count();
-    expect(count, "no times on the dashboard to check").toBeGreaterThan(0);
+    const rows = berlin.locator("li[data-meeting]");
+    const count = await rows.count();
+    expect(count, "no rows on the dashboard to check").toBeGreaterThan(0);
     for (let i = 0; i < count; i++) {
-      await expect(times.nth(i)).toHaveText(ZONE_LABEL);
+      // Both halves, on every row. Scoped by test id rather than by tag or by
+      // text — CLAUDE.md's rule, and the reason this test needed rewriting
+      // rather than merely repointing: `li span` matched the new clock element
+      // and reported a missing zone label that was right there in its sibling.
+      await expect(rows.nth(i).locator("[data-clock]")).toHaveText(/^\d{2}:\d{2}$/);
+      await expect(rows.nth(i).locator("[data-zone]")).toHaveText(ZONE_ONLY);
     }
     await berlin.context().close();
   });

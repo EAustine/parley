@@ -133,13 +133,56 @@ export const SIGNED_IN_STATES: State<string>[] = [
     },
   },
   {
-    name: "the dashboard, with an upcoming and a past meeting",
+    /**
+     * Upcoming is the default panel, so this is the live block plus the day
+     * groups. v1.3 D1 put the past rows behind a filter, which is why they now
+     * need a state of their own below — a tab nobody clicks is a surface
+     * nobody scans.
+     */
+    name: "the dashboard, with a live and an upcoming meeting",
     floor: 24,
     atLeast: 9,
     themes: RESPONSIVE,
     reach: async (page) => {
       await at("/dashboard")(page);
       await expect(page.getByRole("heading", { name: "Meetings" })).toBeVisible();
+      // The live card, which only renders when a meeting is happening.
+      await expect(page.getByRole("link", { name: "Join" }).first()).toBeVisible();
+    },
+  },
+  {
+    /**
+     * The other half of the filter — v1.3 D1.
+     *
+     * Past rows are deliberately different from upcoming ones: month headers
+     * instead of day headers, a short day in the time column, no Join, and a
+     * cancelled row loses Copy link as well. None of that is reachable without
+     * pressing the tab, and none of it was scanned until this state existed.
+     */
+    name: "the dashboard, showing past meetings",
+    floor: 24,
+    atLeast: 6,
+    themes: RESPONSIVE,
+    reach: async (page) => {
+      await at("/dashboard")(page);
+      await page.getByRole("tab", { name: /^Past/ }).click();
+      await expect(page.locator("#panel-past")).toBeVisible();
+    },
+  },
+  {
+    /**
+     * The account menu open — v1.3 D2's new control, and the surface the
+     * design draws with neither an accessible name on its trigger nor a
+     * tabpanel-style relationship to what it opens.
+     */
+    name: "the account menu, open",
+    floor: 24,
+    atLeast: 4,
+    themes: RESPONSIVE,
+    reach: async (page) => {
+      await at("/dashboard")(page);
+      await page.getByRole("button", { name: /^Account/ }).click();
+      await expect(page.getByRole("menu", { name: "Account" })).toBeVisible();
     },
   },
   {
@@ -197,7 +240,10 @@ export const SIGNED_IN_STATES: State<string>[] = [
 export const EMPTY_DASHBOARD: State<never> = {
   name: "the dashboard, with no meetings yet",
   floor: 24,
-  atLeast: 5,
+  // Was 5. v1.3 D2 moved Sign out out of the page-action row and into the
+  // header's account menu — which is still a measured control, so the loss is
+  // one, not none: brand, account, Start meeting, Schedule.
+  atLeast: 4,
   themes: RESPONSIVE,
   reach: async (page) => {
     await at("/dashboard")(page);

@@ -4,6 +4,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/**
+ * Does this pointer hover? — v1.3 D1.
+ *
+ * D1 reveals a row's actions on hover and wants them "always visible on touch".
+ * The design expresses that as `@media (max-width:760px)`, and v1.3 C5 already
+ * established that width is the wrong signal: "A narrow window on a laptop
+ * still reports (hover: hover), so the rule that hid Present on touch devices
+ * was green at 375px for the whole of v1.2." The mirror of that mistake is a
+ * tablet at desktop width, which would get actions it can never hover into
+ * view.
+ *
+ * `lib/hooks/useControlVisibility.ts` and `useScreenShare.ts` already ask this
+ * question in JavaScript. This is the same question in CSS, so a row does not
+ * need a hook to answer it.
+ */
+@custom-variant hover-hover (@media (hover: hover));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

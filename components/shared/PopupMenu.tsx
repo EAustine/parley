@@ -9,6 +9,12 @@ import { useEffect, useRef, useState } from "react";
  * than twice — the arrow-key handling is exactly the sort of thing that gets
  * fixed in one copy.
  *
+ * **Moved out of `components/room/` in v1.3 D2**, when the account menu became
+ * its third caller. It never imported anything from the room; only its folder
+ * said it belonged there, and a component named for where it first appeared
+ * lies about everywhere it goes next — the same reasoning that renamed
+ * `--tile-border` to `--boundary`.
+ *
  * `CLAUDE.md` makes the standard non-negotiable in the other direction already:
  * "the ARIA attribute is what promises a trap, so using it without one is the
  * lie." A `role="menu"` with no arrow keys is the same lie somewhere quieter,
@@ -26,6 +32,8 @@ export function PopupMenu({
   trigger,
   triggerClassName,
   triggerLabel,
+  placement = "above",
+  header,
   children,
 }: {
   id: string;
@@ -35,11 +43,28 @@ export function PopupMenu({
   triggerClassName: string;
   /** Only for an icon-only trigger — rule 7. */
   triggerLabel?: string;
+  /**
+   * Which way it opens. The room's two menus sit on the control bar at the
+   * bottom of the screen and open upward; a topbar menu opens downward.
+   */
+  placement?: "above" | "below";
+  /**
+   * Content above the items — the account menu's name and email.
+   *
+   * A slot of its own rather than another child, because `role="menu"`
+   * restricts what it may own: menuitem, menuitemcheckbox, menuitemradio,
+   * group and separator. A block of identity text is none of those, and the
+   * design puts one inside the menu. Rendering it here keeps it in the popup
+   * and out of the menu, which is where the ARIA says it has to be.
+   */
+  header?: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** The whole surface, for the outside-press test — the header counts as inside. */
+  const popupRef = useRef<HTMLDivElement>(null);
 
   const items = () =>
     Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
@@ -65,7 +90,7 @@ export function PopupMenu({
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       // No focus return: the pointer has already moved attention elsewhere,
       // and pulling focus back to the trigger would be the surprise.
       close(false);
@@ -123,19 +148,24 @@ export function PopupMenu({
       </button>
 
       <div
-        ref={menuRef}
-        id={id}
-        role="menu"
-        aria-label={menuLabel}
+        ref={popupRef}
         // `hidden`, and our own base layer declares `[hidden] { display: none
         // !important }` rather than relying on Tailwind's preflight — the
         // testing rule about a correctness property resting on a third-party
         // reset.
         hidden={!open}
         onKeyDown={onMenuKeyDown}
-        className="absolute bottom-[calc(100%+8px)] right-0 z-40 min-w-[260px] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.5)]"
+        // The shadow is theme-aware. It was `rgba(0,0,0,0.5)` unconditionally,
+        // which is right over the room's near-black ground and far too heavy
+        // on a white one — this surface now appears on both.
+        className={`absolute right-0 z-40 min-w-[260px] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] ${
+          placement === "above" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"
+        }`}
       >
-        {children(() => close(false))}
+        {header}
+        <div ref={menuRef} id={id} role="menu" aria-label={menuLabel}>
+          {children(() => close(false))}
+        </div>
       </div>
     </div>
   );

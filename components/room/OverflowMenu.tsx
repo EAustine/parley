@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 
 import { chordFor } from "@/lib/room/shortcuts";
 import { usePlatform } from "@/lib/hooks/usePlatform";
-import { MenuItem, PopupMenu } from "@/components/room/PopupMenu";
+import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
 import { REACTIONS, REACTION_NAMES, type Reaction } from "@/lib/room/messages";
 
 /**

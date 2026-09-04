@@ -16,6 +16,7 @@
     "check:meetings": "node --env-file=.env.local scripts/check-meetings.mjs",
     "check:webhook": "node --env-file=.env.local scripts/check-webhook.mjs",
     "check:partition": "node scripts/check-partition.mjs",
+    "check:groups": "node scripts/check-groups.mjs",
     "seed:dev": "node --env-file=.env.local scripts/seed-dev.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:permissions": "node scripts/check-permissions.mjs",

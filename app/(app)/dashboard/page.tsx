@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 
 import { createClient } from "@/lib/supabase/server";
-import { SignOutButton } from "@/components/auth/SignOutButton";
-import Link from "next/link";
-
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
 import { Button } from "@/components/ui/button";
-import { MeetingRow, type MeetingRowData } from "@/components/meetings/MeetingRow";
+import { MeetingsList } from "@/components/meetings/MeetingsList";
+import type { MeetingRowData } from "@/components/meetings/MeetingRow";
 import { partitionMeetings } from "@/lib/meetings/partition";
 
 export const metadata: Metadata = {
@@ -25,19 +24,20 @@ export default async function DashboardPage() {
   if (!user) redirect("/sign-in?next=/dashboard");
 
   /**
-   * Every row here is reached through RLS as this user, and the count comes
-   * from the same query rather than a round trip per row.
+   * Every row here is reached through RLS as this user, and in one query.
    *
-   * `scheduled_end` and `started_at` are new to this select, and A1's partition
-   * cannot be computed without them. That is part of why the old predicate
-   * could not have been right: it compared against `scheduled_start` not
-   * because that was the intended rule, but because it was the only end of the
-   * slot the query had fetched.
+   * `meeting_participants(count)` is **gone** — v1.3 D1. Nothing in this
+   * application ever wrote that table: the LiveKit webhook handles
+   * `room_started` and `room_finished` and no participant events, so the only
+   * writer is `scripts/seed-dev.mjs`. The count was structurally zero, and it
+   * was rendering on every past row as "0 participants" whatever had actually
+   * happened. A number that is always wrong is worse than no number, so it
+   * comes out until A2 creates the writer.
    */
   const { data, error } = await supabase
     .from("meetings")
     .select(
-      "id, code, title, scheduled_start, scheduled_end, status, created_at, started_at, meeting_participants(count)",
+      "id, code, title, scheduled_start, scheduled_end, status, created_at, started_at",
     );
 
   const meetings: MeetingRowData[] = (data ?? []).map((m) => ({
@@ -49,43 +49,36 @@ export default async function DashboardPage() {
     status: m.status,
     created_at: m.created_at,
     started_at: m.started_at,
-    participantCount:
-      (m.meeting_participants as unknown as { count: number }[] | null)?.[0]
-        ?.count ?? 0,
   }));
 
   /**
-   * Computed from `now()` at render, which is the half of D5 that A1 delivers
-   * on its own. The other half — `router.refresh()` on window focus — is Track
-   * D and is not here yet, so a dashboard left open still goes stale; it is
-   * simply correct every time the page is rendered.
+   * One clock, read once, and passed down.
+   *
+   * D5's render-time half, which A1 delivers: the partition is computed from
+   * `now()` on every server render rather than from a timer. The same reading
+   * goes to the live block so a meeting cannot be bucketed as live against one
+   * clock and described as "started 14 minutes ago" against another.
+   *
+   * The other half of D5 — `router.refresh()` on window focus — is not here
+   * yet, so a dashboard left open still goes stale; it is simply correct every
+   * time the page renders.
    */
-  const { live, upcoming, past } = partitionMeetings(meetings, Date.now());
+  const now = Date.now();
+  const { live, upcoming, past } = partitionMeetings(meetings, now);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-12">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="type-h1">Meetings</h1>
-          <p className="type-small text-muted-foreground">
-            Signed in as {user.email}
-          </p>
-        </div>
-        {/* `flex-wrap` on the group, not just on its parent.
-            WCAG 2.1 AA SC 1.4.10 asks for no horizontal scrolling at 320px, and
-            this row was 383px of buttons — Start meeting, Schedule meeting,
-            Sign out, and two gaps — inside 327px of content. Every button
-            carries `shrink-0`, so nothing gave and the whole page scrolled
-            sideways instead: 391px against 320, and against 375. The outer
-            container already wrapped, but it wraps this group as one unit. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <StartMeetingButton />
-          {/* §3.10's second primary action. The empty state below has invited
-              it since Phase 2; this is the button that invitation meant. */}
-          <Button asChild variant="outline">
-            <Link href="/schedule">Schedule meeting</Link>
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8 sm:py-12">
+      {/* D2: the page actions are Start meeting (primary) and Schedule
+          (secondary). Sign out has left this row for the account menu in the
+          header, and the "Signed in as" subtitle went with it — the email is
+          the account's, and it now lives where the account's controls are. */}
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <h1 className="type-h1">Meetings</h1>
+        <div className="flex shrink-0 gap-2">
+          <StartMeetingButton className="flex-1 sm:flex-none" />
+          <Button asChild variant="secondary" className="flex-1 sm:flex-none">
+            <Link href="/schedule">Schedule</Link>
           </Button>
-          <SignOutButton />
         </div>
       </div>
 
@@ -96,7 +89,13 @@ export default async function DashboardPage() {
       )}
 
       {meetings.length === 0 && !error ? (
-        <div className="rounded-lg border border-border p-10 text-center">
+        // CLAUDE.md quotes this string verbatim under Copy voice, so it is the
+        // one that ships. The design rewrites it and also gives the same action
+        // two names on one screen ("Start meeting" above, "Start a meeting"
+        // inside) — the copy rule says an action keeps its name through the
+        // flow, so the invitation stays a link to the button that is already
+        // there.
+        <div className="rounded-xl border border-border p-10 text-center">
           <p className="type-body">
             No meetings yet. Start one now, or{" "}
             <Link href="/schedule" className="underline underline-offset-2">
@@ -106,72 +105,8 @@ export default async function DashboardPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-10">
-          {/*
-            Live is its own block above the two lists — A1: "never inside
-            either list", because a meeting that is happening is neither
-            something to be at nor something you came out of.
-
-            Plain for now. D1 gives it the pulsing dot, the elapsed time and
-            the participant count from `design/03-dashboard-schedule.html`;
-            what matters here is that the partition has somewhere to put these
-            rows, rather than leaving them in Upcoming until Track D arrives.
-          */}
-          {live.length > 0 && (
-            <Section title="Live now" count={live.length}>
-              <ul className="divide-y divide-border">
-                {live.map((m) => (
-                  <MeetingRow key={m.id} meeting={m} past={false} />
-                ))}
-              </ul>
-            </Section>
-          )}
-
-          <Section title="Upcoming" count={upcoming.length}>
-            {upcoming.length === 0 ? (
-              <p className="type-small py-4 text-muted-foreground">
-                Nothing coming up. Start a meeting whenever you need one.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {upcoming.map((m) => (
-                  <MeetingRow key={m.id} meeting={m} past={false} />
-                ))}
-              </ul>
-            )}
-          </Section>
-
-          {past.length > 0 && (
-            <Section title="Past" count={past.length}>
-              <ul className="divide-y divide-border">
-                {past.map((m) => (
-                  <MeetingRow key={m.id} meeting={m} past />
-                ))}
-              </ul>
-            </Section>
-          )}
-        </div>
+        <MeetingsList live={live} upcoming={upcoming} past={past} now={now} />
       )}
     </div>
-  );
-}
-
-function Section({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-2">
-      <h2 className="type-caption text-muted-foreground">
-        {title}
-        <span className="tabular"> · {count}</span>
-      </h2>
-      {children}
-    </section>
   );
 }

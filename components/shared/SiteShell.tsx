@@ -16,10 +16,17 @@ import { SiteHeader } from "@/components/shared/SiteHeader";
  * next-themes. In the root layout every route pays for them, including the two
  * that do not render it.
  */
-export function SiteShell({ children }: { children: React.ReactNode }) {
+export function SiteShell({
+  children,
+  actions,
+}: {
+  children: React.ReactNode;
+  /** Passed through to the header's right side — see `SiteHeader`. */
+  actions?: React.ReactNode;
+}) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <SiteHeader />
+      <SiteHeader actions={actions} />
       <main className="flex-1">{children}</main>
     </div>
   );

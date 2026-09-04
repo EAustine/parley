@@ -4,7 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 
 import { ICONS } from "@/lib/icons";
 import { CONTROL_MOTION } from "@/lib/motion";
-import { MenuItem, PopupMenu } from "@/components/room/PopupMenu";
+import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
 
 /**
  * Leave, and — for a host — "End meeting for everyone". v1.3 B1.

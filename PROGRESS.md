@@ -6503,3 +6503,186 @@ Five guards, each deleted, each proving a named test:
 
 `check:contrast` 28, `check:room` 107/107, `check:deps` 5/5, `check:scrim` 4,
 `check:targets` and `check:a11y` clean with a second participant in the room.
+
+---
+
+## v1.3 D1 and D2 — the meetings list, and the header
+
+Mapped first, adversarially: six agents against `design/03-dashboard-schedule.html`
+and `BUILD-PLAN-v1.3.md`, six verifiers told to refute them, and a critic asked
+what all twelve missed. Several things below are that pass finding something
+neither document says.
+
+### The list
+
+**Live is its own block above the filter**, and it is a card rather than a
+section of ordinary rows. **Upcoming groups by day.** The row leads with the
+time — a 96px column, 15px bold, the zone beneath it — because D1 wants you to
+"scan times rather than reading titles to find one". **Filter is a segmented
+control** with counts.
+
+**The zone label survived a refactor that was well placed to drop it.**
+`formatMeetingTime` welds date, time and zone into one string, which is right
+for a sentence and wrong for a column, so D1 needed the parts apart. Splitting
+the one function §3.9 depends on is exactly the edit that loses a token nobody
+notices — so `formatZone` is its own function rather than an argument to
+another, and the test that guards it was rewritten rather than repointed (below).
+
+### Past is grouped by month, and that was Austine's call
+
+The design draws no past rows at all — "Past" appears once in the file, as a tab
+label with a count. So the whole half behind the filter had to be decided.
+
+Day headers were the obvious answer and the wrong one. Upcoming is bounded by
+what you have scheduled and is scanned for a specific time; Past grows without
+limit and is browsed by rough period, so a year of it under day headers is close
+to one header per row — worse than no grouping, and worse every week. Month
+headers never degrade.
+
+A flat list was the other wrong answer, and for a reason worth keeping: grouping
+exists to remove repetition. A day header lets an upcoming row print only a
+time; a month header lets a past row print a short day and a time. Going flat
+puts the whole date back on every row, reinstating exactly what the grouping
+removed.
+
+No "Yesterday" — the most recent meeting is the first row, which is all that
+header would have said.
+
+### The dot is neutral, and the count is gone
+
+The design's live dot is `--state-critical` with a `color-mix` halo. Rule 5
+spends hue on destructive actions and connection warnings, and names "active
+speaker" among the things that must instead be "weight, fill, and value" — a
+live meeting is the dashboard's active speaker. A solid `--foreground` dot at
+17.29:1 loses nothing, because the card, its boundary, its position above the
+filter and a primary Join were always carrying the meaning.
+
+And the design's "3 people" is not rendered, because **nothing in this
+application has ever written `meeting_participants`.** The LiveKit webhook
+handles `room_started` and `room_finished` and no participant events; the only
+writer in the repo is `scripts/seed-dev.mjs`. The count was structurally zero —
+and it was already shipping, as "0 participants" on every past row, whatever had
+actually happened. A number that is always wrong is worse than no number. It
+belongs to A2, which is the item that would create the writer.
+
+### Two departures from the design, both measured
+
+**No hover fill on the row.** The design sets `.row:hover{background:var(--card)}`,
+and CLAUDE.md already states what that is worth: "`--card` vs `--background` is
+1.09:1". It is not a visible state change. It is also a false affordance — the
+row is not a link and nothing in it navigates except the buttons at its end.
+
+**The hover-hide is gated on `(hover: hover)` and on `sm`, not on width alone.**
+The design uses `@media (max-width:760px)`, and C5 already settled that width is
+the wrong signal for a hover question. Both signals are load-bearing here and
+they answer different questions: `hover-hover` decides whether hiding is *safe*
+(can this pointer reveal them again), `sm` decides whether hiding *buys*
+anything (is the row crowded without it).
+
+That mattered concretely. At 390px the design's row leaves about 150px for the
+title and at 320px about 32px, because `.ops` is `flex:none` and the mobile block
+sets `opacity:1` without touching it — which is the failure
+`BUILD-PLAN-v1.3.md`'s porting note describes: "Every rule in a mobile media
+block must override every property the desktop layout set, not just the ones
+that look layout-related." It would also have passed the 320px sweep, because
+the body is `min-width:0` and ellipsises rather than overflowing: the check
+asserts the page does not scroll sideways, not that the row still says which
+meeting it is. On a phone the actions now take their own line.
+
+### The header
+
+Sign out has left the page-action row for an account menu carrying the email,
+the theme and sign out. Three things fell out of doing it:
+
+**`PopupMenu` moved out of `components/room/`.** It never imported anything from
+the room; only its folder said it belonged there, and a component named for
+where it first appeared lies about everywhere it goes next — the same reasoning
+that renamed `--tile-border` to `--boundary`. It gained a `placement` (the room's
+menus open upward from the control bar; a topbar opens down) and a theme-aware
+shadow, which had been `rgba(0,0,0,0.5)` unconditionally: right over the room's
+near-black ground, far too heavy on a white one.
+
+**The identity block is not a menu item.** `role="menu"` may own only menuitem,
+menuitemcheckbox, menuitemradio, group and separator, and the design puts a name
+and an email inside the menu. It goes through a `header` slot rendered on the
+popup surface and outside the menu element.
+
+**The account menu is passed in as a slot, not reached from inside the header.**
+`SiteHeader` is rendered by four route groups and two of them are public
+cold-load routes; `AccountMenu` imports supabase-js. A prop would have put that
+import in the header's module and therefore in all four graphs. `check:bundle`
+is the proof: `/` is still 178 kB against its 190 kB budget.
+
+**`SignOutButton` was deleted, not left behind.** Its logic moved into the menu,
+which makes the old file unreachable from `app/` — and `check:deps` fails on
+exactly that. "The fix is deletion, not justification."
+
+The trigger has a real name. The design gives it none, and axe would not have
+caught that: the avatar's initial is text, so the button has *a* name — the
+letter "A".
+
+### The tabs are real tabs
+
+The design declares `role="tablist"` with two tabs, no tabpanel and no
+`aria-controls`. That is the failure CLAUDE.md names three times over: "the ARIA
+attribute is what promises a trap, so using it without one is the lie." Both
+panels exist, each tab names the one it controls, arrows and Home/End move
+between them, and the whole control takes one Tab stop.
+
+Client state rather than `?filter=past`, because a search param makes every click
+a server navigation against an uncacheable RLS query with no pending affordance
+— and there is no loading state anywhere in this product to borrow. "Ship a
+state with no design" is on the Never-do list.
+
+Its selected state is a fill *and* a value change, and the value change is the
+half that carries it: in dark mode `--secondary` on `--muted` is **1.07:1**, a
+fill you cannot see. That is rule 5 working as written, but worth naming —
+`check:contrast` pairs foregrounds against surfaces and never asks what a
+surface-on-surface change is worth.
+
+### Three checks that were exercising the wrong thing
+
+**The zone-label test matched the new clock element and reported a missing zone
+label that was in its sibling.** It scoped by `li time, li span` and asserted the
+whole string. Rewritten to `[data-clock]` and `[data-zone]` per row — scoped by
+test id, which is the rule, and demanding both halves rather than one.
+
+**No fixture produced a live meeting**, so the live block would have shipped
+unscanned by axe and unmeasured by the target floor. The same near-miss as C1's
+self-view, one item earlier. `hostedSchedule` now has one.
+
+**The Past panel and the account menu were reachable by nobody.** A tab nobody
+clicks is a surface nobody scans, and past rows are deliberately different —
+month headers, a short day in the column, no Join. Both are states now.
+
+### One guard the mutation check exposed as a restatement
+
+`{!past && !cancelled && <CopyLinkButton/>}`. Every cancelled meeting is a past
+meeting — `partition.ts` returns "past" for `cancelled` before it looks at any
+time — so the second condition could never once change the outcome, and deleting
+it failed nothing. Not a backstop; a restatement. It is gone.
+
+### Mutation checks
+
+| Deleted | Fails |
+|---|---|
+| the hover query, replaced by the design's width query | always visible on iPad Pro 11 landscape |
+| the `!past` gate on Join | a past row withholds Join |
+| month grouping, replaced by day | upcoming by day and past by month |
+| `aria-controls` on the tab | the contract a tablist promises |
+| the live block's position above the filter | its own block, above the filter |
+| the account trigger's name | the account menu tests |
+
+The iPad case is the one that earned its place: with the design's width query the
+**phone test still passes** — a phone is narrow *and* cannot hover, so both
+implementations agree there. A tablet in landscape is 1194px wide and still
+cannot hover, and it is the one machine on which a width query hides a row's
+actions behind a gesture the device does not have.
+
+### Checks
+
+`check:groups` 14/14 (new, and proven to fail — ignoring the caller's zone drops
+it to 12/14), `check:partition` 20/20, `check:contrast` 28, `check:room`
+108/108, `check:deps` 5/5, `check:ics` 69/69, `check:chat` 73/73,
+`check:connection` 72/72, `check:permissions` 39/39, `check:meetings` 68/68,
+`check:bundle` 11/11 with `/` unchanged at 178/190 kB.

@@ -112,6 +112,21 @@ export const test = base.extend<{
       endedAt: new Date(Date.now() - week + 30 * 60 * 1000),
       timezone: "Africa/Accra",
     });
+    /*
+     * And one that is happening — v1.3 D1.
+     *
+     * The live block is a card, not a row: its own boundary, a dot, an elapsed
+     * time and a primary Join. Without a live meeting in the fixture it renders
+     * for nobody, and the axe walk and the target walk would both go green over
+     * a surface neither had ever seen. That is exactly how C1's self-view
+     * nearly shipped unscanned, one item earlier.
+     */
+    await createMeeting({
+      host: host.id,
+      status: "live",
+      title: "Design review",
+      timezone: "Africa/Accra",
+    });
     await use({ code, email: host.email });
     // `host_id` is `on delete cascade`, so the meeting goes with the account.
     await deleteFixtureHost(host.id);

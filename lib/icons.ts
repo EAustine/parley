@@ -15,6 +15,7 @@ import {
   HappyIcon,
   Link01Icon,
   Loading03Icon,
+  Logout01Icon,
   KeyboardIcon,
   Mail01Icon,
   MinimizeScreenIcon,
@@ -109,6 +110,10 @@ export const ICONS = {
   plus: { icon: PlusSignIcon, export: "PlusSignIcon", label: "Add" },
   check: { icon: Tick02Icon, export: "Tick02Icon", label: "Done" },
   close: { icon: Cancel01Icon, export: "Cancel01Icon", label: "Close" },
+  /* v1.3 D2's account menu. Resolved against the installed package — the
+     package ships `LogOut`, `Logout`, `Logout01Icon` and `Logout02Icon`, and
+     only the `*Icon` suffix is the icon-object form the registry uses. */
+  signOut: { icon: Logout01Icon, export: "Logout01Icon", label: "Sign out" },
   // v1.3 B2: the control bar's overflow, and what it opens. Resolved against
   // the installed package rather than guessed — CLAUDE.md's icon rule.
   more: {
