@@ -112,35 +112,47 @@ export function MeetingRow({
       {/* The design's 96px column, 64px on a phone. `shrink-0` so a long title
           never squeezes the thing the list is scanned by. */}
       <div className="w-16 shrink-0 sm:w-24">
-        <span data-clock className="type-body block font-semibold tabular-nums">
-          {formatClock(when)}
-        </span>
-        <span className="type-small block truncate text-muted-foreground">
-          {group === "month" && (
-            <>
+        {/*
+          **Which of the two leads depends on the header above it** — the
+          revised `design/03`, and it falls out of what each list is scanned by.
+          
+          Under a *day* header the date is already known and the time is what
+          you are looking for, so the clock takes the 15px line. Under a *month*
+          header it is the other way round: you are looking for a day first, and
+          the time only matters once you have found it.
+          
+          The zone label is printed either way. `design/03`'s past rows omit it,
+          and that is the one place the design is overruled here — §3.9 calls
+          the zone "the one place where a quiet bug produces a missed meeting",
+          and CLAUDE.md outranks a mockup.
+        */}
+        {group === "month" ? (
+          <>
+            <span className="type-body block truncate font-semibold">
               {formatShortDay(when)}
-              <span aria-hidden> · </span>
-            </>
-          )}
-          <span data-zone>{formatZone(when)}</span>
-        </span>
+            </span>
+            <span className="type-small block truncate text-muted-foreground">
+              <span data-clock className="tabular-nums">
+                {formatClock(when)}
+              </span>{" "}
+              <span data-zone>{formatZone(when)}</span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span data-clock className="type-body block font-semibold tabular-nums">
+              {formatClock(when)}
+            </span>
+            <span className="type-small block truncate text-muted-foreground">
+              <span data-zone>{formatZone(when)}</span>
+            </span>
+          </>
+        )}
       </div>
 
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="type-body truncate font-medium">{meeting.title}</span>
-          {/* One badge at most, and only where it changes what the row means.
-              §3.2: cancelled meetings are "labelled as cancelled rather than
-              silently mixed in with meetings that took place" — the label is
-              the only thing distinguishing them. Live and Instant are gone:
-              a live meeting is in its own block above the filter now, and
-              "Instant" described how a meeting was made rather than anything
-              you can do about it. */}
-          {cancelled && (
-            <Badge variant="outline" className="type-caption shrink-0">
-              Cancelled
-            </Badge>
-          )}
         </div>
 
         <div className="type-small flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
@@ -152,6 +164,24 @@ export function MeetingRow({
             <>
               <span aria-hidden>·</span>
               <span>{duration}</span>
+            </>
+          )}
+          {/*
+            §3.2: cancelled meetings are "labelled as cancelled rather than
+            silently mixed in with meetings that took place" — the label is the
+            only thing distinguishing them.
+            
+            With the code and the duration now, not beside the title, per the
+            revised `design/03`. The title line is what the row is scanned by,
+            and a tag there competes with it — while every cancelled meeting is
+            in Past already, where nothing else carries one.
+          */}
+          {cancelled && (
+            <>
+              <span aria-hidden>·</span>
+              <Badge variant="outline" className="type-caption shrink-0">
+                Cancelled
+              </Badge>
             </>
           )}
           {/* A2: arrivals, on a meeting that is over. Not on an upcoming one,

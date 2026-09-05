@@ -41,12 +41,39 @@ export const createInstantMeetingSchema = z.object({
   title: title.optional(),
 });
 
+/**
+ * How far into the past a submitted start may fall before it is refused.
+ *
+ * Not zero. A form submitted at 10:00:00 for 10:00 arrives a few hundred
+ * milliseconds later, and a strict comparison would reject somebody for
+ * pressing the button at exactly the moment they meant. Two minutes is far
+ * below any interval a person would notice and far above any round trip.
+ */
+export const PAST_GRACE_MS = 2 * 60_000;
+
 export const createScheduledMeetingSchema = z.object({
   kind: z.literal("scheduled"),
   title,
   description,
-  /** UTC instant. The form composes this from date + time + zone. */
-  scheduledStart: z.string().datetime({ offset: true }),
+  /**
+   * UTC instant. The form composes this from date + time + zone.
+   *
+   * **And it may not be in the past** — v1.3 D3, on the server as well as in
+   * the form. "Client validation is advisory, and a stale tab can submit a time
+   * that was future when the page loaded."
+   *
+   * `PAST_GRACE_MS` of slack, because the alternative is a race with the
+   * request itself: a form submitted at 10:00:00 for 10:00 arrives a few
+   * hundred milliseconds later, and rejecting it would fail somebody for
+   * pressing the button at the moment they meant.
+   */
+  scheduledStart: z
+    .string()
+    .datetime({ offset: true })
+    .refine(
+      (value) => new Date(value).getTime() > Date.now() - PAST_GRACE_MS,
+      "That time has already passed.",
+    ),
   durationMinutes: z
     .number()
     .int()
@@ -67,7 +94,14 @@ export const updateMeetingSchema = z
   .object({
     title: title.optional(),
     description: description.nullable().optional(),
-    scheduledStart: z.string().datetime({ offset: true }).optional(),
+    scheduledStart: z
+      .string()
+      .datetime({ offset: true })
+      .refine(
+        (value) => new Date(value).getTime() > Date.now() - PAST_GRACE_MS,
+        "That time has already passed.",
+      )
+      .optional(),
     durationMinutes: z
       .number()
       .int()

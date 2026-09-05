@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 
+import { PAST_GRACE_MS } from "@/lib/meetings/schema";
 import {
   browserTimeZone,
   resolveWallClock,
@@ -12,7 +13,6 @@ import {
   timeZoneLabel,
   type WallClock,
 } from "@/lib/meetings/when";
-import { useCoarsePointer } from "@/lib/hooks/useCoarsePointer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,11 +33,6 @@ import { FormSection } from "@/components/schedule/FormSection";
 
 const DURATIONS = [15, 30, 45, 60, 90] as const;
 
-/** Every quarter hour, which is what D3's select offers. */
-const QUARTER_HOURS = Array.from({ length: 96 }, (_, i) => {
-  const minutes = i * 15;
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-});
 
 export function ScheduleForm({
   /** Present when editing; absent when creating. */
@@ -69,7 +64,6 @@ export function ScheduleForm({
   cancelHref?: string;
 }) {
   const router = useRouter();
-  const coarse = useCoarsePointer();
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [date, setDate] = useState(existing?.wall.date ?? "");
@@ -99,6 +93,19 @@ export function ScheduleForm({
 
   const groups = useMemo(() => timeZoneGroups(timezone || "UTC"), [timezone]);
 
+  /**
+   * Today, in the browser's own zone — the floor on the date field.
+   *
+   * `min` is a hint rather than a guarantee: it greys out earlier days in the
+   * picker and is trivially bypassed by typing. That is the right weight for
+   * it. The instant is checked below, and again on the server, because a tab
+   * left open overnight can submit a time that was future when the page loaded.
+   */
+  const [today, setToday] = useState("");
+  useEffect(() => {
+    setToday(formatInTimeZone(new Date(), browserTimeZone(), "yyyy-MM-dd"));
+  }, []);
+
   // Resolved on every keystroke, because the answer is what gets stored and
   // the person should be able to see it before they commit to it.
   const resolved = useMemo(() => {
@@ -109,6 +116,19 @@ export function ScheduleForm({
       return null;
     }
   }, [date, time, timezone]);
+
+  /**
+   * Has the chosen moment already gone?
+   *
+   * Read from the resolved instant rather than from the date, because the date
+   * alone cannot answer it: 09:00 today is past by lunchtime, and 23:00 today
+   * in Auckland is yesterday evening in Los Angeles. The same `PAST_GRACE_MS`
+   * the server uses, imported rather than repeated — a form that disables at a
+   * different boundary from the one that rejects is a form that refuses
+   * something the server would have taken, or offers something it will not.
+   */
+  const inThePast =
+    resolved !== null && resolved.instant.getTime() <= Date.now() - PAST_GRACE_MS;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -227,6 +247,7 @@ export function ScheduleForm({
               id="date"
               size="touch"
               type="date"
+              min={today || undefined}
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required
@@ -237,51 +258,32 @@ export function ScheduleForm({
               Start time
             </Label>
             {/*
-              D3: "a 15-minute select on desktop, native `<input type="time">`
-              on mobile for the OS wheel."
+              **Native everywhere, at 15-minute steps** — v1.3 D3, reversing its
+              own earlier call and mine.
               
-              Chosen by `(pointer: coarse)` rather than by width — the value of
-              the native control is the wheel a touch device puts up for it,
-              which is a property of the pointer and not of the viewport. Same
-              signal C5 settled and D1 restated.
+              A 15-minute select over 24 hours is 96 options, and a browser
+              renders that as a popup taller than the viewport — a worse problem
+              than a spinner that looks slightly different across browsers.
+              Native also types ("1430"), gives a phone the OS wheel, and has no
+              popup to be too long.
               
-              Both write the same `HH:mm`, so nothing downstream knows which one
-              rendered.
+              `step={900}` is what makes the arrows move in quarter hours; it
+              does not stop somebody typing 10:07, and nothing should. The
+              select could only offer the grid, which is a narrower promise than
+              the field needs to keep.
             */}
-            {coarse ? (
-              <Input
-                id="time"
-                size="touch"
-                type="time"
-                step={900}
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                required
-              />
-            ) : (
-              <>
-                <Select
-                  id="time"
-                  size="touch"
-                  value={time}
-                  onChange={(event) => setTime(event.target.value)}
-                >
-                  {/* An off-grid time — from an existing meeting, or from a
-                      phone before the pointer changed — keeps its own option
-                      rather than being silently rounded to the nearest
-                      quarter. */}
-                  {!QUARTER_HOURS.includes(time) && <option value={time}>{time}</option>}
-                  {QUARTER_HOURS.map((slot) => (
-                    <option key={slot} value={slot}>
-                      {slot}
-                    </option>
-                  ))}
-                </Select>
-                <p className="type-caption text-muted-foreground">
-                  15-minute steps. Type to jump.
-                </p>
-              </>
-            )}
+            <Input
+              id="time"
+              size="touch"
+              type="time"
+              step={900}
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              required
+            />
+            <p className="type-caption text-muted-foreground">
+              Type it, or use the arrows. 15-minute steps.
+            </p>
           </div>
         </div>
 
@@ -335,6 +337,7 @@ export function ScheduleForm({
           durationMinutes={durationMinutes}
           timezone={timezone}
           resolved={resolved}
+          inThePast={inThePast}
         />
       </FormSection>
 
@@ -348,7 +351,7 @@ export function ScheduleForm({
         <Button
           type="submit"
           size="touch"
-          disabled={submitting || title.trim().length === 0 || !resolved}
+          disabled={submitting || title.trim().length === 0 || !resolved || inThePast}
         >
           {submitting
             ? existing
@@ -405,11 +408,13 @@ function SchedulePreview({
   durationMinutes,
   timezone,
   resolved,
+  inThePast,
 }: {
   title: string;
   durationMinutes: number;
   timezone: string;
   resolved: ReturnType<typeof resolveWallClock> | null;
+  inThePast: boolean;
 }) {
   const viewer = browserTimeZone();
   const end = resolved
@@ -481,17 +486,28 @@ function SchedulePreview({
           </p>
           <p>
             {durationMinutes} minutes
-            {elsewhere && (
-              <>
-                {" · "}
+          </p>
+          {/*
+            Its own line, and it names the zone — v1.3 D3: "That's 16:00 – 16:30
+            where you are (Europe/Berlin)."
+            
+            The zone in parentheses is the part that makes it checkable. "Where
+            you are" is a claim about the reader's machine, and a reader whose
+            laptop is set to the wrong zone would otherwise read a wrong number
+            with nothing to catch it on.
+          */}
+          {elsewhere && (
+            <p>
+              That&rsquo;s{" "}
+              <strong className="font-medium text-foreground">
                 {crossesMidnight &&
                   `${formatInTimeZone(resolved.instant, viewer, "EEE d MMM")}, `}
                 {formatInTimeZone(resolved.instant, viewer, "HH:mm")} –{" "}
-                {formatInTimeZone(end, viewer, "HH:mm")}{" "}
-                {formatInTimeZone(resolved.instant, viewer, "zzz")} where you are
-              </>
-            )}
-          </p>
+                {formatInTimeZone(end, viewer, "HH:mm")}
+              </strong>{" "}
+              where you are ({viewer.replace(/_/g, " ")}).
+            </p>
+          )}
           {!resolved.exact && (
             /*
              * The DST hole, which the design's preview has no slot for and
@@ -508,6 +524,15 @@ function SchedulePreview({
                   <strong>{resolved.actual.time}</strong> instead.
                 </>
               )}
+            </p>
+          )}
+          {/* Said here, in the card whose job is "check it", rather than under
+              the field — the mistake is in the *instant*, which no single field
+              owns: a date that was fine this morning is not fine now, and a
+              time that is fine in Accra is not in Auckland. */}
+          {inThePast && (
+            <p className="text-[var(--state-critical)]">
+              That time has already passed. Pick a later one.
             </p>
           )}
           <p className="pt-1.5">

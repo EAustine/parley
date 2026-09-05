@@ -160,20 +160,29 @@ export const TIMEZONE_GROUPS: { region: string; zones: string[] }[] = [
 ];
 
 /**
- * The groups, with the viewer's own zone guaranteed to appear.
+ * The groups, with the reader's own zone pinned to the top — v1.3 D3.
  *
- * It is added under "Your timezone" at the top rather than inserted into
- * whichever region it belongs to — a zone that is not on the list is by
- * definition somewhere the list did not think of, and burying it alphabetically
- * among places it is not is how a person concludes their own zone is missing.
+ * **Always, not only when it is missing from the list.** "A native `<select>`'s
+ * popup height is the browser's to decide, not ours. Put the reader's own zone
+ * at the top under 'Your timezone', then the grouped list, so the common case
+ * needs no scrolling at all."
+ *
+ * That is the whole argument for a long list being acceptable: seventy-five
+ * zones are only a scroll if you have to reach into them, and the zone somebody
+ * is sitting in is the one they want in the overwhelming majority of cases. It
+ * also fixes the narrower problem the first version was written for — a zone
+ * outside the list being invisible — as a special case of the general one.
+ *
+ * The duplicate is deliberate. Africa/Accra appears at the top *and* under
+ * Africa, which reads as an index rather than as a mistake, and removing it
+ * from its region would make the list wrong about the world to make it right
+ * about the reader.
  */
 export function timeZoneGroups(
   current: string,
 ): { region: string; zones: string[] }[] {
-  const known = new Set(TIMEZONE_GROUPS.flatMap((g) => g.zones));
-  return known.has(current)
-    ? TIMEZONE_GROUPS
-    : [{ region: "Your timezone", zones: [current] }, ...TIMEZONE_GROUPS];
+  if (!current) return TIMEZONE_GROUPS;
+  return [{ region: "Your timezone", zones: [current] }, ...TIMEZONE_GROUPS];
 }
 
 /**

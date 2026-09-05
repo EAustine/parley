@@ -113,7 +113,19 @@ export function PermissionNotice({
 
   return (
     <div
-      className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center"
+      /*
+       * Extra top padding on a phone — v1.3 C0.
+       *
+       * "It sat against the header divider with no breathing room." On desktop
+       * the stage is a card in a two-column layout and `justify-center` does
+       * the work; on mobile the stage loses its top border and runs to the
+       * header, so a centred block with no padding touches the rule above it.
+       *
+       * `pt-11 pb-9` matches the design's `44px 20px 36px`, and it is asymmetric
+       * on purpose — the optical centre of a block of text sits above its
+       * geometric one.
+       */
+      className="flex h-full flex-col items-center justify-center gap-4 px-5 pt-11 pb-9 text-center sm:px-8 sm:py-9"
       role={state === "requesting" ? "status" : undefined}
       aria-live={state === "requesting" ? "polite" : undefined}
     >

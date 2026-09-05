@@ -95,20 +95,11 @@ async function schedule(
   await page.getByLabel("Title").fill(title);
   await page.getByLabel("Date").fill(date);
   /*
-   * `selectOption` or `fill`, because v1.3 D3 made Start time two controls: a
-   * 15-minute `<select>` where the pointer is fine, a native
-   * `<input type="time">` where it is coarse. Playwright's desktop Chromium is
-   * the former; `devices["Pixel 5"]` is the latter, and this helper is shared.
-   *
-   * Asked of the DOM rather than assumed from the viewport — which is the same
-   * mistake C5 and D1 both name, made here by a test instead of by a rule.
+   * `fill`, because v1.3 D3 settled Start time as one control everywhere: a
+   * native `<input type="time" step="900">`. It was briefly a select on
+   * desktop, and this helper briefly asked the DOM which it had got.
    */
-  const startTime = page.getByLabel("Start time");
-  if ((await startTime.evaluate((el) => el.tagName)) === "SELECT") {
-    await startTime.selectOption(time);
-  } else {
-    await startTime.fill(time);
-  }
+  await page.getByLabel("Start time").fill(time);
 
   /*
    * One call, on the IANA value — the select is native now, so the option's

@@ -7273,3 +7273,267 @@ as tested.
 
 `check:webhook` 11/11 (was 5 — six new), `check:partition` 23/23 (was 20),
 `check:deps` 5/5.
+
+---
+
+## v1.3 C0 and C2a — the room's smaller faults, and the mute request
+
+### C0
+
+**The PiP is 148px on a phone and 260px above 900px**, up from 112 and 200. "At
+200/112 it was too small to read a face, which defeats the point of showing
+yourself at all." The self-view exists so you can check what other people are
+seeing; below a certain size it stops answering that.
+
+**The mobile control bar is one row, Leave included.** This overrides the
+wrapping fix the bar has carried since v1.2 F: wrapping kept the groups whole
+and let the break fall between them, which preserved the 44px floor — and cost
+about 70px of height on the axis where space is scarcest and the video is
+competing for every pixel. C2's tiering is what made `nowrap` affordable: the
+secondary controls collapsed into an overflow menu, so there are fewer things to
+fit than when the bar was seven equal circles.
+
+The floor was not traded for it, and that is measured rather than argued.
+`check:targets` walks the Android bar's rendered boxes against 44px **with share
+offered** — the widest this ever gets — and it is the thing that would fail if a
+row that cannot wrap started shrinking its contents instead. Twelve target
+states, all green.
+
+**Pre-join's permission card gets top padding on a phone.** On desktop the stage
+is a card in a two-column layout and `justify-center` does the work; on mobile it
+loses its top border and runs to the header, so a centred block with no padding
+touches the rule above it. `pt-11 pb-9`, asymmetric on purpose — the optical
+centre of a block of text sits above its geometric one.
+
+### C2a: a question, not an announcement
+
+The prompt was pinned to the top of the room, which put three things wrong at
+once: it was nowhere near the microphone it is about, it had the visual weight
+of a system alert for something a participant may reasonably decline, and it sat
+at the far end of the screen from the control that answers it.
+
+It is a card above the control bar now, **positioned against the bar's measured
+height**. The design puts it at the bottom of a stage that sits above an in-flow
+bar; ours is `absolute` over the frame, so `bottom: 0` here would be *underneath*
+it — an absolutely positioned box resolves against its containing block's
+padding box, and the stage's `pb-[var(--parley-controls-h)]` does not move it.
+That same variable, published by a `ResizeObserver` in `RoomControls`, is what
+the card hangs from: it tracks the bar through wrapping, the safe-area inset,
+and the error row that appears when a device fails.
+
+`z-20`, below the bar's `z-30`. The bar has to stay reachable and mute is a
+privacy control; the card is a request about it, not a replacement for it.
+
+Both buttons are 44px rather than the design's 36 and 40 — the room's floor does
+not bend for a design file, the same call the control bar, the panel's tabs and
+the sharing bar already made.
+
+### Nothing had ever exercised the prompt
+
+Not one test touched it, so §3.8's actual guarantee — "the host can silence,
+never activate" — was resting on nobody having broken it. Two tests now: that it
+asks near the microphone and overlays rather than moving the room, and that
+declining leaves the microphone on, read from the control bar's label, which
+rule 3 derives from the track rather than from React.
+
+The fixture taught something on the way. "Ask to mute" is not offered for
+somebody already muted — correct, and the reason the first test timed out
+against a `withMedia: false` guest. And the prompt names the host by **email
+address**: `joinAs`'s requested name is not what a signed-in host ends up with,
+because the token route derives it from the session and falls back to
+`user.email` when the account has no `full_name`. The test compares against the
+host's own tile rather than a string, so it asserts "it names whoever asked"
+instead of asserting a name the product does not use.
+
+### A check that did not assert its claim
+
+The placement test measured `cardBottom <= barTop` — the card is above the bar.
+Moving the card back to the top of the room, which is exactly what C2a replaces,
+**passed**: a card at `top-2` is also above the bar. The bound was true of the
+thing being fixed and the fix alike.
+
+It now also requires the card to be below the room's vertical midpoint, which is
+what "near the microphone it is about" means in a number. The same mutation
+fails on that line.
+
+### And the one row did not fit
+
+`check:targets` passed the `nowrap` bar — twelve states, 44px throughout — and
+`mobile.spec`'s "the control bar fits the viewport" then failed with **the mic
+control at x = −3.83**: clipped off the left edge.
+
+The two checks are asking different questions and only together do they cover
+this. `check:targets` measures each control's *size*, which `nowrap` does not
+change — the controls kept their 44px and overflowed the bar instead. Position
+is what a row that cannot wrap gets wrong, and only the mobile test reads an
+origin.
+
+The fix is the design's own mobile numbers, which were in the file and which I
+had not taken: 4px inside a group and 6px between them, against the 6 and 8 the
+wrapping bar used. Wrapping could afford the wider rhythm because it had a
+second row to fall back on.
+
+### Mutation checks
+
+| Deleted | Fails |
+|---|---|
+| the bottom placement, restored to the top | asks near the microphone *(only after the second bound existed)* |
+| `absolute`, so the card displaces | over the room rather than moving it |
+| `flex-nowrap` on the bar | *(nothing — `check:targets` bounds the floor, not the row count)* |
+
+The bar's row count is recorded as **unpinned**. `check:targets` proves the
+controls keep their 44px whatever the bar does, which is the property that
+matters; nothing asserts the bar is one row, and a regression to wrapping would
+be caught by eye rather than by the suite.
+
+### Checks
+
+`check:targets` 12/12, `check:contrast` 28.
+
+---
+
+## v1.3 D1 and D3, revised by the updated plan
+
+### D1: which of the two lines leads depends on the header above it
+
+`design/03`'s revised past row is `<b>Thu 3</b>` over `03:04` — the **day** at
+15px and the time beneath, the reverse of the upcoming row. It falls out of what
+each list is scanned by: under a day header the date is already known and the
+time is what you are looking for; under a month header you are looking for a day
+first, and the time only matters once you have found it.
+
+The zone label is printed either way, and that is the one place the design is
+overruled here — its past rows omit it, and §3.9 calls the zone "the one place
+where a quiet bug produces a missed meeting".
+
+The Cancelled tag moved from beside the title into the sub-line with the code and
+the duration. The title line is what the row is scanned by, and a tag there
+competes with it — while every cancelled meeting is in Past already, where
+nothing else carries one.
+
+### D3: four reversals, one of them mine
+
+**Native `<input type="time" step="900">` everywhere**, replacing the
+15-minute select I built for desktop. The plan reverses its own earlier call and
+gives the reason: 96 options over 24 hours is a popup taller than the viewport,
+which is worse than a spinner that looks slightly different across browsers.
+Native also types ("1430"), gives a phone the OS wheel, and has no popup to be
+too long.
+
+`step` moves the arrows in quarter hours and deliberately does not stop somebody
+typing 10:07 — a narrower promise than the select could keep, and the test says
+so. `useCoarsePointer` went with it: deleted, not orphaned, because
+`check:deps` fails on an unreachable module and the fix is deletion.
+
+**A meeting cannot be scheduled into the past** — in the form *and* on the
+server, because "client validation is advisory, and a stale tab can submit a
+time that was future when the page loaded". Both use one `PAST_GRACE_MS`,
+imported rather than repeated: a form that disables at a different boundary from
+the one that rejects either refuses something the server would take, or offers
+something it will not.
+
+The grace is not zero. A form submitted at 10:00:00 for 10:00 arrives a few
+hundred milliseconds later, and a strict comparison would reject somebody for
+pressing the button at exactly the moment they meant.
+
+The message sits in the card whose job is "check it" rather than under a field,
+because the mistake is in the **instant** and no single field owns it: a date
+that was fine this morning is not fine now, and a time that is fine in Accra is
+not in Auckland. `min` on the date input is a hint that greys out earlier days
+in the picker; the instant is what is actually checked, twice.
+
+**The reader's own zone is pinned to the top, always** — not only when it is
+missing from the list, which is all the first version did. "Put the reader's own
+zone at the top under 'Your timezone', then the grouped list, so the common case
+needs no scrolling at all." That is the argument for seventy-five entries being
+acceptable in a popup whose height the browser decides. The duplicate is
+deliberate: Africa/Accra appears at the top and under Africa, which reads as an
+index rather than a mistake.
+
+**The second preview line names the zone** — "That's 16:00 – 16:30 where you are
+(Europe/Berlin)". The parenthetical is what makes it checkable: "where you are"
+is a claim about the reader's machine, and a reader whose laptop is set to the
+wrong zone would otherwise read a wrong number with nothing to catch it on.
+
+### The tests that went with them
+
+Two device-scoped tests — a select where the pointer is fine, a native input
+where it is coarse — collapsed into one, because there is one control now.
+`schedule.spec`'s helper lost the branch that asked the DOM which control it had
+got. And the timezone test now asserts `groups[0] === "Your timezone"`, which is
+the claim that makes the long list defensible.
+
+---
+
+## v1.3 C6, second half — the assets
+
+Six Fluent Emoji 3D from `microsoft/fluentui-emoji`, MIT, resized to 96px and
+converted to WebP with the `sharp` Next already installs — **nothing added to
+`package.json`**. 22.3 kB for the set against 212 kB at source, and a tenth of
+the estimate the decision was taken on. 96px covers `design/02`'s 30px render at
+3×, which is every phone shipping.
+
+Verified clean of EXIF, ICC, XMP and C2PA before shipping — rule 7b, "shipped
+image assets carry no provenance metadata". The picker uses the same six: a
+picker showing platform glyphs and a room showing something else would have you
+press one thing and send another.
+
+### Preloaded after the connection, not on room entry
+
+C6 says "preload the six on room entry", and Austine amended it:
+
+> Room entry is the join path, and 50 kB competing with media negotiation trades
+> time-to-first-video for a decoration nobody has used yet. Connect, get media
+> flowing, then fetch.
+
+So `ReactionPreload` waits for `connection.phase === "healthy"`. The exposure
+that leaves is a reaction in the first second of a session, which arrives as the
+platform glyph — because `ReactionOverlay` falls back to the glyph on error
+anyway, so the worst case is what shipped before the assets existed.
+
+`new Image()` rather than `<link rel="preload">`: the tag is declarative and
+would fire when React commits it, which is the timing being avoided.
+
+### What this trades on iOS, recorded rather than resolved
+
+Austine again, and it belongs in the file rather than in a commit message:
+
+> Fluent 3D replaces Apple Color Emoji, which is the best-looking set on any
+> platform and is already 3D. On Android and Windows it's an upgrade; on iPhone
+> it's a lateral move at best, and iPhone is a large share of the guests this
+> product is built for.
+
+The consistency argument for a custom set is weaker here than it looks, too — a
+reaction lives 2400ms, nobody compares one across devices, and platform-varying
+emoji is what every messaging app already does. The set ships because C6 asks
+for it and the cost came in at a tenth of the estimate; `lib/room/reaction-assets.ts`
+carries the argument for taking it out again if that stops being true.
+
+`next/image` is deliberately not used. It would route a 3 kB asset through
+`/_next/image?url=…` — a server round trip on the one element that has to be on
+screen the instant it is asked for — and would defeat the preload by changing
+the URL the browser was told to fetch.
+
+### Three test faults, and none of them was the feature
+
+**The asset is asserted as *loaded*, not as present.** The overlay falls back to
+the glyph on error, which is right and is also why a wrong path would ship in
+silence: the reaction still appears, just flat, and every DOM assertion about it
+passes. `naturalWidth === 96` is the only thing that knows the bytes arrived.
+
+**A size read through a transform.** The rendered width measured 24 against an
+expected 30, and the image is not mis-sized — the pop animates `scale` from 0.8,
+and `boundingBox()` returns the *transformed* box. 30 × 0.8 = 24. The same
+distinction `SelfViewPiP`'s clamp is built on, caught here by a stopwatch rather
+than a ruler. `offsetWidth` now.
+
+**Two flakes that passed alone and failed under four workers**, both caused by
+the assets rather than found by them. The path sampler measured a box whose
+`<img>` was still decoding, so a decode landing mid-sample moved the centre — it
+waits for `decode()` now. And the opacity read was `getAnimations()[0]`, which is
+whichever the browser lists first; C6 added animations to that subtree, the index
+sometimes landed on a CSS transition, and setting *its* `currentTime` moved
+nothing so opacity read its end state of 0. Selected by `animationName` now.
+
+Both are the same fault in different clothes: a test naming its subject by
+position and trusting it to stay there.

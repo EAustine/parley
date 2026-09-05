@@ -1,5 +1,3 @@
-import { devices } from "@playwright/test";
-
 import { expect, test } from "./fixtures";
 import { signIn } from "./auth";
 import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
@@ -290,14 +288,20 @@ test.describe("the schedule form", () => {
       const card = page.getByRole("status");
 
       // Same day in both: no date on the second line, and no UTC anywhere.
-      await page.getByLabel("Start time").selectOption("10:00");
-      await expect(card).toContainText(/\d{2}:\d{2} – \d{2}:\d{2} .* where you are/);
+      await page.getByLabel("Start time").fill("10:00");
+      // D3's wording: "That's 16:00 – 16:30 where you are (Europe/Berlin)."
+      // The zone moved out from between the time and the phrase into a
+      // parenthetical, which is what makes the claim checkable by a reader
+      // whose machine is set to the wrong zone.
+      await expect(card).toContainText(
+        /\d{2}:\d{2} – \d{2}:\d{2} where you are \(Europe\/Berlin\)/,
+      );
       await expect(card).not.toContainText("UTC");
 
       // Across midnight: the day appears, because the number alone is wrong.
-      await page.getByLabel("Start time").selectOption("22:00");
+      await page.getByLabel("Start time").fill("22:00");
       await expect(card).toContainText(
-        /(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}, \d{2}:\d{2} – \d{2}:\d{2} .* where you are/,
+        /(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}, \d{2}:\d{2} – \d{2}:\d{2} where you are \(Europe\/Berlin\)/,
       );
     } finally {
       await context.close();
@@ -306,44 +310,69 @@ test.describe("the schedule form", () => {
   });
 
   /**
-   * D3: "a 15-minute select on desktop, native `<input type="time">` on mobile
-   * for the OS wheel."
+   * D3, **reversing its own earlier call and mine**: native
+   * `<input type="time" step="900">` everywhere, not a 15-minute select on
+   * desktop.
    *
-   * Chosen by `(pointer: coarse)`, so this is a device and not a viewport —
-   * C5's lesson, which D1 restated and which a width-based test of a
-   * pointer-based rule would not have caught.
+   * "A 15-minute select over 24 hours is 96 options, and the browser renders
+   * that as a list taller than the viewport — a worse problem than a spinner
+   * that looks slightly different across browsers."
+   *
+   * One control on every device now, so this is one test rather than the pair
+   * of device-scoped ones it replaces. `step` is what moves the arrows in
+   * quarter hours; it deliberately does not stop somebody typing 10:07, which
+   * the select could not have allowed.
    */
-  test("start time is a select where the pointer is fine", async ({ page }) => {
+  test("start time is a native time input at quarter-hour steps", async ({ page }) => {
     const host = await createFixtureHost();
     try {
       await signIn(page, host.email, "/schedule");
       const start = page.getByLabel("Start time");
       await expect(start).toBeVisible();
-      expect(await start.evaluate((el) => el.tagName)).toBe("SELECT");
-      // Quarter hours, and every one of them.
-      expect(await start.locator("option").count()).toBe(96);
-      await expect(page.getByText("15-minute steps. Type to jump.")).toBeVisible();
+      expect(await start.evaluate((el) => el.tagName)).toBe("INPUT");
+      expect(await start.getAttribute("type")).toBe("time");
+      expect(await start.getAttribute("step")).toBe("900");
+      await expect(page.getByText("Type it, or use the arrows.")).toBeVisible();
+
+      // And an off-grid time is accepted, which the select could not offer.
+      await start.fill("10:07");
+      await expect(page.getByRole("status")).toContainText("10:07");
     } finally {
       await deleteFixtureHost(host.id);
     }
   });
 
-  test("and the native control where it is coarse", async ({ browser }) => {
+  /**
+   * D3: "A meeting cannot be scheduled into the past."
+   *
+   * Said in the card whose job is "check it" rather than under a field, because
+   * the mistake is in the *instant* and no single field owns it: a date that
+   * was fine this morning is not fine now, and a time that is fine in Accra is
+   * not in Auckland.
+   */
+  test("a time that has passed is refused, and says so", async ({ page }) => {
     const host = await createFixtureHost();
-    const context = await browser.newContext({ ...devices["Pixel 5"] });
-    const page = await context.newPage();
     try {
       await signIn(page, host.email, "/schedule");
-      const start = page.getByLabel("Start time");
-      await expect(start).toBeVisible();
-      expect(
-        await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
-        "a phone should report a coarse pointer",
-      ).toBe(true);
-      expect(await start.evaluate((el) => el.tagName)).toBe("INPUT");
-      expect(await start.getAttribute("type")).toBe("time");
+      await page.getByLabel("Title").fill("Too late");
+      const submit = page.getByRole("button", { name: "Schedule meeting" });
+      await expect(submit).toBeEnabled();
+
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      await page.getByLabel("Date").fill(yesterday);
+
+      await expect(page.getByText("That time has already passed.")).toBeVisible();
+      await expect(submit).toBeDisabled();
+
+      // `min` greys the picker's earlier days — a hint, not the guarantee.
+      expect(await page.getByLabel("Date").getAttribute("min")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+      // And it recovers.
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+      await page.getByLabel("Date").fill(tomorrow);
+      await expect(page.getByText("That time has already passed.")).toHaveCount(0);
+      await expect(submit).toBeEnabled();
     } finally {
-      await context.close();
       await deleteFixtureHost(host.id);
     }
   });
@@ -363,6 +392,11 @@ test.describe("the schedule form", () => {
       const groups = await zones.locator("optgroup").evaluateAll((els) =>
         els.map((e) => (e as HTMLOptGroupElement).label),
       );
+      // D3: the reader's own zone is pinned to the top, always — "so the
+      // common case needs no scrolling at all". That is what makes a
+      // seventy-five entry list acceptable in a popup whose height is the
+      // browser's to decide.
+      expect(groups[0]).toBe("Your timezone");
       expect(groups).toContain("Europe");
       expect(groups).toContain("Americas");
       expect(groups).toContain("Asia");
@@ -373,9 +407,22 @@ test.describe("the schedule form", () => {
       // other.
       await zones.selectOption("Europe/Paris");
       await expect(zones).toHaveValue("Europe/Paris");
+      /*
+        `.first()`, because a zone can legitimately appear twice.
+        
+        D3 pins the reader's own zone to the top under "Your timezone" *and*
+        leaves it in its region — an index, not a mistake. Selecting Paris makes
+        Paris the reader's zone, so it is in both places, and a strict locator
+        finds two. That is the feature, and the test says so rather than
+        loosening the assertion to hide it.
+      */
+      await expect(
+        zones.locator("option[value='Europe/Paris']").first(),
+      ).toHaveText(/Europe\/Paris — (CET|CEST|GMT\+[12])/);
       await expect(
         zones.locator("option[value='Europe/Paris']"),
-      ).toHaveText(/Europe\/Paris — (CET|CEST|GMT\+[12])/);
+        "the chosen zone is pinned at the top and left in its region",
+      ).toHaveCount(2);
     } finally {
       await deleteFixtureHost(host.id);
     }

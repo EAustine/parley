@@ -6,6 +6,8 @@ import {
   reactionDrift,
   reactionSpin,
 } from "@/lib/room/limits";
+import { REACTION_ASSETS } from "@/lib/room/reaction-assets";
+import type { Reaction } from "@/lib/room/messages";
 import type { ReactionEvent } from "@/lib/room/chat";
 
 /**
@@ -79,12 +81,58 @@ export function ReactionOverlay({
               } as React.CSSProperties
             }
           >
-            <span className="parley-reaction-sway block select-none text-2xl">
-              {reaction.emoji}
+            {/*
+              Fluent 3D, with the glyph as the fallback — v1.3 C6.
+              
+              `alt=""` because the overlay is `aria-hidden` and §9 announces
+              reactions through the live region instead: an image with a name
+              here would be the same fact twice, and throttled differently.
+              
+              30px is `design/02`'s `.rx{font-size:30px}`, and the asset is 96px
+              so it holds at 3×. `onError` falls back to the glyph rather than
+              leaving a gap — a missing asset should cost the polish, not the
+              reaction.
+            */}
+            <span className="parley-reaction-sway block select-none">
+              <ReactionGlyph emoji={reaction.emoji} />
             </span>
           </span>
         );
       })}
     </div>
+  );
+}
+
+function ReactionGlyph({ emoji }: { emoji: string }) {
+  const src = REACTION_ASSETS[emoji as Reaction];
+  if (!src) return <span className="block text-[30px] leading-none">{emoji}</span>;
+  return (
+    /*
+     * A plain `<img>`, and `next/image` is deliberately not used.
+     *
+     * It would route a 3 kB asset through `/_next/image?url=…` — a server round
+     * trip, on the one element in the product that has to be on screen the
+     * instant it is asked for, and it would defeat the preload by changing the
+     * URL the browser was told to fetch. These are already optimised: 96px
+     * WebP, generated once, versioned with the repo.
+     */
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      width={30}
+      height={30}
+      draggable={false}
+      className="block size-[30px]"
+      onError={(event) => {
+        // Swap the image for the glyph it stands in for. The reaction is the
+        // point; the asset is how it looks.
+        const img = event.currentTarget;
+        const text = document.createElement("span");
+        text.className = "block text-[30px] leading-none";
+        text.textContent = emoji;
+        img.replaceWith(text);
+      }}
+    />
   );
 }

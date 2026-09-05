@@ -24,10 +24,25 @@ import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
 /** Where the emoji is, and how it is tipped, at each fraction of its flight. */
 async function flightPath(participant: Participant, drift: number, spin: number) {
   return participant.page.evaluate(
-    ({ drift, spin }) => {
+    async ({ drift, spin }) => {
       const outer = document.querySelector<HTMLElement>(".parley-reaction");
       if (!outer) throw new Error("no reaction on screen");
       const inner = outer.querySelector<HTMLElement>(".parley-reaction-sway")!;
+
+      /*
+       * Wait for the image before measuring anything.
+       *
+       * v1.3 C6 put a `<img>` inside the element these samples measure, and it
+       * decodes asynchronously. The box is 30×30 either way — the size is on
+       * the element, not on the bytes — but a decode that lands mid-sample
+       * moves the measured centre, and this failed under four workers while
+       * passing alone. A flake, and the cause is the test measuring a box whose
+       * contents were still arriving.
+       */
+      const glyph = inner.querySelector("img");
+      if (glyph && !glyph.complete) {
+        await glyph.decode().catch(() => {});
+      }
 
       /*
        * The drift is pinned rather than taken as it comes.
@@ -182,7 +197,19 @@ test.describe("reactions", () => {
     // keeps.
     const opacity = await ama.page.evaluate(() => {
       const el = document.querySelector<HTMLElement>(".parley-reaction")!;
-      const fade = el.getAnimations()[0];
+      /*
+       * By name, not by index.
+       *
+       * This was `getAnimations()[0]`, which is whichever the browser lists
+       * first — and v1.3 C6 put more animations on this subtree, so the index
+       * sometimes landed on a CSS transition instead. Setting *its*
+       * `currentTime` moves nothing, opacity reads its end state of 0, and the
+       * test failed under four workers while passing alone: a flake whose cause
+       * was the test naming its subject by position.
+       */
+      const fade = el
+        .getAnimations()
+        .find((a) => (a as CSSAnimation).animationName === "parley-reaction-hold");
       if (!fade) return null;
       fade.pause();
       const read = (t: number) => {
@@ -194,5 +221,120 @@ test.describe("reactions", () => {
     expect(opacity!.start).toBeLessThan(0.2);
     expect(opacity!.middle).toBeGreaterThan(0.9);
     expect(opacity!.end).toBeLessThan(0.2);
+  });
+});
+
+test.describe("the reaction assets", () => {
+  const open: Participant[] = [];
+
+  test.afterEach(async () => {
+    while (open.length) {
+      const p = open.pop()!;
+      await leave(p).catch(() => {});
+      await p.context.close().catch(() => {});
+    }
+  });
+
+  /**
+   * v1.3 C6's second half: Fluent Emoji 3D, MIT, 96px WebP.
+   *
+   * **Asserted as loaded, not as present.** `ReactionOverlay` falls back to the
+   * platform glyph when the image errors, which is the right behaviour and also
+   * the reason a wrong path would ship silently: the reaction still appears,
+   * just flat, and every DOM assertion about the reaction would pass.
+   * `naturalWidth` is the only thing that knows the bytes arrived.
+   */
+  test("a reaction floats as the Fluent asset, and the asset actually loaded", async ({
+    browser,
+    meetingCode,
+  }) => {
+    const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    open.push(ama);
+    await react(ama);
+
+    const image = ama.page.locator(".parley-reaction img");
+    await expect(image).toHaveCount(1);
+    await expect(image).toHaveAttribute("src", "/reactions/clapping-hands.webp");
+    expect(
+      await image.evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      "the asset is 96px at source — a zero here means it did not load and the glyph took over",
+    ).toBe(96);
+    /*
+     * Rendered at design/02's 30px, from a 96px source: 3×.
+     *
+     * `offsetWidth`, not `boundingBox()`. The pop animates `scale` from 0.8 to
+     * 1 over 200ms, and the rect is the *transformed* box — so this measured 24
+     * and read as a sizing bug when it was a stopwatch. The same distinction
+     * `SelfViewPiP`'s clamp is built on: sizes from the layout box, never from
+     * a rect that carries a transform.
+     */
+    expect(
+      await image.evaluate((el) => (el as HTMLImageElement).offsetWidth),
+    ).toBe(30);
+  });
+
+  /**
+   * C6: "Preload the six on room entry" — amended to **after the connection is
+   * healthy**, because room entry *is* the join path and 22 kB competing with
+   * media negotiation trades time-to-first-video for a decoration nobody has
+   * used yet.
+   *
+   * Asserted as ordering against a fact the room publishes: no reaction asset
+   * is requested before the grid exists, and all six are requested after. The
+   * grid is the first thing that needs a connection, so it stands in for one.
+   */
+  test("the six are fetched once, and only after the join has its token", async ({
+    browser,
+    meetingCode,
+  }) => {
+    const ama = await joinAs(browser, "Ama Serwaa", { code: meetingCode, withMedia: false });
+    open.push(ama);
+    await expect(ama.page.locator(".grid")).toBeVisible({ timeout: 30_000 });
+
+    /*
+     * Read from the page's own Resource Timing rather than from a request
+     * listener, because the listener would have to be attached before the
+     * navigation and `joinAs` owns that.
+     *
+     * The ordering claim is against **the token request**, which is the first
+     * thing the join does and the thing the preload must not race:
+     * `connection.phase === "healthy"` cannot be reached before it. C6 says the
+     * assets arrive "on room entry" and Austine amended that to after the
+     * connection is up, because room entry is the join path and 22 kB
+     * competing with media negotiation trades time-to-first-video for a
+     * decoration nobody has used yet.
+     */
+    const timing = await ama.page.evaluate(async () => {
+      const read = () =>
+        performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+      // The preload fires on `healthy`, which can land after the grid paints.
+      for (let i = 0; i < 60; i++) {
+        if (read().filter((e) => e.name.includes("/reactions/")).length >= 6) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const all = read();
+      return {
+        assets: all
+          .filter((e) => e.name.includes("/reactions/"))
+          .map((e) => ({ name: e.name.split("/").pop()!, start: e.startTime })),
+        tokenEnd: Math.max(
+          0,
+          ...all.filter((e) => e.name.includes("/api/livekit/token")).map((e) => e.responseEnd),
+        ),
+      };
+    });
+
+    expect(timing.assets.length, "all six warmed").toBe(6);
+    expect(
+      new Set(timing.assets.map((a) => a.name)).size,
+      "six distinct assets, fetched once each",
+    ).toBe(6);
+    expect(timing.tokenEnd, "the join fetched a token").toBeGreaterThan(0);
+    for (const asset of timing.assets) {
+      expect(
+        asset.start,
+        `${asset.name} was fetched at ${Math.round(asset.start)}ms, before the token finished at ${Math.round(timing.tokenEnd)}ms`,
+      ).toBeGreaterThan(timing.tokenEnd);
+    }
   });
 });

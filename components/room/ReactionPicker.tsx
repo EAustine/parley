@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ICONS } from "@/lib/icons";
 import { CONTROL_MOTION } from "@/lib/motion";
 import { REACTIONS, REACTION_NAMES, type Reaction } from "@/lib/room/messages";
+import { REACTION_ASSETS } from "@/lib/room/reaction-assets";
 import {
   Popover,
   PopoverContent,
@@ -90,7 +91,28 @@ export function ReactionPicker({ onReact }: { onReact: (emoji: Reaction) => void
                 pressed === emoji ? " parley-reaction-press" : ""
               }`}
             >
-              <span aria-hidden>{emoji}</span>
+              {/*
+                The same Fluent 3D asset the reaction floats as — v1.3 C6. A
+                picker showing platform glyphs and a room showing something else
+                would make you press one thing and send another.
+
+                `aria-hidden`, because the button already carries the name: the
+                emoji is the label visually and "React with applause" is the
+                label a screen reader reads. 24px here against the room's 30 —
+                one asset serves both, which is what a 96px source is for.
+
+                No `next/image`, for the reason `ReactionOverlay` gives.
+              */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={REACTION_ASSETS[emoji]}
+                alt=""
+                aria-hidden
+                width={24}
+                height={24}
+                draggable={false}
+                className="size-6"
+              />
             </button>
           ))}
         </div>

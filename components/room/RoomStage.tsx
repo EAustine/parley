@@ -32,6 +32,7 @@ import { ReactionOverlay } from "@/components/room/ReactionOverlay";
 import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
 import { ReplacedNotice } from "@/components/room/ReplacedNotice";
 import { EndMeetingDialog } from "@/components/room/EndMeetingDialog";
+import { ReactionPreload } from "@/components/room/ReactionPreload";
 import { DeviceSettingsDialog } from "@/components/room/DeviceSettingsDialog";
 import { DeviceChangePrompt } from "@/components/room/DeviceChangePrompt";
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
@@ -700,6 +701,10 @@ function RoomSurface({
           onDismiss={messages.dismissMuteRequest}
         />
       )}
+
+      {/* v1.3 C6. Fetches the six reaction images once the connection is
+          healthy — not at room entry, which is the join path. */}
+      <ReactionPreload ready={connection.phase === "healthy"} />
 
       <ReactionOverlay reactions={messages.reactions} anchorFor={anchorFor} />
 

@@ -192,7 +192,23 @@ export function RoomControls({
          * the floor and the rhythm — the groups stay whole and the break falls
          * between them.
          */
-        className="flex max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-x-2 gap-y-2 rounded-full px-2 py-2 sm:gap-x-4 sm:px-3"
+        /*
+         * **One row, Leave included** — v1.3 C0, which overrides the wrapping
+         * fix this line used to carry.
+         *
+         * Wrapping kept the groups whole and let the break fall between them,
+         * which preserved the 44px floor. It also cost about 70px of height on
+         * a phone — the axis where space is scarcest, and the one the video is
+         * competing for. C2's tiering is what made nowrap affordable: the
+         * secondary controls collapsed into an overflow menu, so there are
+         * fewer things to fit than when the bar was seven equal circles.
+         *
+         * The floor is not being traded away for it. `check:targets` measures
+         * the Android bar's rendered boxes against 44px with share offered,
+         * which is the widest this gets, and it is the thing that would fail if
+         * a row that cannot wrap started shrinking its contents instead.
+         */
+        className="flex max-w-[calc(100vw-0.5rem)] flex-nowrap items-center justify-center gap-x-1.5 rounded-full px-1.5 py-2 sm:gap-x-4 sm:px-3"
         style={{
           background: "var(--scrim)",
           // Invisible and clickable is a trap. Keyboard focus is unaffected by
@@ -212,7 +228,7 @@ export function RoomControls({
           ones you hit under pressure, and where a wrong guess costs something."
           They were three of eight identical icon circles.
         */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 flex-nowrap items-center gap-1 sm:gap-2">
           <PrimaryControl
             on={isMicrophoneEnabled}
             onIcon="micOn"
@@ -249,7 +265,7 @@ export function RoomControls({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 flex-nowrap items-center gap-1 sm:gap-2">
           {/* Reactions leave the bar below 900px with Present — C2's six.
               The overflow menu carries them at that width. */}
           <div className="hidden min-[900px]:flex">
