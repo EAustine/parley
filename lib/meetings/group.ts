@@ -48,10 +48,15 @@ export function groupMeetings<T extends Datable>(
   when: (meeting: T) => string,
   by: "day" | "month",
   timeZone: string = viewerTimeZone(),
+  /** The render clock, so "Today" agrees with the partition — v1.3 D5. */
+  now: number = Date.now(),
 ): MeetingGroup<T>[] {
   const keyOf = (iso: string) =>
     formatInTimeZone(new Date(iso), timeZone, by === "day" ? "yyyy-MM-dd" : "yyyy-MM");
-  const headingOf = by === "day" ? formatDayHeader : formatMonthHeader;
+  const headingOf =
+    by === "day"
+      ? (iso: string, zone: string) => formatDayHeader(iso, zone, now)
+      : formatMonthHeader;
 
   const groups: MeetingGroup<T>[] = [];
   for (const meeting of meetings) {

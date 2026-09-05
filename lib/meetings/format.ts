@@ -34,12 +34,13 @@ export function viewerTimeZone(): string {
 function formatMeetingDay(
   utcISO: string,
   timeZone: string = viewerTimeZone(),
+  now: number = Date.now(),
 ): string {
   const day = (d: Date) => formatInTimeZone(d, timeZone, "yyyy-MM-dd");
   const target = day(new Date(utcISO));
-  const now = new Date();
-  if (target === day(now)) return "Today";
-  if (target === day(new Date(now.getTime() + 86_400_000))) return "Tomorrow";
+  const today = new Date(now);
+  if (target === day(today)) return "Today";
+  if (target === day(new Date(now + 86_400_000))) return "Tomorrow";
   return formatInTimeZone(new Date(utcISO), timeZone, "EEE d MMM yyyy");
 }
 
@@ -99,9 +100,22 @@ export function formatShortDay(
 export function formatDayHeader(
   utcISO: string,
   timeZone: string = viewerTimeZone(),
+  /**
+   * The render clock — v1.3 D5.
+   *
+   * "Today" is a comparison against a *now*, and this used to read the
+   * browser's while `partitionMeetings` read the server's. Two clocks on one
+   * screen: a meeting the server puts in Upcoming could be headed "Today" by a
+   * browser that thinks it is already tomorrow. Rare, and the sort of rare that
+   * only ever shows up in a screenshot nobody can reproduce.
+   *
+   * D5's whole shape is one clock read once at render and refreshed when you
+   * come back, so the header takes the same reading as the partition.
+   */
+  now: number = Date.now(),
 ): string {
   const spelled = formatInTimeZone(new Date(utcISO), timeZone, "EEEE d MMMM");
-  const relative = formatMeetingDay(utcISO, timeZone);
+  const relative = formatMeetingDay(utcISO, timeZone, now);
   return relative === "Today" || relative === "Tomorrow"
     ? `${relative} · ${spelled}`
     : spelled;

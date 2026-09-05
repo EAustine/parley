@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { StartMeetingButton } from "@/components/meetings/StartMeetingButton";
 import { Button } from "@/components/ui/button";
+import { DashboardFreshness } from "@/components/meetings/DashboardFreshness";
 import { MeetingsList } from "@/components/meetings/MeetingsList";
 import type { MeetingRowData } from "@/components/meetings/MeetingRow";
 import { partitionMeetings } from "@/lib/meetings/partition";
@@ -56,18 +57,24 @@ export default async function DashboardPage() {
    *
    * D5's render-time half, which A1 delivers: the partition is computed from
    * `now()` on every server render rather than from a timer. The same reading
-   * goes to the live block so a meeting cannot be bucketed as live against one
-   * clock and described as "started 14 minutes ago" against another.
+   * goes to the live block *and* to the day headers, so a meeting cannot be
+   * bucketed against one clock and described against another — "Today" is a
+   * comparison against a now, and it used to be the browser's while this was
+   * the server's.
    *
-   * The other half of D5 — `router.refresh()` on window focus — is not here
-   * yet, so a dashboard left open still goes stale; it is simply correct every
-   * time the page renders.
+   * The other half is `DashboardFreshness` below, which asks the server for a
+   * new one when you come back to the tab. Between the two, "current" means
+   * current as of the last time you looked at it rather than as of the last
+   * time you loaded it.
    */
   const now = Date.now();
   const { live, upcoming, past } = partitionMeetings(meetings, now);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8 sm:py-12">
+      {/* v1.3 D5. Renders nothing; it holds the effect that re-asks the server
+          when you come back to this tab. */}
+      <DashboardFreshness />
       {/* D2: the page actions are Start meeting (primary) and Schedule
           (secondary). Sign out has left this row for the account menu in the
           header, and the "Signed in as" subtitle went with it — the email is

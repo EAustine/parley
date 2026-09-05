@@ -57,8 +57,12 @@ export function MeetingsList({
   // months and the server does not know their zone. Memoised on the arrays, so
   // switching tabs does not regroup either list.
   const upcomingGroups = useMemo(
-    () => groupMeetings(upcoming, when, "day"),
-    [upcoming],
+    // The server's clock, not the browser's — v1.3 D5. "Today" is a comparison
+    // against a *now*, and the partition that decided this row is upcoming used
+    // the server's. Two clocks on one screen is how a row lands in Upcoming
+    // under a header saying it already happened.
+    () => groupMeetings(upcoming, when, "day", undefined, now),
+    [upcoming, now],
   );
   const pastGroups = useMemo(() => groupMeetings(past, when, "month"), [past]);
 

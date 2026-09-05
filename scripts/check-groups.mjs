@@ -220,6 +220,41 @@ check(groupMeetings([], when, "day", "UTC").length === 0, "an empty list makes n
   );
 }
 
+// --- one clock, passed in -------------------------------------------------
+
+{
+  /*
+   * v1.3 D5. "Today" is a comparison against a *now*, and the header used to
+   * read the browser's clock while `partitionMeetings` read the server's. Two
+   * clocks on one screen is how a row lands in Upcoming under a header saying
+   * it already happened.
+   *
+   * Pinned by moving the clock rather than the meeting: the same instant is
+   * "Today" from one `now` and "Tomorrow" from a `now` a day earlier. A header
+   * still reading `Date.now()` would answer the same both times, whichever
+   * answer that happened to be.
+   */
+  const meeting = "2026-09-15T12:00:00Z";
+  const heading = (now) =>
+    groupMeetings([m("a", meeting)], when, "day", "UTC", Date.parse(now))[0].heading;
+
+  check(
+    heading("2026-09-15T09:00:00Z").startsWith("Today"),
+    "a day header says Today against a clock on that day",
+    heading("2026-09-15T09:00:00Z"),
+  );
+  check(
+    heading("2026-09-14T09:00:00Z").startsWith("Tomorrow"),
+    "and Tomorrow against a clock the day before — the caller's now, not the machine's",
+    heading("2026-09-14T09:00:00Z"),
+  );
+  check(
+    !/Today|Tomorrow/.test(heading("2026-09-01T09:00:00Z")),
+    "and neither from two weeks out",
+    heading("2026-09-01T09:00:00Z"),
+  );
+}
+
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} grouping checks passed.`);
 if (failed.length) process.exit(1);

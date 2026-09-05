@@ -6993,3 +6993,122 @@ durations, so a 0.01ms sway still travels its whole arc and tips 8°, instantly.
 
 `check:room` 114/114 (was 108 — six new), and the reaction path measured in a
 browser rather than read back from the stylesheet.
+
+---
+
+## v1.3 D5 — dashboard freshness
+
+> "Not a timer. Compute the partition from `now()` at render, which A1 delivers
+> anyway, then `router.refresh()` **on window focus**. Nobody watches a
+> dashboard for five minutes; they come back to it, and that is the moment the
+> data should be current."
+
+The last item in the plan.
+
+### Two events, because "came back" has two shapes
+
+`window`'s **focus** is returning to the browser from another application or
+another window. `document`'s **visibilitychange** is returning to this tab from
+another one, or to the browser from the home screen on a phone. Neither implies
+the other: switching tabs inside a focused window fires only the second, and
+clicking back into an already-visible window fires only the first. D5 names
+focus; a phone is the case where naming only focus would have been wrong.
+
+The repo has ruled on the event-*name* half of this once already —
+`useControlVisibility.ts`: "`focusin` rather than `focus`: focus does not
+bubble." That is about catching focus inside a subtree. This listens on `window`
+itself, which is where the non-bubbling event is dispatched, so `focus` is right
+here and `focusin` would have been the mistake.
+
+Mounted by `/dashboard`, not by `(app)/layout.tsx`, which also wraps `/schedule`
+and `/schedule/[code]` — refreshing a form somebody is halfway through filling
+in is the opposite of the improvement.
+
+### The gap is a staleness window, and thirty seconds was too long
+
+Every refresh is an uncacheable RLS query and an RSC render, and somebody moving
+between a document and this tab produces a return every few seconds. So there is
+a minimum gap — a ref and a subtraction, not `Throttle` from `lib/room/limits`:
+that class is a *per-key* gate, keyed on participant identity so one flooder
+cannot silence anyone else's reactions. There is one key here and it is always
+the same one, so reusing it would be borrowing the name rather than the
+behaviour, and it would pull a module of reaction constants into a route with
+7 kB of budget left.
+
+It started at thirty seconds, and the tests found the problem with that. The
+clock starts at mount — the page has just been rendered from the server, and
+that *is* an ask — so nothing refreshes inside the gap. At thirty seconds a real
+return half a minute after loading shows stale data: **the exact thing D5 exists
+to prevent, reintroduced by the mechanism meant to make it cheap.** Ten seconds
+is well past the one-to-three-second cadence of alt-tabbing and short enough
+that the dead zone is not a window anybody notices.
+
+The number lives in `lib/meetings/freshness.ts` rather than in the component, so
+the test imports the real one instead of transcribing it. A copy in a spec
+agrees with the source until one of them is edited, and the one that gets edited
+is never the one anybody reads.
+
+### One clock on the screen, which it was not
+
+`partitionMeetings` used the server's `now`; `formatMeetingDay` read the
+browser's. Two clocks on one screen, and "Today" is a comparison against a *now*
+— so a row the server put in Upcoming could sit under a header saying it had
+already happened. Rare, and the sort of rare that only ever appears in a
+screenshot nobody can reproduce.
+
+`formatDayHeader` and `groupMeetings` take the render clock now, and
+`MeetingsList` hands them the same reading the partition used. `check:groups`
+pins it by moving the clock rather than the meeting: the same instant is "Today"
+from one `now` and "Tomorrow" from a `now` a day earlier, which a header still
+reading `Date.now()` could not do.
+
+### What the harness can and cannot drive
+
+A headless Chromium page is **always visible and always focused**, and nothing
+available changes that. Measured, not assumed: `page.bringToFront()` on a second
+page in the same context fires no `focus`, no `blur` and no `visibilitychange`
+on the first — the event log stays empty and `visibilityState` stays `"visible"`.
+`Emulation.setPageVisibilityState` is gone from the protocol.
+`Page.setWebLifecycleState` and `Emulation.setFocusEmulationEnabled` both
+succeed and fire nothing.
+
+So the return is dispatched, and the boundary is stated rather than implied:
+**that the browser fires these events when someone comes back is a platform
+guarantee, not our code** — the same class of thing as trusting `click` to fire
+on a click. Everything on this side of the event is tested. `visibilityState` is
+overridden alongside the dispatch rather than left saying `"visible"` through a
+hide, so the handler's own guard is exercised instead of stepped around, and
+`MANUAL.md` §6 carries the half a browser has to confirm.
+
+### Two things the tests found before a person could
+
+**A refresh that was not ours.** Three tests failed as "the dashboard polls",
+and it does not: `AuthListener` calls `router.refresh()` when Supabase emits
+`SIGNED_IN`, about a second after the page loads. Correct behaviour, mistaken
+for a poll because the measurement started before it. The fixture now
+establishes the session and *then* loads the page fresh, so nothing signs in
+during the measurement.
+
+**A test that could not see the thing it was named for.** "Nothing polls" went
+green against a deliberately inserted `setInterval(refresh, 2000)` — because
+every refresh path runs through the same gate, and a poll inside the first ten
+seconds is swallowed by the throttle. It was caught only by a neighbouring test,
+which is the shape CLAUDE.md names: a check exercising something adjacent to its
+claim. It waits past the gap first now, where a timer of any period under six
+seconds has to show.
+
+### Mutation checks
+
+| Deleted | Fails |
+|---|---|
+| the gap | returning twice asks the server once |
+| the `visible` guard | leaving does not refresh; only coming back does |
+| the events, replaced by a `setInterval` | nothing polls while the tab is left open |
+| the clock passed to the day header | `check:groups`, from both directions |
+
+### Checks
+
+`check:groups` 17/17 (was 14 — three new), `check:room` 114/114,
+`check:contrast` 28, `check:partition` 20/20, `check:deps` 5/5, `check:ics`
+69/69, `check:chat` 73/73, `check:connection` 72/72, `check:permissions` 39/39,
+`check:codes` 6/6.

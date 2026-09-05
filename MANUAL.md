@@ -282,6 +282,28 @@ neither item in this section.**
   the failure dialog's copy, "Parley kept trying and the connection didn't come
   back", is simply false when the browser closed a hidden tab.
 
+- **The dashboard refreshing on a real return** — needs a human.
+  v1.3 D5's trigger is the browser's own `focus` and `visibilitychange`, and a
+  headless Chromium page is **always visible and always focused**. Measured
+  rather than assumed: `page.bringToFront()` on a second page in the same
+  context fires no `focus`, no `blur` and no `visibilitychange` on the first;
+  `Emulation.setPageVisibilityState` is gone from the protocol; and
+  `Page.setWebLifecycleState` and `Emulation.setFocusEmulationEnabled` both
+  succeed and fire nothing.
+
+  Everything on our side of the event is tested — a hide ignored, a show acted
+  on, the refresh soft, returns inside the gap collapsed to one, and nothing at
+  all without an event. What no test here can reach is whether the browser
+  dispatches them when a person actually comes back.
+
+  Two checks, both about a minute: on a desktop, open the dashboard, switch to
+  another application for more than ten seconds, and confirm on return that a
+  meeting created meanwhile has appeared without the page reloading — the open
+  filter tab should still be the one you left on. Then the same on a phone:
+  background the browser, return, and confirm the same. The phone is the case
+  worth doing separately, because `focus` and `visibilitychange` are not
+  interchangeable there.
+
 ---
 
 ## 7. Server-side and account integration
