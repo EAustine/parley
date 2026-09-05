@@ -8226,3 +8226,47 @@ machine, and the app declares no database connection string — only the Supabas
 URL and its keys, which reach PostgREST over HTTP. `alter table … drop not null`
 is DDL and needs a real postgres connection. `20260905180000_clear_email_display_names.sql`
 still wants the dashboard's SQL editor or the CLI with the database password.
+
+### "Does production have the latest deploy?" could not be answered at all
+
+It could not, and the attempts are worth recording because each failed in a way
+that looked like an answer.
+
+**Grepping the deployed client chunks for a marker from today's work** reported
+every marker ABSENT — including `End meeting for everyone`, which is v1.3 and
+certainly deployed. That is the tell: the probe was broken, not the deployment.
+Validating it against strings that are definitely there settled it — 688 kB of
+chunks fetched and **no occurrence of the word "Parley"**. The landing page is
+server-rendered, so its text is in the HTML and the flight payload rather than in
+any chunk, and the room's code sits behind a dynamic import that only loads once
+a token is minted.
+
+Reporting that first result as "production is stale" would have been the exact
+failure this file keeps cataloguing: a check that has stopped asking, read as a
+check that answered.
+
+**The headers say nothing.** `x-vercel-id` is a request trace; there is no
+deployment identity in a response.
+
+**And nothing that changed today is observable from outside.** Every route a
+signed-out visitor can reach changed in ways that produce identical HTML — the
+consent fix is client logic, the row and the sheet live in the room bundle, and
+the display-name change alters nothing a signed-out visitor sees.
+
+So the honest answer was "I cannot tell", and the alternatives on offer were all
+worse than fixing it: comparing content hashes against a local build, which is
+not reproducible across machines, or creating a real meeting in production to
+force the room bundle to load, which pollutes live data to answer a status
+question.
+
+`app/api/version/route.ts` makes the deployment state its own commit —
+`VERCEL_GIT_COMMIT_SHA`, the branch, the environment. Nothing there is a secret:
+it is a commit in a public repository, which is the opposite of the values rule 2
+governs. `npm run check:deploy` compares it to the commit in hand and says
+whether the deployment is running it, and if not, how many commits behind.
+
+**Its first run is the bootstrapping case, and it says so rather than failing
+vaguely:** production has no `/api/version`, because that route ships with this
+commit — which does answer the question this once. Production predates it. How
+far behind remains unknown until the next deploy, and the check will say
+precisely from then on.
