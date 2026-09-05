@@ -7666,3 +7666,26 @@ four responses.
 The pattern is the one this file keeps recording in other clothes. A check that
 is never shown the failing pairing runs green; a contract that is never asked the
 question answers it by accident.
+
+### The migration is applied, and one word in `MANUAL.md` was wrong
+
+`20260905120000_participant_sessions.sql` is applied — Austine's step, since it
+needs the database password. The partial unique index now closes the retry race
+on `participant_joined` that the route already guarded against in code.
+
+D5's focus-refresh check stays manual, and Austine's reasoning is the right one:
+a test would be exercising a state the browser never leaves. Both `MANUAL.md`
+and `freshness.spec.ts` explained that by saying a **headless** page is always
+visible and focused, and that attribution is wrong in a way that costs somebody
+an afternoon: `headless: false` reads as the obvious workaround.
+
+Probed rather than argued. With a second tab genuinely in front of the page on a
+real screen, headed Chromium returns `visibilityState: "visible"`,
+`hasFocus(): true` and an empty event log — byte-identical to headless, and
+unchanged by `bringToFront()` or by CDP `Page.setWebLifecycleState` in either
+direction. Playwright foregrounds every page in a context whatever the mode,
+because that is what lets a test drive a background tab at all.
+
+So the limitation is Playwright's, not headlessness's, and both files now say so.
+Nothing else changed: the four automated cases already cover everything on our
+side of the event, and the platform guarantee was always the manual half.

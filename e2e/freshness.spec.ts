@@ -25,13 +25,19 @@ const pastTheGap = (page: Page) => page.waitForTimeout(REFRESH_GAP_MS + 1_000);
  *
  * ## What this can and cannot drive, stated rather than implied
  *
- * A headless Chromium page is **always visible and always focused**, and
- * nothing available here changes that. Measured, not assumed:
+ * A Chromium page driven by Playwright is **always visible and always
+ * focused**, and nothing available here changes that. Measured, not assumed:
  * `page.bringToFront()` on a second page in the same context fires no `focus`,
  * no `blur` and no `visibilitychange` on the first — the event log stays empty
  * and `visibilityState` stays `"visible"`. `Emulation.setPageVisibilityState`
  * no longer exists in the protocol, and `Page.setWebLifecycleState` and
  * `Emulation.setFocusEmulationEnabled` both succeed and fire nothing.
+ *
+ * **This is not headlessness, which is the tempting diagnosis.** The same probe
+ * under `headless: false`, with a second tab really in front of the page on
+ * screen, returns exactly the same three readings. Playwright foregrounds every
+ * page in a context whatever the mode — that is what lets a test drive a
+ * background tab — so `headless: false` is not the workaround it looks like.
  *
  * So the return is dispatched, and the boundary is exactly this: **that the
  * browser fires these events when someone comes back is a platform guarantee,

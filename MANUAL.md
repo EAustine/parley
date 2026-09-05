@@ -284,12 +284,20 @@ neither item in this section.**
 
 - **The dashboard refreshing on a real return** — needs a human.
   v1.3 D5's trigger is the browser's own `focus` and `visibilitychange`, and a
-  headless Chromium page is **always visible and always focused**. Measured
-  rather than assumed: `page.bringToFront()` on a second page in the same
-  context fires no `focus`, no `blur` and no `visibilitychange` on the first;
-  `Emulation.setPageVisibilityState` is gone from the protocol; and
+  Chromium page driven by Playwright is **always visible and always focused**.
+  Measured rather than assumed: `page.bringToFront()` on a second page in the
+  same context fires no `focus`, no `blur` and no `visibilitychange` on the
+  first; `Emulation.setPageVisibilityState` is gone from the protocol; and
   `Page.setWebLifecycleState` and `Emulation.setFocusEmulationEnabled` both
   succeed and fire nothing.
+
+  **Not a headless limitation, which is the tempting reading and the wrong
+  one.** The same probe run with `headless: false` gives byte-identical
+  results — `visibilityState` `"visible"`, `hasFocus()` true, an empty event
+  log — with a second tab genuinely in front of the page on screen. Playwright
+  holds every page in a context foregrounded whatever the mode, because that is
+  what lets a test drive a background tab at all. So running this headed is not
+  the escape hatch it looks like, and nobody should spend an afternoon on it.
 
   Everything on our side of the event is tested — a hide ignored, a show acted
   on, the refresh soft, returns inside the gap collapsed to one, and nothing at
