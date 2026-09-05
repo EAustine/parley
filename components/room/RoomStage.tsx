@@ -753,9 +753,23 @@ function RoomSurface({
         <ReplacedNotice by={share.replacedBy} onDismiss={share.dismissReplaced} />
       )}
 
-      {/* v1.4 B2: the six emoji on a phone, out of the overflow menu. */}
+      {/*
+        v1.4 B2: the six emoji on a phone, out of the overflow menu.
+
+        **Not while a mute request stands**, and that is A2's rule applied to a
+        pair this pass created. `MuteRequestPrompt` anchors to the same
+        `bottom: calc(var(--parley-controls-h) + 0.5rem)` at the same `z-20`, so
+        two of them on screen is the connection bar over the tile's pill again,
+        one surface along — found by driving the design file, where the prompt
+        intercepted a press meant for an emoji.
+
+        Closing rather than offsetting, deliberately. An offset would be a
+        number tuned to the prompt's height, which is exactly the `top: 3.5rem`
+        A2 just retired; and of the two, the request is the one that needs an
+        answer. The sheet is one press away again afterwards.
+      */}
       <ReactionSheet
-        open={reactionsOpen}
+        open={reactionsOpen && !messages.muteRequest}
         onReact={messages.sendReaction}
         onClose={() => setReactionsOpen(false)}
       />

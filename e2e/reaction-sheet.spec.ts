@@ -104,6 +104,61 @@ test.describe("reactions on a phone", () => {
   });
 
   /**
+   * The sheet and the mute prompt cannot share the band above the bar.
+   *
+   * Found by driving `design/02-room.html`, not by reading the code: the
+   * prompt intercepted a press meant for an emoji. Both anchor to
+   * `bottom: calc(var(--parley-controls-h) + 0.5rem)` at `z-20`, which is A2's
+   * defect — two surfaces in one region — in a pair this same pass created.
+   *
+   * Closing rather than offsetting: an offset would be a number tuned to the
+   * prompt's height, which is the `top: 3.5rem` A2 just retired. Of the two,
+   * the request is the one that needs an answer.
+   */
+  test("the sheet yields to a mute request rather than overlapping it", async ({
+    browser,
+    hostedMeeting,
+  }) => {
+    test.setTimeout(180_000);
+    const guest = await joinAs(browser, "Ama Serwaa", {
+      code: hostedMeeting.code,
+      withMedia: false,
+      viewport: IPHONE,
+    });
+    const host = await joinAs(browser, "Kofi Mensah", {
+      code: hostedMeeting.code,
+      withMedia: false,
+      asHost: hostedMeeting.email,
+    });
+    participant = guest;
+
+    try {
+      // The guest needs a live mic for "Ask to mute" to be offered at all.
+      await wakeControls(guest.page);
+      await guest.page.getByRole("button", { name: "Unmute" }).click();
+      await expect(guest.page.getByRole("button", { name: "Mute" })).toBeVisible();
+
+      await guest.page.getByRole("button", { name: "More options" }).click();
+      await guest.page.getByRole("menuitem", { name: "Send a reaction" }).click();
+      const sheet = guest.page.getByRole("group", { name: "Send a reaction" });
+      await expect(sheet).toBeVisible();
+
+      await wakeControls(host.page);
+      await host.page.getByRole("button", { name: "Participants" }).click();
+      await host.page.getByRole("button", { name: /^Actions for Ama/ }).first().click();
+      await host.page.getByRole("menuitem", { name: /Ask to mute/ }).click();
+
+      await expect(
+        guest.page.getByRole("status").filter({ hasText: "asked you to mute" }),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(sheet, "the sheet and the prompt are both on screen").toBeHidden();
+    } finally {
+      await leave(host).catch(() => {});
+      await host.context.close().catch(() => {});
+    }
+  });
+
+  /**
    * B2 asks directly: "Check whether Present is in that menu on mobile at all."
    *
    * It always was. The test round saw neither Present nor a clipped trace of it

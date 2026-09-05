@@ -7975,3 +7975,118 @@ component's height goes wrong the moment that component wraps.
 Driven by `setOffline` rather than by waiting for a degradation a local SFU
 never produces, and asserted as boxes. Mutation: restoring `absolute` fails with
 "the connection bar overlaps the grid, where the first tile draws its pill".
+
+### The design file, updated to match B1 and B2 — and two bugs it gave up
+
+v1.4's preamble is explicit that these two changes are specified in prose and
+"the design file should be updated to match once they land, not the other way
+round". `design/02-room.html` now carries the row's three zones, the `⋮` and its
+menu, the connection chip, and the reactions sheet.
+
+Verified by **driving the file in a browser**, not by reading the markup back:
+the `⋮` measures 44×44, the name holds 131px beside it, a row carrying the chip
+is 44px — one line — and the row menu opens with exactly "Ask to mute" and
+"Remove from the meeting". On a 390px viewport the overflow menu spans 87→367
+with no emoji in it, the sheet opens and the menu closes, the sheet holds no
+`menuitem`, an emoji target is 56×48, the sheet spans 8→382, it survives a send
+and closes only on its own control.
+
+**Two things fell out of driving it that reading could not have found.**
+
+**The sheet and the mute prompt occupy one region — in the build, not just the
+design.** The prompt intercepted a press meant for an emoji. Both anchor to
+`bottom: calc(var(--parley-controls-h) + 0.5rem)` at `z-20`: A2's defect exactly,
+in a pair this same pass created, two items after fixing it. The sheet yields
+rather than offsetting — an offset would be a number tuned to the prompt's
+height, which is the `top: 3.5rem` A2 just retired, and of the two the request
+is the one that needs an answer.
+
+**The design file's `hidden` did nothing on the mute prompt.** It declares
+`[hidden]{display:none}` *per component* — `.menu[hidden]`, `.leave-menu[hidden]`
+— and `.ask` was missed, so `.ask{display:flex}` outranked the attribute and the
+prompt kept intercepting while `hidden` was set on it. `CLAUDE.md` records this
+from the chat panel: "a correctness property may not rest on a third-party
+reset… declare `[hidden] { display: none !important }` in our own base layer and
+own the behaviour." The per-component form is that same mistake — not a reset you
+forgot to include, but one you have to remember to extend for every surface you
+add. One base rule now.
+
+**And one correction to B2.** It says the design's `.leave-menu` carries a width
+clamp that `.menu` lacks. Both are beside the point: the design's mobile rule is
+`right:auto; left:50%; transform:translateX(-50%)` — it **re-anchors to the
+centre**, and that is what keeps it on screen, not any clamp. The build nudges by
+a measured deficit instead, which holds at every width and for every trigger
+position including desktop, where centring would be wrong.
+
+### The `signIn` guard found its own bug, and the assertion order was wrong
+
+The first full run after the guard landed failed once, on `select-webkit`, and
+for the first time this session the failure **named its own cause**:
+
+> `signIn(…) established no session. Landed on /sign-in with error: That link
+> has expired or has already been used.`
+
+Every earlier version of this failure reported "element not found" against an
+innocent locator twenty seconds later. That is the whole value of the change,
+and it arrived on the first run.
+
+**Then the message disproved the assertion that produced it.** A magic link is
+single-use, so "already been used" means the callback was requested **twice**:
+the first request consumed the token and set the session, the second was refused
+and redirected to the error page. The session existed. Only the last navigation
+was wrong — and the guard was asserting the URL before the cookie, so it failed
+a sign-in that had worked.
+
+The cookie is the fact; the URL is an artefact. The order is reversed now: no
+session still throws, carrying whatever the callback reported, and a session
+that landed on the error page is walked to `next` instead. That is a navigation,
+not a retry — nothing is being papered over, because the session is proven
+before it happens.
+
+`check:engines` three times: 6/6, 6/6, 6/6.
+
+**What is still not known** and should not be claimed: *why* the callback is
+requested twice, and whether it is WebKit-specific. The guard now distinguishes
+"no session" from "session, odd landing", so the next occurrence will say which
+of the two it is rather than looking like either.
+
+### Capturing the real error, because the copy was hiding it
+
+`app/auth/callback/route.ts` flattens **every** `verifyOtp` failure into one
+sentence: "That link has expired or has already been used. Request a new one."
+That is the right copy for a person and useless as a diagnosis — expiry, reuse,
+a deleted account and a rate limit all arrive worded identically.
+
+That flattening is what cost a session. Three hypotheses were tested from the
+outside and all three disproved: link reuse (each test mints a fresh link for a
+fresh account), sequential volume (20 mint-and-verify round trips, 20/20), and
+concurrency (12 simultaneous sign-ins through the app's own callback, 12/12 with
+cookies). None reproduced it, and none could, because the thing that would have
+said why was being overwritten one layer down.
+
+So `signIn` now asks Supabase directly when it fails, and records what only the
+harness can see. Four facts, chosen because they separate the readings:
+
+| Reading | What it prints |
+|---|---|
+| The navigation used the link twice | `callback requests: 2` |
+| The token expired in flight | a large `consumed after` |
+| The account was deleted under us | `account: gone` |
+| Transient, whatever it was | `fresh link: verified` |
+| Persistent at account or project level | `fresh link: rejected …` |
+
+The request count is the one reading could never have produced — it needs a
+listener registered *before* the navigation, and it settles the double-consume
+question that the wording alone cannot.
+
+Proven by inducing the failure: a corrupted token reports `callback requests: 1`,
+`consumed after: 992ms`, `account: present`, `fresh link: verified` — correct on
+all four, since the corruption was mine and the link was fine.
+
+It runs only after a sign-in has already failed, so a green run pays nothing,
+and it is best-effort throughout: a diagnostic that throws would replace the
+failure it exists to explain.
+
+**Still unknown, and deliberately not guessed at:** the mechanism. What has
+changed is that the next occurrence will name it instead of being three
+indistinguishable possibilities behind one sentence.

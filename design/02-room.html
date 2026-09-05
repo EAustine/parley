@@ -193,6 +193,21 @@ body{background:var(--background);color:var(--foreground);overflow:hidden;
 .copybtn{flex:none;height:36px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--boundary);
   background:var(--secondary);color:var(--foreground);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
 .copybtn:hover{background:var(--accent)}
+/* One rule, not one per component — v1.4.
+   This file declared `.menu[hidden]`, `.leave-menu[hidden]` and so on
+   individually, and `.ask` was missed: setting `hidden` on the mute prompt did
+   nothing, because `.ask{display:flex}` outranks the attribute with no rule to
+   stop it. Found by driving the file — the prompt went on intercepting presses
+   meant for the reactions sheet while `hidden` was set on it.
+
+   `CLAUDE.md` records the same lesson from the chat panel: "a correctness
+   property may not rest on a third-party reset… declare
+   `[hidden] { display: none !important }` in our own base layer and own the
+   behaviour." The per-component form is that mistake wearing a different hat —
+   it is not a reset you forgot to include, it is one you have to remember to
+   extend every time you add a surface. */
+[hidden]{display:none !important}
+
 .person{display:flex;align-items:center;gap:10px;min-height:44px}
 .person+.person{margin-top:4px}
 .person .av{width:32px;height:32px;border-radius:999px;background:var(--secondary);flex:none;
@@ -200,7 +215,59 @@ body{background:var(--background);color:var(--foreground);overflow:hidden;
 .person .nm{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip{font-size:11px;line-height:16px;font-weight:500;padding:1px 7px;border-radius:999px;
   border:1px solid var(--boundary);color:var(--muted-foreground);flex:none}
-.person .st{display:flex;gap:8px;color:var(--muted-foreground);flex:none}
+.person .st{display:flex;align-items:center;gap:8px;color:var(--muted-foreground);flex:none}
+
+/* v1.4 B1 — three zones, and identity never yields.
+   The row was identity + two text buttons ("Ask to mute", "Remove"), and flex
+   gave the fixed-width buttons every pixel they asked for: the name truncated
+   toward nothing on exactly the rows a host was about to act on. Reported as a
+   hover bug; there is no hover rule involved. The fix is that the other two
+   zones cost less — one control instead of two, a chip instead of a second line. */
+.person .conn{font-size:11px;line-height:16px;font-weight:500;padding:1px 7px;border-radius:999px;
+  background:var(--secondary);flex:none;white-space:nowrap}
+.person .conn.warn{color:var(--state-warning)}
+.person .conn.crit{color:var(--state-critical)}
+/* Always rendered, never revealed on hover: a hover-revealed action does not
+   exist for touch, and does not exist for a keyboard until focus has arrived —
+   the host on a phone had no route to Remove at all. 44px, the room's floor. */
+.person .actions{position:relative;flex:none}
+.person .rowbtn{width:44px;height:44px;border-radius:999px;border:none;background:none;
+  color:var(--muted-foreground);cursor:pointer;display:grid;place-items:center}
+.person .rowbtn:hover{color:var(--foreground)}
+.row-menu{position:absolute;top:calc(100% + 6px);right:0;min-width:240px;padding:6px;
+  border-radius:12px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:30;text-align:left}
+.row-menu[hidden]{display:none}
+.row-menu button{display:flex;gap:10px;width:100%;padding:10px;border-radius:var(--radius);
+  border:none;background:none;color:var(--foreground);font:inherit;font-size:14px;
+  cursor:pointer;text-align:left;min-height:44px;align-items:flex-start}
+.row-menu button:hover{background:var(--secondary)}
+.row-menu .sub{display:block;font-size:12px;line-height:16px;color:var(--muted-foreground);margin-top:2px}
+/* Separated by a rule and hued, the same shape as the leave menu's End meeting —
+   and it asks in a dialog rather than acting, because a menu closes on
+   activation and the old inline two-step could not survive the move. */
+.row-menu hr{border:0;border-top:1px solid var(--border);margin:6px 4px}
+.row-menu .crit{color:var(--state-critical)}
+
+/* v1.4 B2 — the six emoji, on a phone, in their own sheet.
+   They were `role="menuitem"`s in the overflow menu, so pressing one closed it.
+   That is correct menu behaviour and the wrong surface: §3.6 wants the picker to
+   survive repeated sends, and a menu promises the opposite. C2 put them inline
+   to avoid "a second popup inside the first" — an argument about space, which a
+   full-width sheet does not have. Closes on its own control, Escape, or a press
+   outside; never on a selection. */
+.rx-sheet{position:absolute;left:8px;right:8px;bottom:calc(var(--bar-h, 76px) + 8px);
+  padding:8px;border-radius:14px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);z-index:20}
+.rx-sheet[hidden]{display:none}
+.rx-sheet .hd{display:flex;align-items:center;justify-content:space-between;padding-left:8px;
+  font-size:12px;line-height:16px;font-weight:500;color:var(--muted-foreground)}
+.rx-sheet .hd button{width:44px;height:44px;border-radius:999px;border:none;background:none;
+  color:var(--muted-foreground);cursor:pointer;display:grid;place-items:center}
+.rx-sheet .six{display:flex;gap:4px}
+.rx-sheet .six button{flex:1;height:48px;border-radius:var(--radius);border:none;background:none;
+  cursor:pointer;font-size:26px;transition:background-color .12s}
+.rx-sheet .six button:hover{background:var(--accent)}
 
 /* reactions float from the sender's tile, 2400ms, staggered */
 .rx{position:absolute;bottom:56px;font-size:30px;pointer-events:none;
@@ -396,6 +463,20 @@ body.phone .panel{position:absolute}
         <div class="vid v2"></div>
         <div class="label"><span>You</span></div>
       </div></div>
+      <!-- v1.4 B2: the mobile reactions sheet. Not a menu, and carrying no
+           menuitem anywhere — it must survive repeated sends, which is the one
+           thing role="menu" promises not to do. -->
+      <div class="rx-sheet" hidden role="group" aria-label="Send a reaction">
+        <div class="hd"><span>Send a reaction</span><button class="rx-close" aria-label="Close reactions"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="six">
+          <button aria-label="React with thumbs up"><span aria-hidden="true">👍</span></button>
+          <button aria-label="React with a heart"><span aria-hidden="true">❤️</span></button>
+          <button aria-label="React with laughter"><span aria-hidden="true">😂</span></button>
+          <button aria-label="React with celebration"><span aria-hidden="true">🎉</span></button>
+          <button aria-label="React with applause"><span aria-hidden="true">👏</span></button>
+          <button aria-label="React with surprise"><span aria-hidden="true">😮</span></button>
+        </div>
+      </div>
       <div class="bar">
         <div class="grp">
           <button class="ctl"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><span class="lbl">Mute</span></button>
@@ -513,9 +594,9 @@ body.phone .panel{position:absolute}
           <button class="copybtn">Copy link</button>
         </div>
         <div class="person"><span class="av">K</span><span class="nm">Kofi Mensah</span><span class="chip">Host</span>
-          <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span></div>
+          <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span><span class="actions"><button class="rowbtn" aria-label="Actions for Kofi Mensah" aria-expanded="false" aria-haspopup="menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button><div class="row-menu" hidden role="menu"><button role="menuitem">Ask to mute<span class="sub">They choose whether to accept.</span></button><hr><button role="menuitem" class="crit">Remove from the meeting<span class="sub">They are disconnected straight away.</span></button></div></span></div>
         <div class="person"><span class="av">A</span><span class="nm">Ama Serwaa</span>
-          <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V4a3 3 0 0 0-5.9-.7M19 10v2a7 7 0 0 1-.8 3.3M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M16 16v2a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2M9.5 5H14a2 2 0 0 1 2 2v3.5l7-4.5v11"/></svg></span></div>
+          <span class="st"><span class="conn warn">Unstable connection</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V4a3 3 0 0 0-5.9-.7M19 10v2a7 7 0 0 1-.8 3.3M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1l22 22M16 16v2a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2M9.5 5H14a2 2 0 0 1 2 2v3.5l7-4.5v11"/></svg></span><span class="actions"><button class="rowbtn" aria-label="Actions for Ama Serwaa" aria-expanded="false" aria-haspopup="menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button><div class="row-menu" hidden role="menu"><button role="menuitem">Ask to mute<span class="sub">They choose whether to accept.</span></button><hr><button role="menuitem" class="crit">Remove from the meeting<span class="sub">They are disconnected straight away.</span></button></div></span></div>
         <div class="person"><span class="av">Y</span><span class="nm">You</span>
           <span class="st"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span></div>
       </div>
@@ -768,11 +849,48 @@ document.querySelectorAll('.more-btn').forEach(b=>{
   };
 });
 document.addEventListener('click',()=>{
-  document.querySelectorAll('.menu,.leave-menu').forEach(m=>m.hidden=true);
+  document.querySelectorAll('.menu,.leave-menu,.row-menu,.rx-sheet').forEach(m=>m.hidden=true);
   document.querySelectorAll('.more-btn,button.leave').forEach(b=>b.setAttribute('aria-expanded','false'));
 });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape')
-  document.querySelectorAll('.menu,.leave-menu').forEach(m=>m.hidden=true); });
+  document.querySelectorAll('.menu,.leave-menu,.row-menu,.rx-sheet').forEach(m=>m.hidden=true); });
+
+// v1.4 B1: the row's ⋮ opens its own menu, the same way the bar's controls do.
+document.querySelectorAll('.person .rowbtn').forEach(btn=>{
+  btn.addEventListener('click',e=>{
+    e.stopPropagation();
+    const menu=btn.nextElementSibling;
+    const wasOpen=menu && !menu.hidden;
+    document.querySelectorAll('.menu,.leave-menu,.row-menu,.rx-sheet').forEach(m=>m.hidden=true);
+    if(menu) menu.hidden=wasOpen;
+    btn.setAttribute('aria-expanded',String(menu&&!menu.hidden));
+  });
+});
+
+// v1.4 B2: the sheet opens from the menu item and closes only when asked.
+// A selection deliberately leaves it open — that is the whole reason it is not
+// a menu. The document-level close below skips it for the same reason, so a
+// press inside the sheet does not dismiss it.
+document.querySelectorAll('.menu button').forEach(b=>{
+  if(!/Send a reaction/.test(b.textContent||'')) return;
+  b.addEventListener('click',e=>{
+    e.stopPropagation();
+    document.querySelectorAll('.menu,.leave-menu').forEach(m=>m.hidden=true);
+    const sheet=document.querySelector('.rx-sheet');
+    if(!sheet) return;
+    // v1.4: the mute prompt anchors to the same band above the bar, so the two
+    // cannot both be on screen — A2's rule, applied to a pair this pass made.
+    // The request is the one that needs an answer; the sheet reopens in a press.
+    const prompt=document.querySelector('.ask');
+    if(prompt) prompt.hidden=true;
+    sheet.hidden=false;
+  });
+});
+document.querySelectorAll('.rx-sheet').forEach(sheet=>{
+  sheet.addEventListener('click',e=>e.stopPropagation());
+  const close=sheet.querySelector('.rx-close');
+  if(close) close.addEventListener('click',()=>{ sheet.hidden=true; });
+});
 
 // send enables only with content
 const ta=document.querySelector('.composer'), sb=document.querySelector('.send');
