@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { accountDisplayName } from "@/lib/auth/display-name";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
 import { JoinCodeForm } from "@/components/meetings/JoinCodeForm";
@@ -74,11 +75,11 @@ export default async function JoinPage({ params }: Params) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const signedInName = user
-    ? ((user.user_metadata?.full_name as string | undefined) ??
-      user.email ??
-      "Host")
-    : null;
+  // Null for a guest, and null for a signed-in person whose account carries no
+  // name — the two cases pre-join treats alike, because both need to be asked.
+  // Never the email address: `lib/auth/display-name.ts` has the reasoning, and
+  // the token route enforces the same rule on the way in.
+  const signedInName = accountDisplayName(user);
 
   return <PreJoin meeting={meeting} signedInName={signedInName} />;
 }

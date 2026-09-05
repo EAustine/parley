@@ -151,11 +151,17 @@ export function RoomEntry({ code }: { code: string }) {
         const response = await fetch("/api/livekit/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // A guest's name comes from pre-join; a host's comes from the
-          // session and is not sent at all.
           // Nothing was handed over — a link opened directly, a restored tab,
-          // or storage refused. There is no name to send, so this succeeds for
-          // a host and correctly asks a guest to go and give one.
+          // or storage refused. There is no name to send, so this succeeds
+          // only for someone whose account already carries one, and everybody
+          // else gets `display_name_required` and the state below that sends
+          // them to pre-join to give one.
+          //
+          // That used to read "succeeds for a host", because a host with no
+          // name on their account was silently given their email address
+          // instead — see `lib/auth/display-name.ts`. Hosts now take the same
+          // road as guests, which is the road §3.3 already put every room
+          // entry on.
           body: JSON.stringify({ code }),
         });
 

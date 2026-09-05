@@ -31,6 +31,7 @@ export const test = base.extend<{
   hostEmail: string;
   hostedMeeting: { code: string; email: string };
   hostedSchedule: { code: string; email: string };
+  namedHost: { code: string; email: string; name: string };
 }>({
   meetingCode: async ({}, use) => {
     const code = await createMeeting();
@@ -136,6 +137,34 @@ export const test = base.extend<{
     const host = await createFixtureHost();
     const code = await createMeeting({ host: host.id });
     await use({ code, email: host.email });
+    await emptyRoom(code).catch(() => {});
+    await deleteFixtureHost(host.id);
+  },
+
+  /**
+   * A host whose account already knows what it is called.
+   *
+   * Every other fixture host is nameless, the way a magic-link account is:
+   * §3.1's other door is Google, which fills `user_metadata.full_name` from the
+   * profile, and nothing in the product writes it afterwards. So the branch
+   * where an account *does* carry a name — every Google host — had no way to be
+   * exercised, and "pre-join stops asking once you have a name" would have been
+   * an untested claim in the fix that stopped a host's email address becoming
+   * their display name.
+   *
+   * The name carries a bidi override on purpose. `full_name` is writable by the
+   * account holder, so it is untrusted string data arriving by a different road
+   * than the join field, and it now goes through the same `sanitiseDisplayName`
+   * — the character is stripped, and the tests assert the stripped form.
+   *
+   * Written as an escape, never as a literal byte: `identity.ts` makes the same
+   * point about its own pattern, and a control character typed into a fixture
+   * is invisible in every diff and review that will ever look at it.
+   */
+  namedHost: async ({}, use) => {
+    const host = await createFixtureHost({ fullName: "Kofi\u202EMensah" });
+    const code = await createMeeting({ host: host.id });
+    await use({ code, email: host.email, name: "KofiMensah" });
     await emptyRoom(code).catch(() => {});
     await deleteFixtureHost(host.id);
   },

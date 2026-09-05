@@ -7537,3 +7537,132 @@ nothing so opacity read its end state of 0. Selected by `animationName` now.
 
 Both are the same fault in different clothes: a test naming its subject by
 position and trusting it to stay there.
+
+---
+
+## v1.3 — the host's email address as a display name
+
+Not a plan item. Flagged while building C2a's mute prompt, carried as a finding,
+and fixed on Austine's instruction.
+
+### What was wrong
+
+The token route derived a display name as
+
+```
+requested ?? user.user_metadata.full_name ?? user.email ?? "Host"
+```
+
+and `app/j/[code]/page.tsx` wrote the same chain out a second time, to decide
+whether pre-join should ask for a name.
+
+§3.1 offers two ways in and only one of them leaves a name. Google fills
+`user_metadata.full_name` from the profile; `signInWithOtp` asks for an address
+and nothing else, and nothing in the product writes that field afterwards. So
+for **every magic-link host** the branch that reads as a rare fallback was the
+whole answer, and they joined under their email address. It went on their tile,
+into the people panel, onto every chat line, into the join and leave
+announcements, into "{name} asked you to mute", and — through the A2 webhook
+writer — into `meeting_participants.display_name` in the database.
+
+I first wrote that as "every signed-in host", having read `actions.ts` for
+`signInWithOtp` and not for the `startGoogleSignIn` twenty lines below it. The
+narrower claim is the true one and it is still the common one: the magic link is
+the path the sign-in form leads with.
+
+§3.2 had already settled the principle in the neighbouring case. A link-holder is
+told a meeting's *title* and never its host's identity, "without exposing a
+person's name to anyone who has the code". An address someone can write to is a
+wider disclosure than a name, it reached the same audience, and the person it
+belongs to never chose it.
+
+The `?? "Host"` was wrong on its own terms too. A meeting with `guests_allowed`
+false is joined by signed-in people who are **not** its host, and they landed on
+that fallback as well — several participants labelled "Host", none of whom was.
+
+### The fix
+
+`lib/auth/display-name.ts` is now the single answer to "what is this account
+called", and its answer is often **nothing**. Both callers use it; neither
+manufactures a substitute.
+
+- The token route takes `requested ?? accountDisplayName(user)` and returns
+  `display_name_required` when there is neither. A signed-in person with no name
+  on their account is refused exactly as a nameless guest is.
+- Pre-join shows the name field to whoever has not already said what they are
+  called, rather than to whoever is signed out. `isGuest` is now `needsName`,
+  which is what the variable always meant.
+- Account names go through `sanitiseDisplayName` too. `user_metadata` is writable
+  by its owner, so it is the same untrusted string as the join field arriving by
+  a different road; a bidi override in it reorders a tile label identically.
+
+§3.3's field list says "display-name field for guests". That was written
+believing an account always knows its own name, and it does not — the field is
+for whoever has not answered yet. §3.3 already puts pre-join before *every* room
+entry including the host's, so nobody meets a screen they were not going to see.
+
+The one behaviour change worth naming: a host is asked for their name once per
+tab session (`recallName` is `sessionStorage`), where before they were never
+asked and were named for them. Capturing a name at sign-in would reduce that to
+once ever — it is a change to §3.1's form and to auth, not to this, and it is not
+done here.
+
+### Proving it, and the workaround that had already formed around it
+
+The suite could not have caught this, and had quietly bent to accommodate it.
+`joinAs` fills the name field only when one is rendered, and the field was hidden
+from anyone signed in — so every host test typed a name that was discarded.
+`mute-request.spec` then asserted the prompt against the host's **email**, with a
+comment explaining that a requested name "is not what a signed-in host ends up
+with". The comment was accurate; the conclusion was backwards. It was describing
+a defect and reading as coverage. It now asserts the chosen name, and that the
+address reaches no guest's screen.
+
+`e2e/display-name.spec.ts` holds the guarantee in six cases, and the two halves
+are pinned separately because a mutation of one is invisible to the other:
+
+| Mutation | Fails | Passes |
+|---|---|---|
+| `?? user.email ?? "Host"` restored in the token route | the endpoint case, the direct-room-link case | both pre-join cases, the in-room case |
+| the same chain restored in `app/j/[code]/page.tsx` | "pre-join asks", "email is nowhere in the room" | both endpoint cases |
+
+Measured, not assumed — each mutation was applied, built and run, and the table
+is what came back. Restoring the route alone leaves the in-room case green,
+because the field is still shown and the typed name still wins; restoring the
+page alone leaves the endpoint cases green. Neither test is coasting on the
+other's guard.
+
+`namedHost` is a new fixture and it exists because the other branch was
+unreachable: every fixture host is nameless, the way a magic-link account is, so
+"pre-join stops asking once you have a name" — which is what a Google account
+gets — had nothing to exercise it. Its
+`full_name` carries a U+202E, written as an escape rather than a literal byte for
+the reason `identity.ts` gives about its own pattern.
+
+The pre-join case reads `page.content()` rather than rendered text. `signedInName`
+is a server-component prop, so under the old chain the address was in the flight
+payload whether or not anything drew it — "nowhere on the screen" is the weaker
+claim, and "never sent to the browser" is the one worth holding.
+
+### The PRD said "for guests", and that is where the bug grew
+
+Two sections were describing a product that had drifted, and both are corrected
+rather than annotated.
+
+**§3.3's field list** said "display-name field for guests", on the assumption
+that a signed-in account always knows its own name. Half the sign-in methods
+make that true. It now reads "for anyone who has not already said what they are
+called", with the reasoning and the §3.2 comparison alongside it, and two
+acceptance criteria replace the one that only ever spoke about guests.
+
+**§7's token contract never said where a display name comes from.** It ruled on
+identity, on sanitisation, on grants, on the TTL and on rate limiting — and said
+nothing about provenance, and listed no `400` at all. That silence is the gap the
+`?? user.email ?? "Host"` grew into: a rule nobody wrote is a rule nobody
+reviewed. The contract now names the two permitted sources, says the account name
+takes the same sanitiser, and lists `400 display_name_required` beside the other
+four responses.
+
+The pattern is the one this file keeps recording in other clothes. A check that
+is never shown the failing pairing runs green; a contract that is never asked the
+question answers it by accident.

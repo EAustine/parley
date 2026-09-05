@@ -99,7 +99,19 @@ export function hostId(): string {
   return env("PARLEY_E2E_HOST_ID");
 }
 
-export async function createFixtureHost(): Promise<{ id: string; email: string }> {
+/**
+ * `fullName` is optional because **not** having one is the common case.
+ *
+ * §3.1 has two doors. Google fills `user_metadata.full_name` from the profile;
+ * the magic link asks for an address and nothing else, and nothing writes the
+ * field afterwards. So a magic-link account is nameless for its whole life, and
+ * that is what the default builds — the state that used to make a host's email
+ * address their display name in the room. Passing a name is how the other
+ * branch, an account that already knows what it is called, gets exercised.
+ */
+export async function createFixtureHost(
+  options: { fullName?: string } = {},
+): Promise<{ id: string; email: string }> {
   const email = `e2e-host-${process.hrtime.bigint()}@example.com`;
   const response = await rest("/auth/v1/admin/users", {
     method: "POST",
@@ -107,6 +119,9 @@ export async function createFixtureHost(): Promise<{ id: string; email: string }
       email,
       password: `E2e-${process.hrtime.bigint()}-Aa1!`,
       email_confirm: true,
+      ...(options.fullName
+        ? { user_metadata: { full_name: options.fullName } }
+        : {}),
     }),
   });
   if (!response.ok) {

@@ -111,7 +111,13 @@ Collision handling: generate, insert, retry on unique-constraint violation. Do n
 
 The screen that decides whether the product feels competent. Shown before every room entry, always, including for the host.
 
-Contains: self-preview, camera toggle, mic toggle with a live input meter, camera/mic/speaker selectors, display-name field for guests, meeting title, and who is already in the room.
+Contains: self-preview, camera toggle, mic toggle with a live input meter, camera/mic/speaker selectors, display-name field for anyone who has not already said what they are called, meeting title, and who is already in the room.
+
+**The field is not "for guests", and the difference is not pedantic.** It read that way here for two versions, on the assumption that a signed-in account always knows its own name. Only one of the two sign-in methods makes that true: Google fills `user_metadata.full_name` from the profile, and the magic link fills nothing, because §3.1 asks for an address and nothing else. Nothing in the product writes that field afterwards.
+
+So the fallback chain in §7 — request, then account, then **email address** — was not a rare tail. For every magic-link host it was the whole answer, and their email address became the name on their tile, in the participants list, on every chat line, and in "{name} asked you to mute", in front of everyone holding the link. §3.2 spends four paragraphs refusing to show a link-holder the host's *name*; an address someone can write to is a wider disclosure than a name, and nobody chose it.
+
+The field is therefore shown to whoever has not answered yet — a guest, or an account with no name on it — and the token endpoint refuses anyone it cannot name, rather than inventing one. This costs a magic-link host one field, once per tab, on a screen §3.3 already puts before every room entry including theirs. Capturing a name at sign-in would reduce it to once ever, and is a change to §3.1's form rather than to this screen.
 
 **Permission states, all designed:**
 
@@ -132,7 +138,8 @@ Joining with camera and mic both off is allowed and must not be treated as an er
 - Mic meter responds to speech within 200ms
 - Changing camera in the selector updates the preview without a page reload
 - Selected devices carry into the room
-- Guest cannot join with an empty or whitespace-only name
+- Nobody joins with an empty or whitespace-only name — a guest, and equally a signed-in person whose account carries none
+- A host is never named after their email address, on any surface, whichever way they signed in
 - Preview is mirrored; published video is not
 
 ---
@@ -661,6 +668,7 @@ POST /api/livekit/token
 { "code": "kqr-8mzt-vnp", "displayName": "Ama" }
 
 200 { "token": "eyJ...", "url": "wss://xxx.livekit.cloud", "identity": "guest_a1b2c3" }
+400 { "error": "display_name_required" }
 403 { "error": "guests_not_allowed" }
 404 { "error": "meeting_not_found" }
 410 { "error": "meeting_ended" }
@@ -672,7 +680,8 @@ Rules for this endpoint:
 - Verify the meeting exists and is joinable **server-side** before minting
 - For authenticated users, derive `identity` from the session, never from the request body
 - For guests, generate `guest_${nanoid(10)}` server-side
-- Sanitise `displayName`: trim, collapse whitespace, 1–40 characters, strip control characters
+- Sanitise `displayName`: trim, collapse whitespace, 1–40 characters, strip control characters. A name held on the account goes through the same function — `user_metadata` is writable by its owner, so it is the same untrusted string on a different road
+- **A display name has exactly two sources: the request, or a name already on the account.** There is no third, and `400 display_name_required` is the answer when there is neither. This list did not say so, and the omission is what the bug grew in: the route filled the gap with `?? user.email ?? "Host"`, which named every magic-link host after their inbox and named non-host signed-in participants "Host". An endpoint that can identify the caller must still decline to *name* them
 - Grant `roomJoin`, `canPublish`, `canSubscribe`, `canPublishData`, `room: code` — nothing wider
 - Set `ttl` to 6 hours
 - Put `displayName` and `role` in token `metadata`, not in the identity string

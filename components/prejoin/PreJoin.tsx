@@ -35,7 +35,20 @@ export function PreJoin({
   signedInName,
 }: {
   meeting: PublicMeeting;
-  /** Present when a session exists. Hosts are not asked to name themselves. */
+  /**
+   * The name the signed-in account carries, when it carries one.
+   *
+   * Null for a guest, and null for a signed-in person whose account has no
+   * name — which is every magic-link account, since only Google sign-in leaves
+   * a `full_name` behind. It used to be the email address in that case, and
+   * that address then went on the tile, in the people panel and into every chat
+   * line; see `lib/auth/display-name.ts`.
+   *
+   * So §3.3's "display-name field for guests" is really "for whoever has not
+   * already said what they are called". A host with a name on their account is
+   * still not asked; a host without one is, once, and joins as themselves
+   * instead of as their inbox.
+   */
   signedInName: string | null;
 }) {
   const router = useRouter();
@@ -61,7 +74,7 @@ export function PreJoin({
     [],
   );
 
-  const isGuest = signedInName === null;
+  const needsName = signedInName === null;
 
   /**
    * A callback ref, not a `useRef` plus an effect keyed on the stream.
@@ -105,7 +118,7 @@ export function PreJoin({
    * tells them to open the HTTPS address — while `unsupported` is not.
    */
   const unusableBrowser = media.state === "unsupported" || media.state === "insecure";
-  const canJoin = !joining && !unusableBrowser && (!isGuest || trimmedName.length > 0);
+  const canJoin = !joining && !unusableBrowser && (!needsName || trimmedName.length > 0);
 
   /** Hold the screen, count down, and go again — never bounce to an error. */
   function holdAndRetry(seconds: number) {
@@ -133,7 +146,7 @@ export function PreJoin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: meeting.code,
-          displayName: isGuest ? trimmedName : undefined,
+          displayName: needsName ? trimmedName : undefined,
         }),
       });
 
@@ -172,7 +185,7 @@ export function PreJoin({
       };
       rememberJoin({
         code: meeting.code,
-        displayName: isGuest ? trimmedName : displayName,
+        displayName: needsName ? trimmedName : displayName,
         token,
         serverUrl: url,
       });
@@ -373,7 +386,7 @@ export function PreJoin({
           </p>
 
           <div className="mt-5 rounded-xl border border-boundary bg-popover p-5">
-            {isGuest && (
+            {needsName && (
               <div className="space-y-2">
                 <Label htmlFor="display-name" className="type-small">
                   Your name

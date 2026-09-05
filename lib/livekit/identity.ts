@@ -19,9 +19,16 @@ export const DISPLAY_NAME_MAX = 40;
  * participants render identically. They are stripped here, once, on the server,
  * rather than escaped at each of the places the name is later drawn.
  *
- * Returns null when nothing usable is left, so the caller decides whether that
- * is an error (a guest) or simply absent (a host, whose name comes from their
- * account).
+ * Returns null when nothing usable is left, and the caller decides what that
+ * means. It used to say "an error for a guest, simply absent for a host, whose
+ * name comes from their account" — but nothing in the product ever writes a
+ * name to an account, so "absent" resolved to the host's email address on
+ * every join. There is one answer now and it is the guest's: no name, no
+ * token. `lib/auth/display-name.ts` has the rest.
+ *
+ * Account names come through here too. `user_metadata` is writable by the
+ * account holder, so it is the same untrusted string arriving by a different
+ * road.
  */
 export function sanitiseDisplayName(input: unknown): string | null {
   if (typeof input !== "string") return null;

@@ -3,6 +3,7 @@ import { AccessToken } from "livekit-server-sdk";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAnonClient } from "@/lib/supabase/anon";
+import { accountDisplayName } from "@/lib/auth/display-name";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
 import {
   guestIdentity,
@@ -145,15 +146,25 @@ export async function POST(request: NextRequest) {
 
   if (!user && !meeting.guests_allowed) return fail("guests_not_allowed", 403);
 
+  /**
+   * Everyone joins under a name they chose, and there is no third source.
+   *
+   * The request supplies one, or the account carries one. What is *not* here
+   * any more is the tail this used to end with — `?? user.email ?? "Host"` —
+   * which put a host's email address on their tile, in the people panel, and
+   * in front of every link-holder in the room. `lib/auth/display-name.ts`
+   * carries that reasoning in full.
+   *
+   * A signed-in person whose account has no name is now refused exactly as a
+   * guest without one is, and lands on the same designed state: pre-join shows
+   * the field, they say what they want to be called, they join. §3.3 already
+   * puts that screen before every room entry, the host's included.
+   */
   const requested = sanitiseDisplayName(raw.displayName);
-
-  // A guest is only ever a name. Without one there is nothing to label their
-  // tile with, and "Guest" for everyone is worse than asking.
-  if (!user && !requested) return fail("display_name_required", 400);
+  const displayName = requested ?? accountDisplayName(user);
+  if (!displayName) return fail("display_name_required", 400);
 
   const identity = user ? userIdentity(user.id) : guestIdentity();
-  const displayName =
-    requested ?? user?.user_metadata?.full_name ?? user?.email ?? "Host";
 
   const token = new AccessToken(
     serverEnv.LIVEKIT_API_KEY,

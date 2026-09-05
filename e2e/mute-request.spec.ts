@@ -74,21 +74,21 @@ test.describe("a host asking someone to mute", () => {
     await expect(prompt).toBeVisible({ timeout: 20_000 });
 
     /*
-     * It names whoever asked — compared against the name the host's own tile
-     * carries rather than against a string.
+     * It names whoever asked, and the name is the one the host chose.
      *
-     * `joinAs`'s requested name is not what a signed-in host ends up with: the
-     * token route derives it from the session, and a host with no `full_name`
-     * on their account falls back to their **email address**, which is then the
-     * name every participant sees. Hard-coding "Ama Serwaa" here would have
-     * been a test asserting something the product does not do.
+     * This used to compare against the host's **email address**, with a comment
+     * explaining that `joinAs`'s requested name "is not what a signed-in host
+     * ends up with" because the token route fell back to `user.email`. The
+     * comment was accurate and the conclusion was backwards: the test was
+     * describing a defect rather than reporting it, and it read as coverage.
+     * The product now names a host what they typed — `e2e/display-name.spec.ts`
+     * holds that guarantee — so this asserts it.
      */
-    const hostName = await guest.page
-      .locator(`.grid [data-participant] >> text=${hostedMeeting.email}`)
-      .first()
-      .textContent()
-      .catch(() => null);
-    await expect(prompt).toContainText(hostName ?? hostedMeeting.email);
+    await expect(prompt).toContainText(host.name);
+    expect(
+      await guest.page.locator("body").innerText(),
+      "the host's email address reached a guest's screen",
+    ).not.toContain(hostedMeeting.email);
 
     /*
      * **Above the control bar**, which is the whole of C2a's placement claim:
