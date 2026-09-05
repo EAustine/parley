@@ -223,7 +223,15 @@ export const SIGNED_IN_STATES: State<string>[] = [
        * seeing it.
        */
       await expect(page.getByLabel("Title")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Cancel editing" })).toBeVisible();
+      /*
+       * "Cancel", not "Cancel editing" — v1.3 D3 moved the way out into the
+       * form's own action row, beside Save changes, where the design puts it.
+       * There is no ambiguity on screen: the page's other destructive control,
+       * "Cancel meeting", is not rendered while the form is open.
+       */
+      await expect(
+        page.getByRole("button", { name: "Cancel", exact: true }),
+      ).toBeVisible();
     },
   },
 ];

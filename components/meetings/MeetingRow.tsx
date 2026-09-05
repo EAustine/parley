@@ -35,9 +35,10 @@ export type MeetingRowData = {
  * clock at 15px with the zone beneath it, then the title, then the actions.
  *
  * **The zone label is always printed.** PRD §3.9 calls this the one place a
- * quiet bug produces a missed meeting, and splitting `formatMeetingTime` into
- * pieces is exactly the edit that could have dropped it — which is why
- * `formatZone` exists as its own function rather than as an argument.
+ * quiet bug produces a missed meeting, and breaking the old one-string
+ * formatter into pieces is exactly the edit that could have dropped it — which
+ * is why `formatZone` exists as its own function rather than as an argument to
+ * another one.
  *
  * In a **month** group the same column carries a short day, because a month
  * header cannot say which Thursday. In a **day** group it does not, because the

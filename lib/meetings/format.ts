@@ -11,13 +11,16 @@ export function viewerTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-/** e.g. "Tue 2 Sep, 14:30 GMT" */
-export function formatMeetingTime(
-  utcISO: string,
-  timeZone: string = viewerTimeZone(),
-): string {
-  return formatInTimeZone(new Date(utcISO), timeZone, "EEE d MMM, HH:mm zzz");
-}
+/*
+ * `formatMeetingTime` was here — "Tue 2 Sep, 14:30 GMT", the whole fact in one
+ * string.
+ *
+ * v1.3 D1 took the dashboard off it (a column needs the parts apart) and D4
+ * took the meeting page off it (the page prints the whole slot, not its start).
+ * That left an exported function with no callers, which `check:deps` cannot see
+ * — its sweep is per-module, not per-export — so this is the manual half of
+ * rule 9. The pieces below are what replaced it, and each says what it is for.
+ */
 
 /**
  * Relative day — "Today", "Tomorrow", or the date.

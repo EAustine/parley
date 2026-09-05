@@ -94,7 +94,21 @@ async function schedule(
   await page.goto("/schedule");
   await page.getByLabel("Title").fill(title);
   await page.getByLabel("Date").fill(date);
-  await page.getByLabel("Start time").fill(time);
+  /*
+   * `selectOption` or `fill`, because v1.3 D3 made Start time two controls: a
+   * 15-minute `<select>` where the pointer is fine, a native
+   * `<input type="time">` where it is coarse. Playwright's desktop Chromium is
+   * the former; `devices["Pixel 5"]` is the latter, and this helper is shared.
+   *
+   * Asked of the DOM rather than assumed from the viewport — which is the same
+   * mistake C5 and D1 both name, made here by a test instead of by a rule.
+   */
+  const startTime = page.getByLabel("Start time");
+  if ((await startTime.evaluate((el) => el.tagName)) === "SELECT") {
+    await startTime.selectOption(time);
+  } else {
+    await startTime.fill(time);
+  }
 
   /*
    * One call, on the IANA value — the select is native now, so the option's
@@ -135,24 +149,39 @@ test.describe("across timezones", () => {
       timezone: ACCRA,
     });
 
-    // …and it says so, with the zone label, where it was made.
-    await expect(accra.getByText(/Tue 15 Sep, 14:30 GMT/)).toBeVisible();
+    /*
+     * …and it says so, with the zone label, where it was made.
+     *
+     * **The two lines swapped in v1.3 D4**, and it is a fix rather than a
+     * preference. The heading line is now the meeting's *own* zone and the line
+     * beneath it is the viewer's — which is the order `ScheduleForm`'s preview
+     * has always used ("Starts 14:30 GMT" / "12:30 where you are"). The detail
+     * page had the opposite, so the same meeting was described one way while
+     * being scheduled and the other way afterwards.
+     *
+     * The format changed with it: the whole slot rather than its start, and the
+     * day spelled out — design/03's "Friday 11 September, 10:00 – 10:30 GMT".
+     */
+    await expect(
+      accra.getByText(/Tuesday 15 September, 14:30 – 15:00 GMT/),
+    ).toBeVisible();
 
-    // Berlin, in September: +2. The same instant is 16:30 there.
+    // Berlin, in September: +2. The same instant is 16:30 there — and now it is
+    // the *second* line, because the meeting belongs to Accra.
     const berlin = await signedInPage(browser, BERLIN, hostEmail);
     await berlin.goto(`/schedule/${code}`);
     // §3.9: "always print the zone label" — the number alone is not checkable.
-    await expect(berlin.getByText(/Tue 15 Sep, 16:30 GMT\+2/)).toBeVisible();
-    // And the zone it was scheduled in is still shown, so a host can tell
-    // which 14:30 was meant.
-    await expect(berlin.getByText(/14:30 GMT.*where it was scheduled/)).toBeVisible();
+    await expect(
+      berlin.getByText(/Tuesday 15 September, 14:30 – 15:00 GMT/),
+    ).toBeVisible();
+    await expect(berlin.getByText(/16:30 – 17:00 GMT\+2 where you are/)).toBeVisible();
 
     // Los Angeles, in September: −7. 07:30, same morning — and the label is
     // "PDT", not "GMT-7". `zzz` prefers a named abbreviation where the zone has
     // one, which is the more readable answer and not what I first expected.
     const la = await signedInPage(browser, LOS_ANGELES, hostEmail);
     await la.goto(`/schedule/${code}`);
-    await expect(la.getByText(/Tue 15 Sep, 07:30 PDT/)).toBeVisible();
+    await expect(la.getByText(/07:30 – 08:00 PDT where you are/)).toBeVisible();
 
     // The calendar file describes the instant, so it is the same file for
     // everyone — that is what makes an invite mean one moment.
@@ -199,7 +228,10 @@ test.describe("across timezones", () => {
 
     // And the page says which 14:30 was meant, from a viewer who is not there.
     await accra.goto(`/schedule/${code}`);
-    await expect(accra.getByText(/14:30 GMT\+2.*where it was scheduled/)).toBeVisible();
+    // The meeting's own zone leads; Accra's is the line beneath it.
+    await expect(
+      accra.getByText(/Tuesday 15 September, 14:30 – 15:00 GMT\+2/),
+    ).toBeVisible();
 
     await accra.context().close();
   });
@@ -220,7 +252,18 @@ test.describe("across timezones", () => {
 
     const berlin = await signedInPage(browser, BERLIN, hostEmail);
     await berlin.goto(`/schedule/${code}`);
-    await expect(berlin.getByText(/Tue 15 Dec, 15:30 GMT\+1/)).toBeVisible();
+    /*
+     * The meeting belongs to Accra, so Accra leads and Berlin is the line
+     * beneath — which is where the claim now lives, unchanged: **+1**, not the
+     * +2 the same wall clock produced in September. A fixed offset would print
+     * the same number in both seasons and be an hour wrong for half the year.
+     */
+    await expect(
+      berlin.getByText(/Tuesday 15 December, 14:30 – 15:00 GMT/),
+    ).toBeVisible();
+    await expect(
+      berlin.getByText(/15:30 – 16:00 GMT\+1 where you are/),
+    ).toBeVisible();
 
     for (const page of [accra, berlin]) await page.context().close();
   });

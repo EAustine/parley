@@ -6686,3 +6686,198 @@ it to 12/14), `check:partition` 20/20, `check:contrast` 28, `check:room`
 108/108, `check:deps` 5/5, `check:ics` 69/69, `check:chat` 73/73,
 `check:connection` 72/72, `check:permissions` 39/39, `check:meetings` 68/68,
 `check:bundle` 11/11 with `/` unchanged at 178/190 kB.
+
+---
+
+## v1.3 D3 and D4 — the schedule form, and the meeting page
+
+Done together, because they are one component tree: `MeetingSchedule` renders
+`ScheduleForm` in edit mode, so the form **is** part of the meeting page. The
+section-heading treatment had to be decided once for both — whichever landed
+first would have set it on the other — and the worst bug in either lived exactly
+on the seam between them.
+
+### The bug on the seam
+
+Finishing an edit left the page permanently stuck. `ScheduleForm` ended a
+successful save with `router.push("/schedule/" + code)` — the URL it was already
+on. A no-op navigation, so `editing` never flipped back and `submitting` was
+never reset: the submit sat disabled reading "Saving…" for good, with no way out
+but a reload.
+
+The save had worked. Nothing threw, nothing was logged, and **not one test
+touched this page's controls** — not Copy, not the chips, not Edit, not Cancel.
+The form now takes an `onSaved`, and the page uses it to come back.
+
+### Three sections, and one preview that answers the question it is named for
+
+"What it is", "When it is", "Check it", as real `<h2>`s — the outline is how a
+screen reader user skips between them, and a styled `<p>` would look identical
+and be absent from it. The eyebrow is composed from roles that already exist
+(`type-small` + `font-semibold` + tracking) rather than added to CLAUDE.md's
+table as a fourth heading size.
+
+The preview is computed from the form: the title with D3's "Untitled meeting"
+fallback "so the card does not jump while typing", the day spelled out, **both
+ends of the slot** derived from the duration, and the zone in bold. It is
+announced — `role="status"`, politely — because §3.9 calls the timezone the one
+place a quiet bug produces a missed meeting and D3 makes this card the safeguard
+against it. A safeguard only a sighted person can read is half a safeguard.
+
+And it **degrades rather than disappearing.** A half-typed date used to remove
+the whole card, so the section headed "Check it" was empty at the moment there
+was something to check.
+
+### No UTC line, which is a departure from D3's text
+
+D3 asks for "the UTC equivalent when the selected zone is not UTC". Austine
+overruled it, with the better argument:
+
+> The preview's job is letting the host confirm they haven't made a mistake
+> before scheduling. The mistake available is picking a time that's wrong for
+> them or wrong for the other party. Two zones is the maximum that can be
+> relevant: the meeting's, and the viewer's.
+
+UTC serves neither, and it is loudest in the commonest non-Accra case — a Berlin
+host scheduling a Berlin meeting gets no "where you are" line, because there is
+no mismatch, and a UTC line nobody in the meeting will ever use. The spec's
+example hides this: it was written from Accra, which **is** GMT+0, so there
+"UTC" and "where you are" are the same line. The neutral-anchor job is real and
+already done better elsewhere — the `.ics` and the calendar prefills carry the
+absolute instant, and `/j/[code]` renders in each viewer's own zone.
+
+### Two things the second zone line was getting wrong
+
+**It compared zone names.** `UTC` and `Africa/Accra` are different strings and
+the same clock, so the line could print "10:00 GMT where you are" under "10:00
+GMT" — content consisting entirely of the fact that two identifiers differ.
+Europe/London against UTC has the same problem for half the year and not the
+other half, which is worse, because it looks deliberate. It now compares the
+**rendered fact**.
+
+**And it dropped the day.** 19:56 EDT on a Friday is 01:56 on **Saturday** in
+Berlin, and a second line reading "01:56 – 02:26 GMT+2 where you are" under
+"Friday 11 September" describes a meeting at two in the morning on the wrong
+day. That is §3.9's trap in the element built to catch it. The day is printed
+when it differs and omitted when it does not.
+
+### The zone list, and the time control
+
+Seventeen zones became **seventy-five, grouped by region.** The old list covered
+the places this was built from and nowhere else — no Paris, no Madrid, no
+Toronto, no Shanghai, no Auckland. A zone missing from a scheduling form is not
+a small gap: it is a meeting scheduled in the wrong one. Grouped because a flat
+list of seventy-five is the scroll the short list was avoiding, and a native
+`<select>` renders `<optgroup>` with the OS's own headings — which `color-scheme`
+already ensures are painted for the right theme.
+
+Each option is labelled `Europe/London — BST`, with the abbreviation computed
+**for the instant being scheduled**. The mockup hardcodes `BST|1`, which
+`BUILD-PLAN-v1.3.md` flags itself: "a fixed `+1` for London is right in
+September and wrong in January."
+
+Start time is a 15-minute `<select>` where the pointer is fine and a native
+`<input type="time">` where it is coarse — `(pointer: coarse)`, not a width,
+because what makes the native control worth having is the OS wheel a touch
+device puts up for it. Same signal C5 settled and D1 restated. `schedule.spec`'s
+shared helper now asks the DOM which control it got rather than assuming from
+the viewport, which is the same mistake made by a test instead of by a rule.
+
+### The meeting page
+
+"Email an invite" is a `mailto:` with **no recipient** — `mailto:?subject=…`,
+nothing before the `?`. That is what makes D4's "no provider, no deliverability,
+no bounce handling" true: the product never learns who was invited and never has
+a message to fail to deliver. It composes an invite rather than sending one, and
+the hint beside it says so. The body carries the zone label, because §3.9's trap
+is worse in an email than on a screen — the reader has no form to check it
+against, and the message outlives the page.
+
+The section is "Invite people" with four routes and the email first. The link box
+fills the row and **drops the scheme**: at 12px mono in a truncating box the part
+that gets ellipsed is the end of the string, which is the meeting code — the only
+part of the URL that differs between two meetings.
+
+Copy is `CopyLinkButton` now. The bespoke handler awaited
+`navigator.clipboard.writeText` with no `catch`, so a refused clipboard — an
+insecure origin, a declined permission — threw inside the click handler and
+produced no toast at all: a button that silently did nothing. That path was
+already handled once, correctly, three files away.
+
+The subtitle prints the whole slot rather than its start, and "30 minutes" is no
+longer on a line of its own saying the same thing again.
+
+**And the two zone lines swapped.** The page led with the viewer's zone and put
+the meeting's underneath; the form's preview has always done the opposite. The
+same meeting was described one way while being scheduled and the other way
+afterwards. The meeting's own zone leads on both now.
+
+### A hydration mismatch that had been live
+
+`viewerTimeZone()` ran during render, and on the server that is the *server's*
+zone. It gated a whole paragraph, so React sent markup for one zone and hydrated
+expecting another — for every user outside the deployment region. The
+neighbouring line's `suppressHydrationWarning` could not have covered it: that
+silences a text difference, not an element present in one tree and absent from
+the other. Resolved after mount now, in both files.
+
+### Cancelling asks first
+
+Austine's call, and the room's precedent: there is no un-cancel path in the API,
+so a misclick was unrecoverable from the UI, and B1 gave "End meeting" a dialog
+for the same reason.
+
+The dialog mechanics were **extracted rather than copied** — `ConfirmDialog` in
+`components/shared/`, with `EndMeetingDialog` reduced to the words that were ever
+specific to the room. One handler for every way it closes, the in-flight
+non-dismissal read live rather than through a captured closure, the element held
+in state: all the sort of thing that gets fixed in one copy and not the other.
+
+The way out is "Keep it", not "Cancel". Two buttons a word apart, one cancelling
+the meeting and one cancelling the cancelling, is the clearest way to make
+somebody press the wrong one.
+
+### One export left with no callers
+
+`formatMeetingTime` welded date, time and zone into one string. D1 took the
+dashboard off it and D4 took the meeting page off it, which left an exported
+function nobody called. `check:deps` cannot see that — its sweep is per-module,
+not per-export — so it is the manual half of rule 9. Deleted.
+
+### And one fix that turned out to fix nothing
+
+Three signed-in states failed the axe and 320px sweeps at once, which reads like
+a layout fault. My first move was `min-w-0` on `Select`, on the theory that the
+new zone labels — "America/Los Angeles — PDT" against the old "Africa/Accra" —
+had given the control a min-content floor its grid track could not go below.
+`Input` already carries `min-w-0`, so it looked like the established fix.
+
+The reflow test passed with the change reverted, which under this file's own
+rule means nothing was testing it. Measuring settled it: **272px inside a 272px
+cell, identical either way.** A `<select>` shrinks and clips its option text; it
+has no min-content floor from its options at all.
+
+The actual cause was one stale line. `e2e/states.ts` reached the editing state by
+waiting for a button named **"Cancel editing"**, which D3 renamed to "Cancel"
+when the way out moved into the form's own action row. `reach()` threw, and all
+three tests failed before measuring anything.
+
+The `min-w-0` is reverted. A change no measurement justifies is not a safety
+margin, it is a guess left in the tree.
+
+### Mutation checks
+
+| Deleted | Fails |
+|---|---|
+| `onSaved` (restoring the stuck edit) | finishing an edit returns to the meeting |
+| the day on the second zone line | the second zone line carries the day |
+| the preview's degraded state | the preview survives an unfinished form |
+| the section `<h2>`s, made paragraphs | is three sections, and they are real headings |
+| the time from the invite body | Email an invite … a dated body |
+
+### Checks
+
+`check:contrast` 28, `check:codes` 6/6, `check:partition` 20/20, `check:groups`
+14/14, `check:room` 108/108, `check:deps` 5/5, `check:ics` 69/69, `check:chat`
+73/73, `check:connection` 72/72, `check:permissions` 39/39, `check:bundle` 11/11
+— `/schedule` 274/290 kB and `/schedule/[code]` 273/290 kB.

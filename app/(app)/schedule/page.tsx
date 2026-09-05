@@ -31,7 +31,7 @@ export default async function SchedulePage() {
         </Link>
         <h1 className="type-h1">Schedule a meeting</h1>
       </div>
-      <ScheduleForm />
+      <ScheduleForm cancelHref="/dashboard" />
     </div>
   );
 }

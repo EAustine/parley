@@ -1,4 +1,4 @@
-import { fromZonedTime, toZonedTime } from "date-fns-tz";
+import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz";
 import { format } from "date-fns";
 
 /**
@@ -90,36 +90,111 @@ export function browserTimeZone(): string {
 }
 
 /**
- * A short list that covers most of what this product will actually be used
- * for, with the viewer's own zone guaranteed to be in it even when it is not.
+ * The zones offered, grouped by region.
  *
- * Not the full IANA list. `Intl.supportedValuesOf("timeZone")` returns over
- * four hundred entries, which is a scroll rather than a choice; the field
- * accepts any of them if typed, and this is the shortlist.
+ * **Not the full IANA list.** `Intl.supportedValuesOf("timeZone")` returns over
+ * four hundred entries, most of which are aliases or places with a dozen
+ * residents; that is a scroll rather than a choice.
+ *
+ * **And no longer seventeen.** The first list covered the places this was built
+ * from and nowhere else — no Paris, no Madrid, no Toronto, no Shanghai, no
+ * Auckland. A zone missing from a scheduling form is not a small gap: it is a
+ * meeting scheduled in the wrong one, which §3.9 calls the one place a quiet
+ * bug produces a missed meeting.
+ *
+ * **Grouped, because a flat list of sixty is the scroll the short list was
+ * avoiding.** A native `<select>` renders `<optgroup>` with the operating
+ * system's own headings, and `color-scheme` is declared so it paints them for
+ * the right theme. Type-ahead still jumps: "Ber" reaches Berlin from anywhere
+ * in the list.
  */
-export const COMMON_TIMEZONES = [
-  "Africa/Accra",
-  "Africa/Lagos",
-  "Africa/Johannesburg",
-  "Africa/Nairobi",
-  "Europe/London",
-  "Europe/Berlin",
-  "Europe/Lisbon",
-  "America/New_York",
-  "America/Chicago",
-  "America/Los_Angeles",
-  "America/Sao_Paulo",
-  "Asia/Dubai",
-  "Asia/Kolkata",
-  "Asia/Singapore",
-  "Asia/Tokyo",
-  "Australia/Sydney",
-  "UTC",
-] as const;
+export const TIMEZONE_GROUPS: { region: string; zones: string[] }[] = [
+  {
+    region: "Africa",
+    zones: [
+      "Africa/Abidjan", "Africa/Accra", "Africa/Addis_Ababa", "Africa/Algiers",
+      "Africa/Cairo", "Africa/Casablanca", "Africa/Johannesburg",
+      "Africa/Kinshasa", "Africa/Lagos", "Africa/Nairobi", "Africa/Tunis",
+    ],
+  },
+  {
+    region: "Europe",
+    zones: [
+      "Europe/Amsterdam", "Europe/Athens", "Europe/Berlin", "Europe/Brussels",
+      "Europe/Bucharest", "Europe/Budapest", "Europe/Copenhagen",
+      "Europe/Dublin", "Europe/Helsinki", "Europe/Istanbul", "Europe/Kyiv",
+      "Europe/Lisbon", "Europe/London", "Europe/Madrid", "Europe/Moscow",
+      "Europe/Oslo", "Europe/Paris", "Europe/Prague", "Europe/Rome",
+      "Europe/Stockholm", "Europe/Vienna", "Europe/Warsaw", "Europe/Zurich",
+    ],
+  },
+  {
+    region: "Americas",
+    zones: [
+      "America/Anchorage", "America/Bogota", "America/Buenos_Aires",
+      "America/Chicago", "America/Denver", "America/Halifax",
+      "America/Los_Angeles", "America/Mexico_City", "America/New_York",
+      "America/Phoenix", "America/Santiago", "America/Sao_Paulo",
+      "America/Toronto", "America/Vancouver", "Pacific/Honolulu",
+    ],
+  },
+  {
+    region: "Asia",
+    zones: [
+      "Asia/Bangkok", "Asia/Dhaka", "Asia/Dubai", "Asia/Hong_Kong",
+      "Asia/Jakarta", "Asia/Jerusalem", "Asia/Karachi", "Asia/Kathmandu",
+      "Asia/Kolkata", "Asia/Kuala_Lumpur", "Asia/Manila", "Asia/Riyadh",
+      "Asia/Seoul", "Asia/Shanghai", "Asia/Singapore", "Asia/Taipei",
+      "Asia/Tehran", "Asia/Tokyo",
+    ],
+  },
+  {
+    region: "Oceania",
+    zones: [
+      "Australia/Adelaide", "Australia/Brisbane", "Australia/Melbourne",
+      "Australia/Perth", "Australia/Sydney", "Pacific/Auckland",
+      "Pacific/Fiji",
+    ],
+  },
+  { region: "Other", zones: ["UTC"] },
+];
 
-export function timeZoneOptions(current: string): string[] {
-  const seen = new Set<string>([current, ...COMMON_TIMEZONES]);
-  return [...seen];
+/**
+ * The groups, with the viewer's own zone guaranteed to appear.
+ *
+ * It is added under "Your timezone" at the top rather than inserted into
+ * whichever region it belongs to — a zone that is not on the list is by
+ * definition somewhere the list did not think of, and burying it alphabetically
+ * among places it is not is how a person concludes their own zone is missing.
+ */
+export function timeZoneGroups(
+  current: string,
+): { region: string; zones: string[] }[] {
+  const known = new Set(TIMEZONE_GROUPS.flatMap((g) => g.zones));
+  return known.has(current)
+    ? TIMEZONE_GROUPS
+    : [{ region: "Your timezone", zones: [current] }, ...TIMEZONE_GROUPS];
+}
+
+/**
+ * "Europe/London — BST", for a `<option>` label.
+ *
+ * The abbreviation is computed **for the instant being scheduled**, not for
+ * now. The mockup hardcodes `BST|1` for London, which `BUILD-PLAN-v1.3.md`
+ * already flags: "a fixed `+1` for London is right in September and wrong in
+ * January." Deriving it from the date in the form means the list says GMT while
+ * you are picking a date in January and BST while you are picking one in July —
+ * which is the fact the label exists to carry.
+ */
+export function timeZoneLabel(zone: string, at: Date): string {
+  const place = zone.replace(/_/g, " ");
+  try {
+    return `${place} — ${formatInTimeZone(at, zone, "zzz")}`;
+  } catch {
+    // A zone the platform does not know cannot be formatted, and a label is not
+    // worth throwing over. `isKnownTimeZone` is what actually rejects it.
+    return place;
+  }
 }
 
 /** Is this a zone the platform actually knows? */
