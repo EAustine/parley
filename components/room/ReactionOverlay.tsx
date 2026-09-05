@@ -4,6 +4,7 @@ import {
   REACTION_LANES,
   REACTION_LANE_PITCH,
   reactionDrift,
+  reactionSpin,
 } from "@/lib/room/limits";
 import type { ReactionEvent } from "@/lib/room/chat";
 
@@ -44,9 +45,26 @@ export function ReactionOverlay({
         const offset =
           (reaction.lane - (REACTION_LANES - 1) / 2) * REACTION_LANE_PITCH;
         return (
+          /*
+           * Two elements, because the rise and the sway need different easings
+           * — v1.3 C6.
+           *
+           * `translate` is one property, so a single element can only give both
+           * axes the same timing function, and a straight eased line is exactly
+           * what C6 is replacing: "an arc rather than a straight rise". The
+           * outer element rises on a decelerating curve; the inner sways and
+           * tips on an ease-in-out, and the two compose into a path that
+           * curves. It is the same trick the existing rise/pop split already
+           * uses on one element, taken one step further because `translate`
+           * cannot be timed against itself.
+           *
+           * Both are `translate`, `rotate` and `scale` — compositor properties
+           * that never touch layout, which is what makes two nested animated
+           * elements per reaction cheap.
+           */
           <span
             key={reaction.id}
-            className="parley-reaction absolute select-none text-2xl"
+            className="parley-reaction absolute"
             style={
               {
                 left: `calc(${anchor.left}% + ${offset}px)`,
@@ -55,10 +73,15 @@ export function ReactionOverlay({
                 // tile the reaction came from rather than a constant.
                 "--parley-rise": `${Math.round(anchor.rise)}px`,
                 "--parley-drift": `${reactionDrift(reaction.id)}px`,
+                // A number, not an angle: `calc()` multiplies it by 1deg in the
+                // keyframes, which a `deg` value cannot be scaled by.
+                "--parley-spin": reactionSpin(reaction.id),
               } as React.CSSProperties
             }
           >
-            {reaction.emoji}
+            <span className="parley-reaction-sway block select-none text-2xl">
+              {reaction.emoji}
+            </span>
           </span>
         );
       })}

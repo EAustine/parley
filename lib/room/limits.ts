@@ -144,3 +144,37 @@ export function reactionDrift(id: string): number {
   const unit = ((hash >>> 0) % 2000) / 1000 - 1;
   return Math.round(unit * REACTION_DRIFT_MAX * 10) / 10;
 }
+
+/**
+ * How far a reaction tips as it sways — v1.3 C6.
+ *
+ * C6 asks for "slight rotation" alongside the arc, and this is **derived from
+ * the drift rather than seeded separately**. That is the whole of why it reads
+ * as physical: a thing moving right tips right. Two independent random
+ * sequences would give a reaction sliding one way while tilting the other,
+ * which is uncannier than no rotation at all.
+ *
+ * Eight degrees at full drift. "Slight" is the word C6 uses, and past about ten
+ * the emoji stops looking buoyant and starts looking thrown.
+ */
+export const REACTION_SPIN_MAX = 8;
+
+export function reactionSpin(id: string): number {
+  const unit = reactionDrift(id) / REACTION_DRIFT_MAX;
+  return Math.round(unit * REACTION_SPIN_MAX * 10) / 10;
+}
+
+/**
+ * The sway path, as a fraction of the drift at each keyframe — v1.3 C6.
+ *
+ * Exported because it is a **bound, not a decoration**. The lane guarantee
+ * above says two reactions in adjacent lanes stay at least 11px apart "however
+ * the drift falls", and that held trivially while the path was a straight line
+ * from 0 to `drift`: the greatest excursion was the endpoint.
+ *
+ * A sway makes the excursion happen mid-flight instead, so the guarantee now
+ * depends on no keyframe exceeding the drift it was bounded against.
+ * `check:room` asserts that against this array rather than against the
+ * stylesheet, and the stylesheet is written from these numbers.
+ */
+export const REACTION_SWAY = [0, 1, -0.7, 0.45, -0.25] as const;

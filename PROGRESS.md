@@ -6881,3 +6881,115 @@ margin, it is a guess left in the tree.
 14/14, `check:room` 108/108, `check:deps` 5/5, `check:ics` 69/69, `check:chat`
 73/73, `check:connection` 72/72, `check:permissions` 39/39, `check:bundle` 11/11
 — `/schedule` 274/290 kB and `/schedule/[code]` 273/290 kB.
+
+---
+
+## v1.3 C6 — the reaction curve
+
+> "Try the curve before the assets — an arc rather than a straight rise, slight
+> rotation, and an ease that decelerates before the fade. That may be the whole
+> complaint, and it is free."
+
+The curve, then. The Fluent Emoji 3D assets are not in this change, deliberately:
+C6 puts them second and says why, and whether they are still wanted is a judgement
+about how the motion now feels rather than something the code can settle.
+
+### Two elements, because `translate` cannot be timed against itself
+
+The old path was one animation from `translate: 0 0` to `translate: drift,
+-rise`. Whatever easing you give that, it is a **straight line** — the drift and
+the rise share a timing function because they share a property.
+
+So the rise moved to the outer element and the sway to an inner one. The outer
+carries a decelerating `cubic-bezier(0.16, 0.72, 0.3, 1)`; the inner carries an
+`ease-in-out` sway and the tip. It is the same trick the existing rise/pop split
+already used — individual properties timed apart — taken one step further, and
+both elements animate only `translate`, `rotate`, `scale` and `opacity`, which
+never touch layout.
+
+The opacity also came out of the rise's keyframes into a fade of its own. C6 asks
+for "an ease that decelerates before the fade", and while the two shared a
+keyframe block the fade could not be moved without moving the travel.
+
+### The measured path
+
+Sampled from the browser at 40px of drift, not read back from the stylesheet:
+
+```
+   0ms  x    0.2  y     4.1  rot  0.0  op 0.00
+ 240ms  x   10.3  y   -95.4  rot  2.7  op 0.83
+ 480ms  x   32.5  y  -156.5  rot  7.3  op 1.00
+ 960ms  x    3.4  y  -213.0  rot  1.2  op 1.00
+1200ms  x  -27.7  y  -227.7  rot -4.8  op 1.00
+1680ms  x    0.3  y  -241.5  rot  0.5  op 1.00
+1920ms  x   14.8  y  -245.6  rot  3.6  op 0.71
+2400ms  x  -12.2  y  -247.1  rot  0.0  op 0.00
+```
+
+Three reversals with the amplitude falling each time, and 95px of the 247px rise
+happening in the first 240ms against 1px in the last. A balloon let go.
+
+### The rotation is derived, not seeded
+
+`reactionSpin` is `reactionDrift` scaled, and that is the whole of why it reads
+as physical: a thing moving right tips right. Two independent random sequences
+would give a reaction sliding one way while tilting the other, which is uncannier
+than no rotation at all. Eight degrees at full drift — past about ten it stops
+looking buoyant and starts looking thrown — and level again at the end, because a
+fading emoji frozen mid-tip looks broken.
+
+### The sway is a bound, not a decoration
+
+`REACTION_DRIFT_MAX` is a quarter of the lane pitch so that "two reactions in
+adjacent lanes stay at least 11px apart however the drift falls". That held
+trivially while the path was a straight line: the greatest excursion **was** the
+endpoint, and the endpoint was bounded.
+
+A sway moves the excursion into the middle of the flight, where nothing was
+looking. A keyframe at 1.4× the drift would look fine, break nothing visible in a
+two-person room, and collapse the separation the lanes exist to provide the first
+time five people reacted at once.
+
+So the coefficients live in `lib/room/limits.ts` as `REACTION_SWAY`, and
+`check:room` bounds them — none over 1×, the swing inside the lane pitch, the
+amplitude damping rather than repeating. It also **parses the keyframes out of
+`globals.css` and compares them to the array**, because "the stylesheet is
+written from these numbers" is a claim, and two copies of a number agree until
+one is edited.
+
+### Reactions have been invisible under reduced motion, and are not now
+
+The reduced-motion rule replaced the rise with a fade-in-place, correctly, and
+set it to 2400ms. The blanket block below it sets `animation-duration: 0.01ms
+!important` on everything — and `!important` beats a shorthand whatever the
+specificity. So the hold ran for a hundredth of a millisecond and then held its
+`forwards` end state, which is `opacity: 0`.
+
+Not fast, not subtle: **absent.** Anyone with the preference set has never seen a
+reaction. The rule was written to remove travel and it did; nothing noticed it
+had also removed the one property the floor says to keep — the blanket block's
+own comment is "travel is removed, opacity is kept".
+
+Found by measuring the opacity at three points of the flight, which is the only
+thing that could have found it: the element is in the DOM for the full 2400ms,
+the animation is attached, and every declaration reads correctly. `!important` on
+the duration is the fix, justified by the floor's own sentence.
+
+C6 also added a second animated element, which needed its own neutralising rule
+for the same reason the first one has one: the blanket block only shortens
+durations, so a 0.01ms sway still travels its whole arc and tips 8°, instantly.
+
+### Mutation checks
+
+| Deleted | Fails |
+|---|---|
+| the sway, drift folded back into the rise | floats an arc rather than a straight line |
+| the rotation | tips as it sways |
+| the sway's reduced-motion rule | fades in place, with no travel at all |
+| `animation-duration: 2400ms !important` | *(how the invisibility was found)* |
+| a sway coefficient raised past 1× | `check:room`, from both the CSS and the constant |
+
+### Checks
+
+`check:room` 114/114 (was 108 — six new), and the reaction path measured in a
+browser rather than read back from the stylesheet.

@@ -26,7 +26,8 @@ const out = mkdtempSync(join(tmpdir(), "parley-room-"));
 try {
   execFileSync(
     "npx",
-    ["tsc", "lib/room/layout.ts", "lib/room/typing.ts", "--outDir", out, "--module", "commonjs",
+    ["tsc", "lib/room/layout.ts", "lib/room/typing.ts", "lib/room/limits.ts",
+     "--outDir", out, "--module", "commonjs",
      "--target", "es2022", "--moduleResolution", "node", "--skipLibCheck"],
     { stdio: "pipe" },
   );
@@ -39,6 +40,9 @@ const require = createRequire(join(out, "index.cjs"));
 const { gridLayout, filmstripLayout, visibleOrder, FILMSTRIP_CAPACITY } =
   require(join(out, "layout.js"));
 const { isTyping } = require(join(out, "typing.js"));
+// v1.3 C6's sway bound — the real module, not a transcription of it.
+const { REACTION_SWAY, REACTION_DRIFT_MAX, REACTION_LANE_PITCH } =
+  require(join(out, "limits.js"));
 rmSync(out, { recursive: true, force: true });
 
 let failed = 0;
@@ -636,6 +640,71 @@ check(
   /until-found/.test(globals),
   "and excludes hidden=\"until-found\", which find-in-page needs",
 );
+
+/* -------------------------------------------------------------------------- *
+ * v1.3 C6: the reaction arc, and the lane guarantee it could quietly break.
+ *
+ * `REACTION_DRIFT_MAX` is a quarter of the lane pitch so that "two reactions in
+ * adjacent lanes stay at least 11px apart however the drift falls". That held
+ * trivially while the path was a straight line from 0 to `drift` — the greatest
+ * excursion was the endpoint, and the endpoint was bounded.
+ *
+ * A sway moves the excursion into the middle of the flight, where nothing was
+ * checking it. A keyframe at 1.4x the drift would look fine, break nothing
+ * visible in a two-person room, and collapse the separation the lanes exist to
+ * provide the first time five people reacted at once.
+ *
+ * So: the coefficients are bounded here, and the stylesheet is checked against
+ * them rather than trusted to match. Two copies of a number agree until one is
+ * edited, which is the failure this whole file was written for.
+ * -------------------------------------------------------------------------- */
+const sway = REACTION_SWAY;
+check(
+  sway.every((c) => Math.abs(c) <= 1),
+  "no sway keyframe exceeds the drift it was bounded against",
+  `worst ${Math.max(...sway.map(Math.abs))}x`,
+);
+check(
+  Math.max(...sway.map(Math.abs)) * REACTION_DRIFT_MAX * 2 < REACTION_LANE_PITCH,
+  "so two reactions in adjacent lanes cannot cross",
+  `${(Math.max(...sway.map(Math.abs)) * REACTION_DRIFT_MAX * 2).toFixed(1)}px of swing against a ${REACTION_LANE_PITCH}px pitch`,
+);
+check(
+  sway.slice(1).every((c, i) => i === 0 || Math.abs(c) < Math.abs(sway[i])),
+  "and the sway damps rather than repeating — floating, not wobbling",
+  sway.join(", "),
+);
+
+/*
+ * The stylesheet says the same numbers.
+ *
+ * Parsed out of the keyframes rather than compared to a transcription: the
+ * comment in `limits.ts` claims "the stylesheet is written from these numbers",
+ * and a claim nothing checks is how the two drift apart.
+ */
+const swayBlock = globals.match(/@keyframes parley-reaction-sway\s*\{([\s\S]*?)\n\}/);
+check(Boolean(swayBlock), "the sway keyframes exist in app/globals.css");
+if (swayBlock) {
+  const declared = [
+    0,
+    ...[...swayBlock[1].matchAll(/translate:\s*calc\(var\(--parley-drift[^)]*\)\s*\*\s*(-?[\d.]+)\)/g)].map(
+      (m) => Number(m[1]),
+    ),
+  ];
+  // The 25% keyframe is a bare `var(--parley-drift)` — 1x, with no `calc`.
+  const full = /25%\s*\{\s*translate:\s*var\(--parley-drift[^)]*\);/.test(swayBlock[1]);
+  const fromCss = full ? [declared[0], 1, ...declared.slice(1)] : declared;
+  check(
+    JSON.stringify(fromCss) === JSON.stringify([...sway]),
+    "and they are REACTION_SWAY, not a second copy of it",
+    `css ${JSON.stringify(fromCss)} vs limits ${JSON.stringify([...sway])}`,
+  );
+  check(
+    /rotate:\s*0deg/.test(swayBlock[1].split("100%")[1] ?? ""),
+    "a reaction is level again by the time it fades",
+    "a fading emoji frozen mid-tip looks broken, not buoyant",
+  );
+}
 
 console.log(`\n${count - failed}/${count} room checks passed.`);
 if (failed) process.exit(1);

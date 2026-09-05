@@ -319,14 +319,39 @@ summary:focus-visible,
      `animationend`, because an animation that never runs (a backgrounded tab)
      would otherwise leave it on screen for the rest of the meeting. */
   .parley-reaction {
-    /* Two animations, because §3.6 and v1.2 E1 give the rise and the pop
-       different durations — 2400ms and 200ms. `translate` and `scale` are
-       individual properties rather than one `transform`, which is what lets
-       them be timed apart without nesting a second element. */
+    /*
+     * The rise and the fade, on the outer element — v1.3 C6.
+     *
+     * Three animations, because §3.6, v1.2 E1 and C6 give four things four
+     * timings. `translate`, `scale` and `opacity` are individual properties
+     * rather than one `transform`, which is what lets them be timed apart.
+     *
+     * **The rise is its own curve now.** It was `ease-out` with the opacity
+     * folded into the same keyframes, so the fade inherited the rise's timing
+     * and could not be moved without moving the travel. C6 asks for "an ease
+     * that decelerates before the fade", which means the two have to be
+     * separable: a fast release, a long decelerating drift, and the fade
+     * running its own linear course underneath.
+     */
     animation:
-      parley-reaction-rise 2400ms ease-out forwards,
+      parley-reaction-rise 2400ms cubic-bezier(0.16, 0.72, 0.3, 1) forwards,
+      parley-reaction-fade 2400ms linear forwards;
+    will-change: translate, opacity;
+  }
+
+  .parley-reaction-sway {
+    /*
+     * The arc and the tip — v1.3 C6.
+     *
+     * `ease-in-out`, because a sway has no beginning or end: it reverses, and
+     * the reversal is the part that has to look unhurried. The pop keeps its
+     * own 200ms `ease-out` and rides here rather than on the parent, so the
+     * scale is not stretched by the parent's much longer curve.
+     */
+    animation:
+      parley-reaction-sway 2400ms ease-in-out forwards,
       parley-reaction-pop 200ms ease-out forwards;
-    will-change: translate, scale, opacity;
+    will-change: translate, rotate, scale;
   }
 }
 
@@ -437,13 +462,50 @@ summary:focus-visible,
    `lib/room/limits.ts` for why the separation itself is not random).
 
    Opacity: 0 → 1 across the first 15%, held, then out over the last 30%. */
+/* Vertical only. The horizontal half is `parley-reaction-sway`, below. */
 @keyframes parley-reaction-rise {
-  0%   { translate: 0 0; opacity: 0; }
-  15%  { opacity: 1; }
-  70%  { opacity: 1; }
+  0%   { translate: 0 0; }
+  100% { translate: 0 calc(var(--parley-rise, 120px) * -1); }
+}
+
+@keyframes parley-reaction-fade {
+  0%   { opacity: 0; }
+  12%  { opacity: 1; }
+  72%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/*
+ * The arc — v1.3 C6.
+ *
+ * A damped sway: full drift one way, seven tenths back, then smaller each time.
+ * Amplitude falling is what separates "floating" from "wobbling", and it is
+ * also what keeps the lane guarantee — no keyframe exceeds 1× the drift, which
+ * `lib/room/limits.ts` bounds at a quarter of the lane pitch and `check:room`
+ * asserts against `REACTION_SWAY`. These numbers are that array.
+ *
+ * The rotation is the same sequence scaled, never its own: a thing moving right
+ * tips right, and two independent wobbles read as uncanny rather than physical.
+ * It returns to level at the end, because the last thing seen is the thing
+ * remembered and a fading emoji frozen at 8° looks broken.
+ */
+@keyframes parley-reaction-sway {
+  0%   { translate: 0; rotate: 0deg; }
+  25%  {
+    translate: var(--parley-drift, 0px);
+    rotate: calc(var(--parley-spin, 0) * 1deg);
+  }
+  55%  {
+    translate: calc(var(--parley-drift, 0px) * -0.7);
+    rotate: calc(var(--parley-spin, 0) * -0.7deg);
+  }
+  80%  {
+    translate: calc(var(--parley-drift, 0px) * 0.45);
+    rotate: calc(var(--parley-spin, 0) * 0.45deg);
+  }
   100% {
-    translate: var(--parley-drift, 0px) calc(var(--parley-rise, 120px) * -1);
-    opacity: 0;
+    translate: calc(var(--parley-drift, 0px) * -0.25);
+    rotate: 0deg;
   }
 }
 
@@ -477,10 +539,44 @@ summary:focus-visible,
    does it instantly, which is the jump the preference exists to avoid. */
 @media (prefers-reduced-motion: reduce) {
   .parley-reaction {
-    /* One animation, not two: the pop is travel as much as the rise is. */
+    /* One animation, not three: the pop and the sway are travel as much as the
+       rise is. */
     animation: parley-reaction-hold 2400ms linear forwards;
+    /*
+     * `!important` on the duration, and this is a bug fix rather than a
+     * flourish — v1.3 C6.
+     *
+     * The blanket reduce block below sets `animation-duration: 0.01ms
+     * !important` on everything, and `!important` beats this rule's shorthand
+     * whatever the specificity. So the hold ran for a hundredth of a
+     * millisecond and then held its `forwards` end state, which is
+     * `opacity: 0`.
+     *
+     * **Reactions have therefore been invisible to anyone with the preference
+     * set** — not fast, not subtle: absent. The rule above was written to
+     * remove travel and it did; nothing noticed that it had also removed the
+     * one property the floor says to keep. Found by measuring the opacity at
+     * three points of the flight, which is the only thing that could have.
+     *
+     * The floor's own words are the justification for overriding the blanket
+     * here: "removes travel, keeps opacity". This animation is opacity and
+     * nothing else.
+     */
+    animation-duration: 2400ms !important;
     scale: 1;
     translate: 0 0;
+  }
+
+  /* v1.3 C6 added a second animated element, and it needs neutralising here
+     too — the blanket reduce block below only shortens durations, so a 0.01ms
+     sway still travels its full arc and tips 8°, instantly. That is the jump
+     the preference exists to avoid, which is the same reason the rise has its
+     own rule rather than relying on the blanket one. */
+  .parley-reaction-sway {
+    animation: none;
+    translate: 0;
+    rotate: 0deg;
+    scale: 1;
   }
 
   @keyframes parley-reaction-hold {
