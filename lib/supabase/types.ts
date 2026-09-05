@@ -70,8 +70,16 @@ export type Database = {
         Row: {
           id: string;
           meeting_id: string;
-          user_id: string | null;
-          display_name: string;
+          /**
+           * Nullable on read, required on write — deliberately asymmetric.
+           *
+           * `20260905180000_clear_email_display_names.sql` nulled the rows that
+           * held a host's email address, and dropped the column's `not null` to
+           * do it. No *new* row can be null: the token endpoint refuses to mint
+           * without a name, so `Insert` below keeps this required and the
+           * client contract stays stricter than the table.
+           */
+          display_name: string | null;
           identity: string;
           role: string;
           joined_at: string;

@@ -7689,3 +7689,38 @@ because that is what lets a test drive a background tab at all.
 So the limitation is Playwright's, not headlessness's, and both files now say so.
 Nothing else changed: the four automated cases already cover everything on our
 side of the event, and the platform guarantee was always the manual half.
+
+### Clearing the email addresses already in `meeting_participants`
+
+`20260905180000_clear_email_display_names.sql`. Austine's call — "null the
+column" — and his to apply, since it needs the database password.
+
+The webhook writer copies the token's display name into
+`meeting_participants.display_name` on every join, so for as long as the token
+route fell back to `user.email`, every magic-link host's row recorded their
+address. Nothing renders that column — the people panel reads live LiveKit
+state — so it was never a live disclosure, and it was still stored personal data
+against rows that outlive the meeting.
+
+**The predicate is exact rather than a shape match, and that mattered.**
+`display_name like '%@%'` is the obvious filter and is wrong in both directions:
+`sanitiseDisplayName` permits `@`, so someone who typed "ama@work" as the name
+they wanted on their tile has a legitimate row that a shape match destroys.
+`meeting_participants.user_id` references `auth.users`, so the update joins and
+requires the stored name to equal that account's actual address — exactly the
+rows the defect wrote, and nothing else. Guest rows carry `user_id is null` and
+are excluded by the join rather than by a special case.
+
+What it does not reach, recorded rather than papered over: an account that has
+changed its email since the row was written, because `auth.users.email` holds
+only the current one. There is no such account today, and widening to catch a
+hypothetical one means going back to the shape match.
+
+**Dropping `not null` is a real weakening and is named as one.** The column was
+`not null`, so clearing requires allowing null. Going forward nothing can write
+a null — the token endpoint refuses to mint without a name — so the constraint
+now lives one layer up, and `Insert` in `lib/supabase/types.ts` keeps
+`display_name` required so the client contract stays stricter than the table.
+`Row` becomes `string | null`, and `tsc` is clean across the tree without a
+single call site changing, which is its own small confirmation that nothing
+reads the column.
