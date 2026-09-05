@@ -124,7 +124,7 @@ function sign(body, secret = SECRET, issuer = KEY) {
   return `${header}.${payload}.${signature}`;
 }
 
-const event = (name, code) =>
+const event = (name, code, participant) =>
   JSON.stringify({
     event: name,
     id: `EV_${process.hrtime.bigint()}`,
@@ -135,7 +135,35 @@ const event = (name, code) =>
       emptyTimeout: 300,
       creationTime: String(Math.floor(Date.now() / 1000)),
     },
+    ...(participant ? { participant } : {}),
   });
+
+/**
+ * A participant as LiveKit sends one — v1.3 A2.
+ *
+ * `identity` is the shape the token route mints: `user_<uuid>` for a signed-in
+ * participant, `guest_<nanoid>` for everyone else. `metadata` is where the
+ * token puts the display name and the role, because both are labels.
+ */
+const participantOf = (identity, name, role = "participant") => ({
+  sid: `PA_${process.hrtime.bigint()}`,
+  identity,
+  name,
+  metadata: JSON.stringify({ name, role }),
+  joinedAt: String(Math.floor(Date.now() / 1000)),
+});
+
+/** Sessions on a meeting, as the two dashboard counts read them. */
+const sessionsOf = async (code) => {
+  const r = await admin(
+    `/rest/v1/meetings?code=eq.${code}&select=joined:meeting_participants(count),here:meeting_participants(count)&here.left_at=is.null`,
+  );
+  const row = (await r.json())[0] ?? {};
+  return {
+    joined: row.joined?.[0]?.count ?? 0,
+    here: row.here?.[0]?.count ?? 0,
+  };
+};
 
 const deliver = (body, authorization) =>
   fetch(`${APP}/api/livekit/webhook`, {
@@ -224,6 +252,102 @@ try {
       r.status === 200 && row?.status === "ended" && row?.ended_at !== null,
       "and room_finished writes status + ended_at",
       `HTTP ${r.status}, status=${row?.status}, ended_at=${row?.ended_at ? "set" : "null"}`,
+    );
+  }
+
+  /* --- the writer A2 was asked for ---------------------------------------
+   *
+   * `meeting_participants` had no writer anywhere in the application until
+   * now — only the dev seeder inserted rows — so every count the dashboard
+   * read from it was structurally zero, and past meetings asserted "0
+   * participants" whatever had happened.
+   *
+   * A row is a **session**, and the two counts D1 names fall out of that: every
+   * row is how many arrived, `left_at is null` is how many are here now. Both
+   * are checked below, because a writer that only satisfies one of them is the
+   * bug this replaces wearing a different number.
+   *
+   * The fixture meeting was just marked ended above, which closed its sessions
+   * — so this opens a fresh room on the same code, which is exactly what a
+   * rejoin does.
+   */
+  {
+    const ama = participantOf(`user_${user.id}`, "Ama Serwaa", "host");
+    const kwabena = participantOf("guest_wh1", "Kwabena Osei");
+
+    for (const p of [ama, kwabena]) {
+      const body = event("participant_joined", code, p);
+      await deliver(body, sign(body));
+    }
+    const both = await sessionsOf(code);
+    check(
+      both.joined === 2 && both.here === 2,
+      "participant_joined opens a session for each arrival",
+      `joined ${both.joined}, here ${both.here}`,
+    );
+
+    /*
+     * The retry. LiveKit re-delivers anything it did not get a 2xx for, so one
+     * arrival can produce two events — and a second open row would make the
+     * live count read one too many for the rest of the meeting.
+     */
+    const again = event("participant_joined", code, ama);
+    const r = await deliver(again, sign(again));
+    const afterRetry = await sessionsOf(code);
+    check(
+      r.status === 200 && afterRetry.joined === 2 && afterRetry.here === 2,
+      "and a redelivered join is not a second person",
+      `HTTP ${r.status}, joined ${afterRetry.joined}, here ${afterRetry.here}`,
+    );
+
+    /*
+     * Leaving closes the session rather than deleting it. That is the whole
+     * reason two counts can come from one table: the arrival is still on
+     * record after the departure.
+     */
+    const left = event("participant_left", code, kwabena);
+    await deliver(left, sign(left));
+    const afterLeave = await sessionsOf(code);
+    check(
+      afterLeave.joined === 2 && afterLeave.here === 1,
+      "participant_left closes it, and the arrival stays on the record",
+      `joined ${afterLeave.joined}, here ${afterLeave.here}`,
+    );
+
+    const leftAgain = event("participant_left", code, kwabena);
+    const r2 = await deliver(leftAgain, sign(leftAgain));
+    const afterLeaveRetry = await sessionsOf(code);
+    check(
+      r2.status === 200 && afterLeaveRetry.here === 1,
+      "and a redelivered leave changes nothing",
+      `HTTP ${r2.status}, here ${afterLeaveRetry.here}`,
+    );
+
+    /*
+     * A room torn down by `deleteRoom` — which is what "End meeting" does — is
+     * not obliged to send `participant_left` for everybody on the way out. Any
+     * session left open after that would count toward "here now" forever, on a
+     * meeting that has ended.
+     */
+    const finished = event("room_finished", code);
+    await deliver(finished, sign(finished));
+    const afterFinish = await sessionsOf(code);
+    check(
+      afterFinish.joined === 2 && afterFinish.here === 0,
+      "room_finished closes every session still open",
+      `joined ${afterFinish.joined}, here ${afterFinish.here}`,
+    );
+
+    /*
+     * An event for a room we have no meeting for. LiveKit will open a room for
+     * any name asked of it, and a 500 here would have it retry forever.
+     */
+    const orphan = event("participant_joined", "zzz-zzzz-zzz", kwabena);
+    const r3 = await deliver(orphan, sign(orphan));
+    check(
+      r3.status === 200,
+      "a participant in a room we do not know is acknowledged, not retried",
+      `HTTP ${r3.status}`,
     );
   }
 

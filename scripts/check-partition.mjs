@@ -96,15 +96,41 @@ const cases = [
     want: "live",
   },
 
-  // --- the case A1's table has no home for --------------------------------
+  /* --- the case A1's first table had no home for -------------------------
+   *
+   * `status = 'live'` is false and `scheduled_start > now()` is false, so a
+   * two-way partition cannot place it. `else past` makes the meeting vanish at
+   * the exact moment someone would look for it; `else upcoming` — which this
+   * expected until the table was revised — files a meeting that is due right
+   * now under things that have not started.
+   *
+   * It belongs to Happening now, which holds two different things: a room with
+   * people in it, and a room that is due and empty. `LiveMeetingCard` tells
+   * them apart by `status`; the partition does not need to.
+   */
   {
-    name: "in its own slot but nobody has joined: upcoming, not live",
+    name: "in its own slot but nobody has joined: happening now, not upcoming",
     row: { scheduled_start: at(-0.25), scheduled_end: at(0.25) },
+    want: "live",
+  },
+  {
+    name: "at the instant it is due, it moves — not a moment before",
+    row: { scheduled_start: at(0), scheduled_end: at(0.5) },
+    want: "live",
+  },
+  {
+    name: "and a minute before, it is still upcoming",
+    row: { scheduled_start: at(1 / 60), scheduled_end: at(0.5) },
     want: "upcoming",
   },
   {
-    name: "and it leaves upcoming when its end passes, not its start",
+    name: "it leaves Happening now when its end passes, not its start",
     row: { scheduled_start: at(-2), scheduled_end: at(-1) },
+    want: "past",
+  },
+  {
+    name: "and at the instant its end arrives, exactly",
+    row: { scheduled_start: at(-0.5), scheduled_end: at(0) },
     want: "past",
   },
   {

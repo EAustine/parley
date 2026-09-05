@@ -83,11 +83,21 @@ export function MeetingsList({
 
   return (
     <div className="space-y-5">
-      {/* One card per live meeting. `live` is an array and the design draws a
-          single block; two concurrent meetings is a real state with no mockup,
-          and stacking is the reading that needs no new element. */}
+      {/*
+        One card per meeting. `live` is an array and the design draws a single
+        block; two concurrent meetings is a real state with no mockup, and
+        stacking is the reading that needs no new element.
+        
+        Headed, since A1's revision: the section holds a room with people in it
+        *and* a room that is merely due, so it needs a name that covers both.
+        "Happening now" is the plan's, and it is the only one of the three
+        sections whose heading is not on a tab.
+      */}
       {live.length > 0 && (
         <section aria-label="Happening now" className="space-y-2">
+          <h2 className="type-caption tracking-[0.04em] text-muted-foreground uppercase">
+            Happening now
+          </h2>
           {live.map((meeting) => (
             <LiveMeetingCard key={meeting.id} meeting={meeting} now={now} />
           ))}

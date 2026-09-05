@@ -126,8 +126,11 @@ select.input{appearance:none;padding-right:36px;cursor:pointer;
 /* live block — its own section, never mixed into upcoming */
 .live{border:1px solid var(--boundary);border-radius:12px;background:var(--card);
   padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:28px}
-.dot{width:8px;height:8px;border-radius:999px;background:var(--state-critical);flex:none;
-  box-shadow:0 0 0 4px color-mix(in srgb,var(--state-critical) 22%,transparent)}
+/* "Active right now" is the speaking ring's problem, and it was settled there
+   in weight and value, not hue. Same answer here: a solid --foreground dot,
+   no halo, no pulse. Upcoming and past rows carry no dot at all, so the
+   distinction is presence against absence. */
+.dot{width:8px;height:8px;border-radius:999px;background:var(--foreground);flex:none}
 .live .meta{flex:1;min-width:0}
 .live .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -232,7 +235,9 @@ body.phone .topbar{position:static}
       </div>
     </div>
 
-    <!-- live is its own section: it is neither upcoming nor past -->
+    <!-- Happening now holds two different things and they must read
+         differently: one has people in it, the other is due and empty. -->
+    <div class="dayhead" style="margin-bottom:10px">Happening now</div>
     <div class="live">
       <span class="dot"></span>
       <div class="meta">
@@ -241,13 +246,21 @@ body.phone .topbar{position:static}
       </div>
       <button class="btn btn-primary btn-sm">Join</button>
     </div>
+    <div class="live" style="margin-top:-16px">
+      <span class="dot" style="background:var(--muted-foreground)"></span>
+      <div class="meta">
+        <div class="nm">Standup</div>
+        <div class="t-small dim">Started 3 minutes ago · no one has joined yet</div>
+      </div>
+      <button class="btn btn-secondary btn-sm">Join</button>
+    </div>
 
     <div class="seg" role="tablist">
       <button role="tab" aria-selected="true">Upcoming <span class="dim">6</span></button>
       <button role="tab" aria-selected="false">Past <span class="dim">12</span></button>
     </div>
 
-    <div class="daygroup">
+    <div class="daygroup" id="up-1">
       <div class="dayhead">Today · Friday 4 September</div>
       <div class="row">
         <div class="when"><b>10:34</b><span class="dim">GMT</span></div>
@@ -271,7 +284,7 @@ body.phone .topbar{position:static}
       </div>
     </div>
 
-    <div class="daygroup">
+    <div class="daygroup" id="up-2">
       <div class="dayhead">Tuesday 15 September</div>
       <div class="row">
         <div class="when"><b>14:30</b><span class="dim">GMT</span></div>
@@ -281,6 +294,42 @@ body.phone .topbar{position:static}
           <button class="btn btn-ghost btn-sm" title="Copy link"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
           <button class="btn btn-ghost btn-sm">Details</button>
           <button class="btn btn-secondary btn-sm">Join</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Past: months, not days. Upcoming is bounded and scanned by time;
+         past grows without limit and is browsed by rough period. Day headers
+         on a year of meetings is one header per row. -->
+    <div class="daygroup" id="past-1" hidden>
+      <div class="dayhead">September 2026</div>
+      <div class="row">
+        <div class="when"><b>Thu 3</b><span class="dim">03:04</span></div>
+        <div class="body"><div class="ttl">Test App</div>
+          <div class="sub"><span class="mono">vqw-ywfe-5zs</span> · 30 min</div></div>
+        <div class="ops">
+          <button class="btn btn-ghost btn-sm" title="Copy link"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          <button class="btn btn-ghost btn-sm">Details</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="when"><b>Wed 2</b><span class="dim">15:01</span></div>
+        <div class="body"><div class="ttl">Design review</div>
+          <div class="sub"><span class="mono">wcz-4npm-hjd</span> · 45 min · <span class="tag">Cancelled</span></div></div>
+        <div class="ops">
+          <button class="btn btn-ghost btn-sm">Details</button>
+        </div>
+      </div>
+    </div>
+    <div class="daygroup" id="past-2" hidden>
+      <div class="dayhead">August 2026</div>
+      <div class="row">
+        <div class="when"><b>Mon 31</b><span class="dim">15:01</span></div>
+        <div class="body"><div class="ttl">Sprint retro</div>
+          <div class="sub"><span class="mono">mzn-3fhw-dpy</span> · 60 min</div></div>
+        <div class="ops">
+          <button class="btn btn-ghost btn-sm" title="Copy link"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          <button class="btn btn-ghost btn-sm">Details</button>
         </div>
       </div>
     </div>
@@ -346,13 +395,10 @@ body.phone .topbar{position:static}
     <div class="section">
       <h2>When it is</h2>
       <div class="grid2">
-        <div><label class="label" for="dt">Date</label><input class="input" id="dt" type="date" value="2026-09-11"></div>
+        <div><label class="label" for="dt">Date</label><input class="input" id="dt" type="date" value="2026-09-11" min="2026-09-05"></div>
         <div><label class="label" for="tm">Start time</label>
-          <select class="input" id="tm">
-            <option>09:45</option><option selected>10:00</option><option>10:15</option>
-            <option>10:30</option><option>10:45</option><option>11:00</option>
-          </select>
-          <p class="hintline">15-minute steps. Type to jump.</p>
+          <input class="input" id="tm" type="time" value="10:00" step="900">
+          <p class="hintline">Type it, or use the arrows. 15-minute steps.</p>
         </div>
       </div>
       <div class="grid2" style="margin-top:16px">
@@ -375,6 +421,8 @@ body.phone .topbar{position:static}
         <div class="lines">
           <div id="pv-when"></div>
           <div id="pv-dur"></div>
+          <div id="pv-you"></div>
+          <div id="pv-err" style="color:var(--state-critical);margin-top:6px;display:none"></div>
           <div style="margin-top:6px">A link is generated when you schedule. Anyone with it can join without an account.</div>
         </div>
       </div>
@@ -484,23 +532,47 @@ document.querySelectorAll('.themebtn').forEach(b=>{
     $('pv-title').textContent = ti.value.trim() || 'Untitled meeting';
     const [zl,off] = tz.value.split('|'); const offset=Number(off);
     const mins = parseInt(du.value,10);
-    const [h,mi] = tm.value.split(':').map(Number);
+    const [h,mi] = (tm.value||'00:00').split(':').map(Number);
     const start = h*60+mi, end = start+mins;
     const d = new Date(dt.value+'T00:00:00');
     const day = isNaN(d) ? '—' :
       d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
     $('pv-when').innerHTML =
       `<b>${day}</b>, ${hhmm(start)} – ${hhmm(end)} <b>${zl}</b>`;
-    const utc = offset===0 ? 'same as UTC'
-      : `${hhmm(start-offset*60)} – ${hhmm(end-offset*60)} UTC`;
-    $('pv-dur').textContent = `${mins} minutes · ${utc}`;
+    $('pv-dur').textContent = `${mins} minutes`;
+    // Two zones can matter: the meeting's, and the reader's. Not UTC —
+    // the .ics and the join page already carry the absolute instant, and a
+    // third number on a confirmation card serves nobody in the meeting.
+    // a meeting cannot be scheduled into the past
+    const startsAt = new Date(dt.value+'T'+tm.value);
+    const past = !isNaN(startsAt) && startsAt.getTime() <= Date.now();
+    const err=$('pv-err'), submit=document.querySelector('#s-form .btn-primary');
+    err.style.display = past ? '' : 'none';
+    if(past) err.textContent = 'That time has already passed. Pick a later one.';
+    if(submit) submit.disabled = past;
+
+    const mine = -new Date().getTimezoneOffset()/60;
+    const you  = $('pv-you');
+    if (mine === offset) { you.textContent=''; you.style.display='none'; }
+    else {
+      const d = (mine-offset)*60;
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      you.style.display='';
+      you.innerHTML = `That's <b>${hhmm(start+d)} – ${hhmm(end+d)}</b> where you are (${zone}).`;
+    }
   }
   [ti,dt,tm,du,tz].forEach(el=>{el.addEventListener('input',render);el.addEventListener('change',render);});
   render();
 })();
 
-document.querySelectorAll('.seg button').forEach(b=>{
-  b.onclick=()=>{b.parentElement.querySelectorAll('button').forEach(x=>x.ariaSelected='false');b.ariaSelected='true';};
+document.querySelectorAll('.seg button').forEach((b,i)=>{
+  b.onclick=()=>{
+    b.parentElement.querySelectorAll('button').forEach(x=>x.ariaSelected='false');
+    b.ariaSelected='true';
+    const past = i===1;
+    ['up-1','up-2'].forEach(id=>{const e=document.getElementById(id); if(e) e.hidden=past;});
+    ['past-1','past-2'].forEach(id=>{const e=document.getElementById(id); if(e) e.hidden=!past;});
+  };
 });
 </script>
 </body>

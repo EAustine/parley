@@ -51,6 +51,8 @@ Dropping hue instead is not the answer here: §4.2 spends the entire chroma budg
 **5. No hue except where it is the meaning.**
 Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.
 
+The dashboard's live indicator follows the same rule and the same precedent: a solid `--foreground` dot, no hue and no pulse, with upcoming and past rows carrying no dot at all. "Active right now" is the speaking ring's problem wearing different clothes, and answering it twice — once in value, once in hue — would give the product two answers to one question. A pulse also fails "no ambient animation", and an indicator that `prefers-reduced-motion` has to suppress is one that does not work.
+
 The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--boundary` at 3.93:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
 
 **6. Chat is rendered as text.**

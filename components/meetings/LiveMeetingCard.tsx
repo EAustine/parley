@@ -7,12 +7,24 @@ import { CopyLinkButton } from "@/components/meetings/CopyLinkButton";
 import type { MeetingRowData } from "@/components/meetings/MeetingRow";
 
 /**
- * v1.3 D1's live block: "Live is its own block above the filter."
+ * v1.3 D1's block, above the filter and outside both lists — because a meeting
+ * that is happening is neither something to be at nor something you came out
+ * of.
  *
- * Its own card, above the segmented control and outside both lists — because a
- * meeting that is happening is neither something to be at nor something you
- * came out of. `partitionMeetings` has returned it as a third bucket since A1;
- * this is the presentation that bucket was waiting for.
+ * ## It holds two different things, and they must read differently
+ *
+ * A1's revised table puts a **scheduled meeting inside its own window** here
+ * too, not only a `live` one. That is the hole the first table had: at 10:15 in
+ * a 10:00–10:30 booking that nobody has joined, `status = 'live'` is false and
+ * `scheduled_start > now()` is false, so a two-way split had nowhere to put it.
+ *
+ * One has people in it. The other is due and empty, and saying "Started 3
+ * minutes ago" alone would send someone into an empty room expecting company.
+ * So the empty one says so, and says it in the same sentence.
+ *
+ * The distinction is carried in **value, not hue** — a `--muted-foreground` dot
+ * against `--foreground`, and a secondary Join against a primary one. Rule 5,
+ * and the same reasoning that made the dot neutral in the first place.
  *
  * ## The dot is neutral, and that was a decision
  *
@@ -27,17 +39,24 @@ import type { MeetingRowData } from "@/components/meetings/MeetingRow";
  * would have been a third permitted use of hue, and rule 5 would have had to
  * say so.
  *
- * ## No participant count
+ * ## The count, back with A2
  *
- * The design prints "3 people". Nothing in this application ever writes
- * `meeting_participants` — the LiveKit webhook handles `room_started` and
- * `room_finished` and no participant events, so the only writer is the dev
- * seeder. The count is structurally zero, and a live meeting reading "0 people"
- * is worse than a live meeting saying nothing about who is in it.
+ * It was removed in D1 because nothing wrote `meeting_participants` — the
+ * webhook handled `room_started` and `room_finished` and no participant events,
+ * so every figure was structurally zero and a live meeting read "0 people". A
+ * wrong number, not a missing one.
  *
- * It belongs to A2, which is the item that would create the writer. Until then
- * the honest render omits it — and the same reasoning removed the figure from
- * past rows, where "0 participants" has been shipping.
+ * A2 wired the writer, and this block wants the one that answers **how many are
+ * connected right now** — `here`, the sessions with no `left_at` — not how many
+ * ever arrived. On a meeting three people passed through and left, the two
+ * differ by three, and putting the wrong one here would say a room is full when
+ * it is empty.
+ *
+ * Shown only when it is non-zero. A `live` meeting with nobody in it is the
+ * webhook lagging behind the room, and "0 people" beside "Started 14 minutes
+ * ago" invites a reader to trust a number they should not — the due-but-empty
+ * card says "no one has joined yet" from `status`, which is a fact rather than
+ * a count.
  */
 export function LiveMeetingCard({
   meeting,
@@ -54,7 +73,26 @@ export function LiveMeetingCard({
    */
   now: number;
 }) {
-  const since = meeting.started_at ?? meeting.created_at;
+  /**
+   * Someone is actually in it, as opposed to it being due.
+   *
+   * Read from `status` rather than passed in: the row already carries the
+   * distinction, and the partition deliberately does not — it answers *which
+   * section*, and this answers *which sentence*.
+   */
+  const joined = meeting.status === "live";
+
+  /**
+   * When it started, or was due to.
+   *
+   * `scheduled_start` before `created_at`, and that ordering is the whole of
+   * this line. A meeting booked last Tuesday for today at 10:00 has a
+   * `created_at` a week old and no `started_at` until somebody arrives — so
+   * falling through to `created_at` would greet a meeting that is three minutes
+   * overdue with "Started 7 days ago".
+   */
+  const since =
+    meeting.started_at ?? meeting.scheduled_start ?? meeting.created_at;
 
   return (
     <div
@@ -63,12 +101,19 @@ export function LiveMeetingCard({
     >
       <span
         aria-hidden
-        className="size-2 shrink-0 rounded-full bg-foreground"
+        className={`size-2 shrink-0 rounded-full ${joined ? "bg-foreground" : "bg-muted-foreground"}`}
       />
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold">{meeting.title}</p>
         <p className="type-small text-muted-foreground">
           {formatElapsed(since, now)}
+          {!joined && " · no one has joined yet"}
+          {joined && meeting.here > 0 && (
+            <>
+              {" · "}
+              {meeting.here} {meeting.here === 1 ? "person" : "people"}
+            </>
+          )}
         </p>
       </div>
       {/*
@@ -83,11 +128,18 @@ export function LiveMeetingCard({
       */}
       <CopyLinkButton code={meeting.code} />
 
-      {/* The design's `.btn-primary.btn-sm`. 36px clears the 24px floor this
-          surface is held to — the room's 44 is a room rule. */}
+      {/* Primary when there are people to join, secondary when there are not —
+          the design's `.btn-primary.btn-sm` against `.btn-secondary.btn-sm`.
+          36px clears the 24px floor this surface is held to; the room's 44 is a
+          room rule. */}
       <Link
         href={`/j/${meeting.code}`}
-        className="type-small inline-flex h-9 shrink-0 items-center rounded-md bg-primary px-4 font-medium text-primary-foreground"
+        className={`type-small inline-flex h-9 shrink-0 items-center rounded-md px-4 font-medium ${
+          joined
+            ? "bg-primary text-primary-foreground"
+            : "border bg-secondary text-foreground"
+        }`}
+        style={joined ? undefined : { borderColor: "var(--boundary)" }}
       >
         Join
       </Link>

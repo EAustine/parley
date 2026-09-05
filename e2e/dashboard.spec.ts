@@ -2,7 +2,12 @@ import { devices } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
 import { signIn } from "./auth";
-import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
+import {
+  addSessions,
+  createFixtureHost,
+  createMeeting,
+  deleteFixtureHost,
+} from "./meeting-admin";
 
 /**
  * The meetings list and the header — BUILD-PLAN v1.3 D1 and D2.
@@ -328,6 +333,65 @@ test.describe("the meetings list", () => {
       }
     });
   }
+
+  /**
+   * The counts, back with v1.3 A2 — and read **through RLS as the host**, which
+   * is the half that matters.
+   *
+   * `meeting_participants` had no writer for the whole of v1.2, so every count
+   * was structurally zero and past rows asserted "0 participants" on meetings
+   * that had been full. A test that read the table as the service role would
+   * have reproduced that bug rather than caught it: the query was never the
+   * problem, the empty table was, and RLS is the other thing that can silently
+   * return nothing.
+   *
+   * Two counts, because they are two questions. A meeting three people passed
+   * through and left is `joined: 3, here: 0`, and reporting either under the
+   * other's name describes a different meeting.
+   */
+  test("a past meeting reports arrivals, and a live one reports who is here", async ({ page }) => {
+    const host = await createFixtureHost();
+    const now = Date.now();
+    try {
+      const over = await createMeeting({
+        host: host.id, status: "ended", title: "Finished with people",
+        scheduledStart: new Date(now - 2 * HOUR),
+        scheduledEnd: new Date(now - HOUR),
+      });
+      // Three arrivals, all gone: what a past meeting reports is the arrivals.
+      await addSessions(over, [
+        { name: "Ama", identity: "guest_a", left: true },
+        { name: "Kwabena", identity: "guest_b", left: true },
+        { name: "Yaw", identity: "guest_c", left: true },
+      ]);
+
+      const running = await createMeeting({
+        host: host.id, status: "live", title: "Running with people",
+      });
+      // Three arrivals, one already gone: what a live meeting reports is two.
+      await addSessions(running, [
+        { name: "Ama", identity: "guest_d" },
+        { name: "Kwabena", identity: "guest_e" },
+        { name: "Yaw", identity: "guest_f", left: true },
+      ]);
+
+      await signIn(page, host.email, "/dashboard");
+      await expect(page.getByRole("heading", { name: "Meetings" })).toBeVisible();
+
+      const live = page.getByRole("region", { name: "Happening now" });
+      await expect(live).toContainText("2 people");
+      // Not the arrivals — three people have been in this room.
+      await expect(live).not.toContainText("3 people");
+
+      await page.getByRole("tab", { name: /^Past/ }).click();
+      const row = page
+        .locator("#panel-past li[data-meeting]")
+        .filter({ hasText: "Finished with people" });
+      await expect(row).toContainText("3 people");
+    } finally {
+      await deleteFixtureHost(host.id);
+    }
+  });
 });
 
 test.describe("the account menu", () => {

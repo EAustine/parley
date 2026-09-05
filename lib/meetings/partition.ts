@@ -95,16 +95,28 @@ export function bucketOf(meeting: Partitionable, now: number): Bucket {
   if (meeting.status === "live") return "live";
 
   /**
-   * Everything else is upcoming, including a meeting inside its own slot that
-   * nothing has marked live — 10:15 in a 10:00–10:30 booking with no one there
-   * yet. A1's table has no home for it: `status = 'live'` is false and
-   * `scheduled_start > now()` is false too.
+   * A meeting inside its own slot that nothing has marked live — 10:15 in a
+   * 10:00–10:30 booking, with nobody there yet.
    *
-   * Upcoming rather than live, so that "Live now" keeps meaning what its
-   * pulsing dot and participant count promise — people are in this room. It
-   * leaves the list on its own the moment `scheduled_end` passes, which is the
-   * belt above doing the work rather than a second rule.
+   * **This is the hole A1's first table had, and the answer is neither of the
+   * two sections it offered.** `status = 'live'` is false and
+   * `scheduled_start > now()` is false, so a two-way partition has no home for
+   * it: an `else past` fallback makes the meeting vanish at the exact moment
+   * someone would go looking for it, and `else upcoming` — which this returned
+   * — leaves it filed under things that have not started, at 10:15.
+   *
+   * So the section holds both, and the two read differently: one has people in
+   * it, the other is due and empty. `LiveMeetingCard` branches on `status`,
+   * which already carries the distinction, and says "no one has joined yet"
+   * rather than implying a room with somebody in it.
+   *
+   * It leaves for Past when `scheduled_end` passes — the belt above, not a
+   * second rule. A meeting due at 01:15 for half an hour that nobody joins is
+   * past at 01:45, not at 01:15.
    */
+  const start = ms(meeting.scheduled_start);
+  if (start !== null && now >= start) return "live";
+
   return "upcoming";
 }
 
@@ -113,7 +125,7 @@ export function bucketOf(meeting: Partitionable, now: number): Bucket {
  *
  * They sort in different directions, which is why this is not one `ORDER BY`.
  * Upcoming reads soonest-first — the next thing you have to be at. Past reads
- * most-recent-first — the thing you just came out of. Live reads
+ * most-recent-first — the thing you just came out of. Happening now reads
  * longest-running first, so a meeting someone has been sitting in leads.
  */
 export function partitionMeetings<T extends Partitionable>(

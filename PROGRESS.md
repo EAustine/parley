@@ -7112,3 +7112,164 @@ seconds has to show.
 `check:contrast` 28, `check:partition` 20/20, `check:deps` 5/5, `check:ics`
 69/69, `check:chat` 73/73, `check:connection` 72/72, `check:permissions` 39/39,
 `check:codes` 6/6.
+
+---
+
+## v1.3 docs update — what was adopted, and what was refused
+
+A second `parley-docs.zip`. **Three of its seven documents are older than the
+copies in the repo**, and copying the bundle wholesale would have reverted
+shipped work. Merged rather than copied, for the third time.
+
+| File | |
+|---|---|
+| `BUILD-PLAN-v1.3.md`, all three designs | adopted wholesale — newest and internally coherent |
+| `CLAUDE.md` | took rule 5's live-indicator paragraph; **kept** the `check:scrim` section the zip drops |
+| `PRD.md` | took §3.9's two-zone rule and §3.10's three sections; **kept** C5's screen-share fix and §10's bundle text |
+| `BUILD-PLAN.md` | **refused** — an hour older, and reverts the touch-target split, "Meeting full", the OG-with-host decision and the 180 kB dashboard figure |
+
+The `check:scrim` case is the sharpest. The zip's `CLAUDE.md` restores the
+sentence "any hued element … fails the check instead of shipping" and deletes
+the four paragraphs explaining that it does not — which is the finding that a
+permitted-surface matrix is never shown a pairing that exists, and that
+`RoomControls` drew `--state-critical` on `--scrim` at 2.53:1 for the whole of
+v1.2 while the matrix ran green. `npm run check:scrim` exists, passes, and is
+what closed it. Taking the zip's copy would have deleted the record of a bug and
+the reason its check was written.
+
+---
+
+## v1.3 A1, revised — Happening now
+
+The plan's table changed, and the change is a real defect being closed.
+
+A meeting **inside its own window that nobody has joined** — 10:15 in a
+10:00–10:30 booking — satisfies neither `status = 'live'` nor
+`scheduled_start > now()`. A two-way partition has no home for it, and both
+fallbacks are wrong: `else past` makes the meeting vanish at the exact moment
+someone would go looking for it, and `else upcoming` — which this returned —
+files a meeting that is due right now under things that have not started.
+
+So the section holds both, and they read differently:
+
+| | Dot | Reads | Join |
+|---|---|---|---|
+| someone is in it | `--foreground` | "Started 14 minutes ago · 2 people" | primary |
+| due, and empty | `--muted-foreground` | "Started 3 minutes ago · no one has joined yet" | secondary |
+
+Value, not hue — rule 5, and the same reasoning that made the dot neutral.
+
+**And the elapsed time had to change with it.** It read
+`started_at ?? created_at`, which for a meeting booked last Tuesday for today at
+10:00 is a `created_at` a week old — so a meeting three minutes overdue would
+have been greeted with "Started 7 days ago". `scheduled_start` goes between
+them.
+
+It leaves for Past when `scheduled_end` passes, which is the belt already there
+rather than a second rule: a meeting due at 01:15 for half an hour that nobody
+joins is past at 01:45, not at 01:15. `check:partition` pins both instants
+exactly — at `scheduled_start` it moves, a minute before it does not; at
+`scheduled_end` it leaves.
+
+---
+
+## v1.3 A2 — the webhook, and the count that was always zero
+
+### The diagnosis first, because A2 asks for one
+
+A2 is three questions in order, and `check:webhook` answers the third directly
+and the first two empirically. Run against the live database:
+
+```
+  9 meetings in the database
+  4 have started_at set   (room_started landed)
+  5 have ended_at set     (room_finished landed)
+```
+
+`started_at` has one writer — the deployed route — and LiveKit Cloud cannot
+reach localhost. So the URL is registered, reachable, and verifying: **A2 items
+1 and 2 are answered, and the answer is that the webhook works.** The suspicion
+that opened A1 was right about the symptom and wrong about the cause.
+
+### The cause was that nothing wrote the participants table
+
+`meeting_participants` has existed since the first migration and had **no writer
+anywhere in the application** — the webhook handled `room_started` and
+`room_finished` and no participant events, so the only writer was the dev
+seeder. Every count read from it was structurally zero, and the dashboard
+asserted "0 participants" on meetings that had been full.
+
+`participant_joined` and `participant_left` are wired now, and
+`participant_connection_aborted` alongside the second: it usually finds no open
+row and matches nothing, but when it does find one, closing it is the difference
+between a live count that settles and one that never comes down.
+
+### A row is a session, which is what makes two counts possible
+
+It opens on arrival and closes on departure — nothing is deleted. So D1's two
+questions come from one table:
+
+- **`joined`** — every row — is how many arrived. What a past meeting reports.
+- **`here`** — `left_at is null` — is how many are connected now. What a
+  happening-now meeting reports.
+
+A meeting three people passed through and left is `joined: 3, here: 0`, and
+reporting either under the other's name describes a different meeting. D1 asks
+for this to be defined before it is built, and the naming is the definition.
+
+**A guest counts once per arrival, not once per person.** A guest identity is
+minted fresh on every join, so somebody who drops and returns is two arrivals —
+nothing links them, and inventing a link would mean fingerprinting. A signed-in
+participant is `user_<uuid>` and is one.
+
+### Idempotency, because LiveKit retries
+
+A delivery that does not get a 2xx comes again, so one arrival can produce two
+`participant_joined` events — and a second open row would make the live count
+read one too many for the rest of the meeting. The route checks for an open
+session first, which is a check-then-insert and carries exactly the race
+`CLAUDE.md` warns about for meeting codes.
+
+`supabase/migrations/20260905120000_participant_sessions.sql` closes it: a
+**partial** unique index on `(meeting_id, identity) where left_at is null`.
+Partial, because a full one would say "this person may only ever join once",
+which is wrong — someone who drops and comes back is a second session. Only the
+open rows have to be unique, and those are exactly what the live count reads.
+
+The insert tolerates `23505` rather than failing the delivery, so the route is
+correct before the migration is applied and airtight after. **Applying it is
+Austine's step** — it needs the database password.
+
+And `room_finished` now closes every session still open. A room torn down by
+`deleteRoom` — which is what "End meeting" does — is not obliged to send
+`participant_left` for everybody on the way out, and a row left open after that
+counts toward "here now" forever on a meeting that has ended.
+
+### The test that would have reproduced the bug
+
+The counts are read on the dashboard **through RLS, as the host**. A test that
+read them as the service role would have proved the query and missed the thing
+that was actually broken — the query was never the problem, the empty table was,
+and RLS is the other thing that can silently return nothing. So the e2e fixture
+writes sessions and the assertion reads the rendered row: three arrivals all
+gone shows "3 people" on the past row, and three arrivals with one gone shows
+"2 people" on the live card — and explicitly *not* "3".
+
+### Mutation checks
+
+| Deleted | Fails |
+|---|---|
+| the open-session guard | a redelivered join is not a second person |
+| `room_finished`'s session close | room_finished closes every session still open |
+| the unknown-room acknowledgement | a participant in a room we do not know is acknowledged |
+| the `else upcoming` fallback, restored | in its own slot but nobody has joined |
+
+The `is("left_at", null)` filter on the leave update is a **backstop, not
+coverage**: without it a redelivered leave rewrites the departure time of
+already-closed sessions, which no count can see. Named here rather than claimed
+as tested.
+
+### Checks
+
+`check:webhook` 11/11 (was 5 — six new), `check:partition` 23/23 (was 20),
+`check:deps` 5/5.

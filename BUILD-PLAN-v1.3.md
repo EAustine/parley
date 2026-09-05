@@ -26,11 +26,24 @@ An instant meeting has no `scheduled_start`, so it can never be upcoming — it 
 
 | Section | Rule |
 |---|---|
-| **Live now** | `status = 'live'` — its own block above the filter, never inside either list |
+| **Happening now** | `status = 'live'`, **or** `status = 'scheduled'` and `scheduled_start <= now() < scheduled_end` |
 | **Upcoming** | `status = 'scheduled'` **and** `scheduled_start > now()` |
-| **Past** | `status in ('ended','cancelled')`, **or** `scheduled_end < now()` |
+| **Past** | `status in ('ended','cancelled')`, **or** `status = 'scheduled'` and `scheduled_end <= now()` |
 
-**A meeting whose end time has passed reads as past whether or not anything told the database so.** That is the belt to the webhook's braces, and it is what was missing.
+**A meeting whose end time has passed reads as past whether or not anything told the database so.** That is the belt to the webhook's braces.
+
+**The first version of this table had a hole, and it shipped.** A meeting scheduled for 01:15 dropped into Past at exactly 01:15. Between its start and its end, a scheduled meeting nobody has joined is neither upcoming — its start has passed — nor past — its window has not closed. The two-way partition had no home for it, and an `else past` fallback sent it to the worst possible one: the meeting vanished from view at the precise moment someone would go looking for it.
+
+So the live block becomes **Happening now** and holds two different things, which must read differently:
+
+| | Reads |
+|---|---|
+| `live` — someone is in it | "Started 14 minutes ago" |
+| `scheduled`, inside its window, nobody joined | "Started 3 minutes ago · no one has joined yet" |
+
+The second is the honest line. A meeting that is due but empty is not the same as a meeting in progress, and telling someone it started when nobody is there sends them into an empty room without warning.
+
+It leaves Happening now for Past when `scheduled_end` passes — a meeting due at 01:15 for 30 minutes that nobody joins is past at 01:45, not at 01:15.
 
 ### A2. Is the LiveKit webhook actually receiving events?
 
@@ -99,6 +112,12 @@ That last point is a decision. Silently moving someone's audio to a device they 
 
 Specified by `design/02-room.html`. Everything below is visible there.
 
+### C0. Smaller fixes from the v1.3 test round
+
+- **PiP is bigger** — 260px on desktop, 148px on mobile, still 16:9. At 200/112 it was too small to read a face, which defeats the point of showing yourself at all.
+- **The mobile control bar is one row including Leave.** It wrapped to two, costing about 70px on the axis where space is scarcest. `flex-wrap:nowrap` on the bar and its groups.
+- **Pre-join's permission card gets top padding on mobile** — it sat against the header divider with no breathing room.
+
 ### C1. Self-view is a corner PiP, and it is draggable
 
 Your own face does not need equal weight with the people you are talking to. On a two-person call that is the difference between two half-screens and one full one.
@@ -118,6 +137,14 @@ Three tiers, as v1.2's B4 described:
 **Mobile is six controls**: mic, camera, chat, people, overflow, Leave. Present and reactions move into the overflow menu, which also holds audio and video settings and, on desktop, keyboard shortcuts. Eight controls do not fit a 390px bar; six fit with room.
 
 The people badge is a 16px pill on the icon's corner. **It must be positioned against a wrapper containing only that button** — in the mockup it briefly anchored to a container holding two buttons and rendered on the wrong one.
+
+### C2a. The mute request is a question, not an announcement
+
+It currently renders as a full-width bar pinned to the top of the viewport, above the video, pushing the layout down. Three things wrong: it is nowhere near the microphone it is about, it displaces content so the room jumps, and it has the visual weight of a system alert for something a participant may reasonably decline.
+
+**A card above the control bar, overlaying rather than displacing.** `--popover` on a `--boundary` edge with a struck-mic icon, "**Kofi** asked you to mute", then Mute (primary) and Stay unmuted (ghost). Full-width and stacked on mobile.
+
+Declining is a real option and reads like one — §3.8's rule is that a host can silence but never activate, and a request the interface pressures you into is not a request.
 
 ### C3. One panel, two tabs
 
@@ -154,9 +181,27 @@ Specified by `design/03-dashboard-schedule.html`.
 
 ### D1. The list
 
-**Live is its own block** above the filter, with a pulsing dot, elapsed time, participant count, and Join.
+**Live is its own block** above the filter, with a solid `--foreground` dot, elapsed time, and Join.
+
+**No participant count anywhere, and "0 participants" comes off past rows now.** Nothing in the app writes `meeting_participants` — the webhook handles only `room_started` and `room_finished`, and only the dev seeder inserts rows. So the count is structurally zero, and every past row currently asserts "0 participants" whatever actually happened. **That is a wrong number, not a missing one**, which makes it a defect rather than a design gap, and it ships today.
+
+The count returns when A2 wires `participant_joined` and `participant_left`, and belongs to A2 because A2 is the item that creates the writer. When it does, **define what it means before building it** — a past meeting wants total unique people who joined, a live one wants how many are connected right now. Same table, different queries (`all rows` against `left_at is null`), and deciding by accident gives one number the wrong name.
+
+Reading the count live from `RoomServiceClient.listParticipants` was considered and declined: it is accurate but only for live meetings, so past rows keep no figure and the two states disagree about whether a count exists. It also puts a network round trip in a render path for a decorative number.
+
+The dot is **neutral and static**. A draft used `--state-critical` with a pulsing halo, which read as destructive and broke two rules at once. Red is wrong because it is the leave-and-end colour; a new hue is wrong because the palette spends chroma on exactly two things and "active right now" was already settled in weight and value by the speaking ring. Answering the same question twice, once in value and once in hue, gives the product two answers to one question. The pulse fails separately under "no ambient animation" — and an indicator `prefers-reduced-motion` must suppress is one that does not work.
+
+If the block needs more emphasis than a dot gives, the next move is a **"Live" text chip**, not a colour: unambiguous, colourblind-safe, and legible without motion.
 
 **Upcoming groups by day.** 41 rows in one flat list is a wall. Day headers make it scannable, and the time is the leftmost column at 15px so you scan times rather than reading titles to find one. **The zone label is always printed** — §3.9's trap.
+
+**Past groups by month, descending.** Not by day. The two lists are used differently and grow differently: upcoming is bounded by what you have scheduled and is scanned for a specific time, while past grows without limit and is browsed by rough period. Day headers on a year of meetings is close to one header per row, which is worse than none — and the problem gets worse over time, where month headers never do.
+
+Grouping exists to remove repetition. Day headers let an upcoming row show only a time; month headers let a past row show a short day and time. Dropping grouping entirely would put the full date back on every row, which is the repetition the grouping was avoiding.
+
+"Yesterday" is not needed. The most recent meeting is the first row, which is the only thing a "Yesterday" header would have told anyone.
+
+**Join is withheld on past rows** — their actions are Copy link and Details. Cancelled meetings carry a tag and lose Copy link, since the link no longer works.
 
 Filter is a segmented control: Upcoming and Past with counts. Row actions appear on hover and are always visible on touch, so the list is quiet at rest.
 
@@ -168,8 +213,16 @@ Filter is a segmented control: Upcoming and Past with counts. Row actions appear
 
 Three questions rather than a flat stack of six fields: **what it is**, **when it is**, **check it**.
 
-- **Time picker**: a 15-minute select on desktop, native `<input type="time">` on mobile for the OS wheel.
-- **The preview is computed from the form**, not static copy. Title, day spelled out, start *and end* derived from duration, zone in bold, and **the UTC equivalent when the selected zone is not UTC**. That is the whole reason the card exists: someone in Accra scheduling for New York should see the mismatch before scheduling, not when nobody joins. Title falls back to "Untitled meeting" so the card does not jump while typing.
+- **Time picker**: native `<input type="time" step="900">` everywhere, **reversing the earlier call**. A 15-minute select over 24 hours is 96 options, and the browser renders that as a list taller than the viewport — a worse problem than a spinner that looks slightly different across browsers. Native also types ("1430"), gives mobile the OS wheel, and has no popup to be too long.
+
+- **A meeting cannot be scheduled into the past.** `min` on the date input, and if the chosen instant has already passed the preview says so and Schedule is disabled. **Validate on the server too** — client validation is advisory, and a stale tab can submit a time that was future when the page loaded.
+
+- **Timezone list**: a native `<select>`'s popup height is the browser's to decide, not ours. Put the reader's own zone at the top under "Your timezone", then the grouped list, so the common case needs no scrolling at all. If the full list still needs to be short, that is an argument for a searchable combobox — and a reason to revisit the Radix decision on its own merits, not a reason to cap a height we do not control.
+- **The preview is computed from the form**, not static copy. Title, day spelled out, start *and end* derived from duration, meeting zone in bold, duration, and — **only when the meeting's zone differs from the reader's own** — a line reading "That's 16:00 – 16:30 where you are (Europe/Berlin)." Title falls back to "Untitled meeting" so the card does not jump while typing.
+
+  **Not UTC.** An earlier draft of this said UTC, and it was wrong for a reason worth recording: the example was written from Accra, where GMT+0 makes "UTC" and "where you are" the same line, so the spec never had to distinguish them. Two zones can matter on this card — the meeting's and the reader's — and UTC is neither. A Berlin host scheduling a Berlin meeting would get a UTC time nobody in the meeting will ever use, which is precisely the commonest case outside GMT+0.
+
+  The neutral-anchor job is already done elsewhere and better: the `.ics` and the calendar prefills carry the absolute instant, and the join page renders in each viewer's own zone. A line of text on a form is a worse version of something the product already handles.
 - Use `date-fns-tz` with the IANA zone. The mockup hardcodes offsets because it is static; a fixed `+1` for London is right in September and wrong in January.
 
 ### D4. Meeting detail

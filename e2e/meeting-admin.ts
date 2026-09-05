@@ -235,6 +235,46 @@ export async function createMeeting(
   return code;
 }
 
+/**
+ * Sessions on a meeting — v1.3 A2.
+ *
+ * A row in `meeting_participants` is a session: it opens on arrival and closes
+ * on departure. The webhook writes them in production; this writes them
+ * directly, because what the dashboard tests are about is the two *counts* and
+ * whether **RLS lets a host read them** — not the delivery path, which
+ * `check:webhook` owns and exercises end to end.
+ *
+ * That distinction is the point. The counts were structurally zero for the
+ * whole of v1.2 and nothing noticed, so a test that reads them as the service
+ * role would reproduce the bug rather than catch it.
+ */
+export async function addSessions(
+  code: string,
+  sessions: { name: string; identity: string; left?: boolean }[],
+): Promise<void> {
+  const found = await rest(
+    `/rest/v1/meetings?code=eq.${encodeURIComponent(code)}&select=id`,
+  );
+  const [meeting] = (await found.json()) as { id: string }[];
+  if (!meeting) throw new Error(`no meeting ${code}`);
+
+  for (const session of sessions) {
+    const response = await rest("/rest/v1/meeting_participants", {
+      method: "POST",
+      body: JSON.stringify({
+        meeting_id: meeting.id,
+        display_name: session.name,
+        identity: session.identity,
+        role: "participant",
+        left_at: session.left ? new Date().toISOString() : null,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`add session: ${response.status} ${await response.text()}`);
+    }
+  }
+}
+
 export async function deleteMeeting(code: string): Promise<void> {
   await rest(`/rest/v1/meetings?code=eq.${encodeURIComponent(code)}`, {
     method: "DELETE",

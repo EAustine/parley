@@ -288,6 +288,8 @@ Fields: title, optional description, date, start time, duration (15 / 30 / 45 / 
 
 **Timezone handling.** Store UTC in the database. Store the creator's IANA timezone alongside. Render in the viewer's local timezone. Always print the zone label next to a time. This is the one place where a quiet bug produces a missed meeting.
 
+**The schedule preview shows two zones at most: the meeting's, and the reader's own when it differs.** Never UTC. UTC is a neutral anchor for storage and for the `.ics`, not a number to put in front of someone confirming a form — a host scheduling in their own zone would read a third time that nobody in the meeting will use. Test this from a zone that is not GMT+0; from Accra the bug is invisible, because UTC and local coincide.
+
 Default timezone is `Intl.DateTimeFormat().resolvedOptions().timeZone`, editable.
 
 **Calendar integration — no OAuth.** Three exports:
@@ -308,7 +310,9 @@ This covers every calendar client, requires no consent screen, and saves roughly
 
 ### 3.10 Dashboard
 
-Signed-in home. Two sections: upcoming and past. Each row: title, time with zone, code, participant count if ended. Primary actions: "Start meeting" and "Schedule meeting."
+Signed-in home. **Three sections: happening now, upcoming, past** — see `BUILD-PLAN-v1.3.md` A1 for the partition and why a two-way split had a hole in it.
+
+A scheduled meeting between its start and end, that nobody has joined, belongs to **happening now**. It is neither upcoming nor past, and an `else past` fallback makes it disappear at the exact moment someone would look for it. Each row: title, time with zone, code, participant count if ended. Primary actions: "Start meeting" and "Schedule meeting."
 
 Empty state is an invitation, not an apology: "No meetings yet. Start one now, or schedule for later."
 

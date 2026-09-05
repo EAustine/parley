@@ -21,6 +21,10 @@ export type MeetingRowData = {
   status: MeetingStatus;
   created_at: string;
   started_at: string | null;
+  /** Arrivals — every session. What a past meeting reports. */
+  joined: number;
+  /** Connected now — sessions with no `left_at`. What a live meeting reports. */
+  here: number;
 };
 
 /**
@@ -148,6 +152,17 @@ export function MeetingRow({
             <>
               <span aria-hidden>·</span>
               <span>{duration}</span>
+            </>
+          )}
+          {/* A2: arrivals, on a meeting that is over. Not on an upcoming one,
+              where the answer is always nought and means nothing, and not on a
+              cancelled one, which did not happen. */}
+          {past && !cancelled && meeting.joined > 0 && (
+            <>
+              <span aria-hidden>·</span>
+              <span>
+                {meeting.joined} {meeting.joined === 1 ? "person" : "people"}
+              </span>
             </>
           )}
         </div>

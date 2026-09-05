@@ -9,6 +9,7 @@ import { DashboardFreshness } from "@/components/meetings/DashboardFreshness";
 import { MeetingsList } from "@/components/meetings/MeetingsList";
 import type { MeetingRowData } from "@/components/meetings/MeetingRow";
 import { partitionMeetings } from "@/lib/meetings/partition";
+import type { MeetingStatus } from "@/lib/supabase/types";
 
 export const metadata: Metadata = {
   title: "Meetings",
@@ -27,19 +28,70 @@ export default async function DashboardPage() {
   /**
    * Every row here is reached through RLS as this user, and in one query.
    *
-   * `meeting_participants(count)` is **gone** — v1.3 D1. Nothing in this
-   * application ever wrote that table: the LiveKit webhook handles
-   * `room_started` and `room_finished` and no participant events, so the only
-   * writer is `scripts/seed-dev.mjs`. The count was structurally zero, and it
-   * was rendering on every past row as "0 participants" whatever had actually
-   * happened. A number that is always wrong is worse than no number, so it
-   * comes out until A2 creates the writer.
+   * **Two counts, because they are two different questions** — v1.3 A2, and D1
+   * asks for them to be named before they are built.
+   *
+   * A row in `meeting_participants` is a *session*: it opens when somebody
+   * arrives and closes when they go. So:
+   *
+   * - **`joined`** — every row — is how many arrivals a meeting had. It is what
+   *   a past meeting wants: "four people were in this".
+   * - **`here`** — rows with `left_at is null` — is how many are connected
+   *   right now. It is what a happening-now meeting wants.
+   *
+   * Same table, two filters, and the distinction is not cosmetic: a meeting
+   * three people passed through and left is `joined: 3, here: 0`, and reporting
+   * either number under the other's name is a different meeting.
+   *
+   * The counts were removed entirely in D1 because nothing wrote the table —
+   * the webhook handled `room_started` and `room_finished` and no participant
+   * events, so every figure was structurally zero and the dashboard asserted
+   * "0 participants" on meetings that had been full. A2 wired the writer, and
+   * they come back.
+   *
+   * **A guest counts once per arrival, not once per person.** A guest identity
+   * is minted fresh on every join, so somebody who drops and comes back is two
+   * arrivals — there is nothing linking them, and inventing a link would mean
+   * fingerprinting. A signed-in participant is `user_<uuid>` and is one.
    */
   const { data, error } = await supabase
     .from("meetings")
     .select(
-      "id, code, title, scheduled_start, scheduled_end, status, created_at, started_at",
-    );
+      "id, code, title, scheduled_start, scheduled_end, status, created_at, started_at, " +
+        "joined:meeting_participants(count), " +
+        "here:meeting_participants(count)",
+    )
+    .is("here.left_at", null)
+    /*
+     * Cast, and narrowly.
+     *
+     * The generated Supabase types describe the tables; they do not model two
+     * *aliased* embeds of the same relation with a filter applied to one of
+     * them, so the inferred row collapses to an error type. The query itself is
+     * ordinary PostgREST and was verified against the real database before this
+     * was written: three sessions with one closed returns `joined: 3, here: 2`,
+     * and zero for both once the rows are gone.
+     *
+     * The alternative was two round trips to avoid a cast, which is a worse
+     * trade on the page D5 refreshes.
+     */
+    .overrideTypes<
+      {
+        id: string;
+        code: string;
+        title: string;
+        scheduled_start: string | null;
+        scheduled_end: string | null;
+        status: MeetingStatus;
+        created_at: string;
+        started_at: string | null;
+        joined: { count: number }[] | null;
+        here: { count: number }[] | null;
+      }[]
+    >();
+
+  const countOf = (value: unknown) =>
+    (value as { count: number }[] | null)?.[0]?.count ?? 0;
 
   const meetings: MeetingRowData[] = (data ?? []).map((m) => ({
     id: m.id,
@@ -50,6 +102,8 @@ export default async function DashboardPage() {
     status: m.status,
     created_at: m.created_at,
     started_at: m.started_at,
+    joined: countOf(m.joined),
+    here: countOf(m.here),
   }));
 
   /**

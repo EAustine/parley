@@ -89,7 +89,7 @@ body{background:var(--background);color:var(--foreground);overflow:hidden;
 /* self view — a corner PiP, not a peer tile */
 .stage-inner{position:relative;flex:1;min-height:0;display:flex}
 .stage-inner>.grid,.stage-inner>.shareview{flex:1;min-width:0}
-.pip{position:absolute;right:16px;bottom:16px;width:200px;aspect-ratio:16/9;border-radius:.75rem;
+.pip{position:absolute;right:16px;bottom:16px;width:260px;aspect-ratio:16/9;border-radius:.75rem;
   overflow:hidden;border:1px solid var(--boundary);background:var(--card);z-index:3;
   box-shadow:0 8px 24px rgba(0,0,0,.45);cursor:grab;touch-action:none;user-select:none}
 .pip:active{cursor:grabbing}
@@ -243,6 +243,26 @@ body{background:var(--background);color:var(--foreground);overflow:hidden;
   .menu .desk-only{display:none}
 }
 
+/* A mute request is a question, not an announcement. It sits above the
+   control bar, near the mic it is about, and overlays rather than pushing
+   the video down. */
+.ask{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:25;
+  display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;max-width:calc(100% - 24px);
+  border-radius:12px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.5)}
+.ask .txt{font-size:14px;line-height:20px}
+.ask .txt b{font-weight:600}
+.ask .acts{display:flex;gap:6px;flex:none}
+.ask .acts button{height:36px;padding:0 12px;border-radius:var(--radius);font:inherit;font-size:13px;
+  font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.ask .yes{background:var(--primary);color:var(--primary-foreground)}
+.ask .no{background:transparent;color:var(--muted-foreground)}
+.ask .no:hover{background:var(--secondary);color:var(--foreground)}
+@media (max-width:900px){
+  .ask{left:8px;right:8px;transform:none;max-width:none;flex-direction:column;align-items:stretch;gap:10px}
+  .ask .acts button{flex:1;height:40px}
+}
+
 /* leave menu — the destructive option lives behind the chevron, never
    beside Leave where a mis-click ends everyone else's meeting */
 .leave-wrap{position:relative;display:inline-flex}
@@ -292,7 +312,7 @@ dialog.confirm .end{background:var(--destructive);color:var(--destructive-foregr
   .room-main{flex-direction:column}
   .stagearea{padding:8px;gap:6px}
   .grid{grid-template-columns:1fr;grid-auto-rows:1fr}
-  .pip{right:12px;bottom:12px;width:112px}
+  .pip{right:12px;bottom:12px;width:148px}
   .pip .label{height:32px;font-size:11px;padding:0 6px 5px}
   /* F3: a horizontal strip, not a 2-up grid eating the top third */
   .shareview{flex-direction:column}
@@ -300,9 +320,11 @@ dialog.confirm .end{background:var(--destructive);color:var(--destructive-foregr
   .filmstrip .tile{height:96px;width:auto;aspect-ratio:16/9;flex:none}
   /* one row, Leave inline. Present and reactions move into the overflow
      menu — six controls fit a 390px bar, eight do not. */
-  .bar{padding:8px;gap:4px}
-  .grp{gap:4px}
-  .grp+.grp{margin-left:8px}
+  /* one row, always — Leave included. Wrapping costs ~70px of a scarce axis */
+  .bar{padding:8px;gap:4px;flex-wrap:nowrap;overflow:visible}
+  .grp{gap:4px;flex-wrap:nowrap}
+  .grp+.grp{margin-left:6px}
+  .leave-wrap{flex:none}
   .bar .ctl{height:40px;width:40px;padding:0}
   .bar .ctl .lbl{display:none}
   .leave{height:40px;padding:0 12px 0 14px;gap:6px}
@@ -349,6 +371,11 @@ body.phone .panel{position:absolute}
   <div class="room-main">
     <div class="stagearea">
       <div class="stage-inner"><div class="grid">
+        <div class="ask">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="flex:none"><path d="M1 1l22 22M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V4a3 3 0 0 0-5.9-.7M19 10v2a7 7 0 0 1-.8 3.3M12 19v4"/></svg>
+          <span class="txt"><b>Kofi</b> asked you to mute.</span>
+          <span class="acts"><button class="yes">Mute</button><button class="no">Stay unmuted</button></span>
+        </div>
         <div class="tile speaking">
           <div class="vid v1"></div>
           <div class="rx" style="left:22%;--dx:14px;--rot:8deg">🎉</div>
