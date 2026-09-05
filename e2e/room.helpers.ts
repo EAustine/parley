@@ -137,10 +137,42 @@ export async function joinAs(
   } else {
     await page.goto(`/j/${options.code}`);
   }
+  /**
+   * Grant, explicitly, the way a person does — v1.4 A1.
+   *
+   * This step did not exist, and the suite did not need it: the room used to
+   * read `stored.cameraOn !== false` from `localStorage`, and `undefined` is
+   * not `false`, so every participant published whether or not anybody had
+   * granted anything. Chrome's `--use-fake-ui-for-media-stream` then
+   * auto-accepted the prompt the room fired, and it all looked fine.
+   *
+   * **So the entire room suite was resting on the A1 defect for its media.**
+   * With consent now binding, a participant who never presses this joins with
+   * both off — correctly — and `media.spec`'s two-way video, the speaking ring
+   * and the share tests would all fail for the right reason. §3.3 forbids
+   * firing the prompt on load, so this press is the only thing that grants.
+   *
+   * `withMedia: false` skips it deliberately: that path wants a participant
+   * with nothing published, which is now reached by not granting rather than
+   * by a stored preference the room no longer consults.
+   */
+  if (options.withMedia !== false) {
+    const allow = page.getByRole("button", { name: "Allow camera and microphone" });
+    if (await allow.count()) {
+      await allow.click();
+      // Wait for the grant to land, so the join carries it. `useMediaPreview`
+      // sets `granted` after an `enumerateDevices` round trip, and a Join
+      // pressed before that would hand over a decision made too early.
+      await expect(
+        page.getByRole("button", { name: /Turn (off|on) microphone/ }),
+      ).toBeVisible({ timeout: 20_000 });
+    }
+  }
+
   // A signed-in host is not asked to name themselves — §3.3.
   const nameField = page.getByLabel("Your name");
   if (await nameField.count()) await nameField.fill(name);
-  await page.getByRole("button", { name: "Join meeting" }).click();
+  await page.getByRole("button", { name: /^Join/ }).click();
 
   await page.waitForURL(`**/room/${options.code}`);
   // Generous: this is a real signalling round trip to a cloud SFU, and the

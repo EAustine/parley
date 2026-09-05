@@ -47,7 +47,7 @@ type Failure = {
 type Outcome =
   | { kind: "requesting" }
   | { kind: "waiting"; seconds: number }
-  | { kind: "ready"; token: string; serverUrl: string }
+  | { kind: "ready"; token: string; serverUrl: string; micOn: boolean; cameraOn: boolean }
   | ({ kind: "failed" } & Failure);
 
 /**
@@ -143,6 +143,10 @@ export function RoomEntry({ code }: { code: string }) {
           kind: "ready",
           token: handed.token,
           serverUrl: handed.serverUrl,
+          // v1.4 A1: the publish decision travels with the token, because it
+          // was made in the same breath and covers the same visit.
+          micOn: handed.micOn,
+          cameraOn: handed.cameraOn,
         });
         return;
       }
@@ -191,7 +195,22 @@ export function RoomEntry({ code }: { code: string }) {
         }
 
         const data = (await response.json()) as { token: string; url: string };
-        setOutcome({ kind: "ready", token: data.token, serverUrl: data.url });
+        /*
+         * Nothing was handed over, so nothing was agreed to — v1.4 A1.
+         *
+         * This is the path a direct link, a restored tab, or storage-refused
+         * takes. There is no pre-join decision behind it, and the room may not
+         * invent one: it joins with both off, and the first press of Unmute or
+         * Start video is what asks the browser. §3.3 makes that a first-class
+         * arrival rather than a degraded one.
+         */
+        setOutcome({
+          kind: "ready",
+          token: data.token,
+          serverUrl: data.url,
+          micOn: false,
+          cameraOn: false,
+        });
       } catch {
         setOutcome({
           kind: "failed",
@@ -260,6 +279,8 @@ export function RoomEntry({ code }: { code: string }) {
       code={code}
       token={outcome.token}
       serverUrl={outcome.serverUrl}
+      micOn={outcome.micOn}
+      cameraOn={outcome.cameraOn}
     />
   );
 }

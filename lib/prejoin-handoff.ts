@@ -41,6 +41,24 @@ export type JoinHandoff = {
   /** The token pre-join already minted. Reusing it keeps the same identity. */
   token: string;
   serverUrl: string;
+  /**
+   * What may be published, decided at pre-join and binding on the room — v1.4 A1.
+   *
+   * These are **consent**, not preference, and the distinction is the whole
+   * bug. The room used to take its answer from `lib/media/devices.ts`, which is
+   * `localStorage` and therefore a standing choice carried between meetings:
+   * "which camera" is the right thing to remember across visits, and "may this
+   * meeting see me" is not. Someone who granted nothing at pre-join still met a
+   * stored `cameraOn` from a previous meeting — or, worse, met no stored value
+   * at all and got `undefined !== false`, which is `true`.
+   *
+   * So they ride here instead, in `sessionStorage`, whose lifetime is the visit
+   * — the same span the consent covers. Absent, unparseable, or storage
+   * refused, both are **false**: nothing handed over means nothing was agreed
+   * to, and §3.3 makes both-off a first-class arrival rather than a failure.
+   */
+  micOn: boolean;
+  cameraOn: boolean;
 };
 
 export function rememberJoin(handoff: JoinHandoff) {
@@ -65,6 +83,11 @@ export function recallJoin(code: string): JoinHandoff | null {
       displayName: parsed.displayName ?? "",
       token: parsed.token,
       serverUrl: parsed.serverUrl,
+      // `=== true`, never `!== false`. The defect this replaces was exactly
+      // that comparison one module over: an absent value is not a consent, and
+      // the only safe reading of "I don't know" is "no".
+      micOn: parsed.micOn === true,
+      cameraOn: parsed.cameraOn === true,
     };
   } catch {
     return null;

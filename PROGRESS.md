@@ -7724,3 +7724,177 @@ now lives one layer up, and `Insert` in `lib/supabase/types.ts` keeps
 `Row` becomes `string | null`, and `tsc` is clean across the tree without a
 single call site changing, which is its own small confirmation that nothing
 reads the column.
+
+---
+
+## The v1.3 docs bundle, merged
+
+Three files: `CLAUDE.md`, `PRD.md`, `BUILD-PLAN-v1.3.md`. **A genuine forward merge, unlike the last bundle** — every removal replaces something the build had already overtaken: the `.light` palette block, the eight-identical-circles control bar, the "shared baseline is the leveraged number" claim that was later tested and failed, and C6's pre-decision "try the curve before the assets" draft. Nothing shipped was reverted, and all four of the §3.3 and §7 additions from `8516f1c` survived the round trip.
+
+### The claims were checked against the tree, not taken
+
+The docs now describe C2's three tiers, B1's leave menu and native `<dialog>`, B2's device settings, C3's merged panel, and C1's PiP as built. They are: `LeaveControl.tsx`, `EndMeetingDialog.tsx`, `OverflowMenu.tsx`, `DeviceSettingsDialog.tsx` all exist, `RoomControls` carries the labelled primary tier with `sr-only min-[900px]:not-sr-only` for SC 2.5.3, and `SelfViewPiP` is a `<button>` with "Move self view to the next corner" rather than a `<div>` with pointer handlers — which is the new §3.4 sentence about SC 2.5.7, and it is accurate. `contrast.mjs` carries `scrim-over-white`; `check-room.mjs` pairs `aria-controls` with `aria-expanded` **or** `aria-selected`. All true.
+
+### Two things were not
+
+**The file layout's own flagged guess was half wrong, and it said so in advance.** The block asked for three reconstructed paths to be checked against the tree. `public/reactions/` was right; `auth/callback` and `auth/complete` are **not** under `(auth)` — they sit at the top of `app/`, and the route group holds only `sign-in`. Corrected in place, per the instruction. The reason the guess was plausible is worth the line it now carries: a route group contributes nothing to the URL, so both nestings serve `/auth/callback`, and no amount of reading the URL could have distinguished them.
+
+**`ICONS.user` — no finding.** I flagged it as a declared-but-unused icon and was wrong: it is not declared at all, having been deleted already. `settings` and `more` are both used by `OverflowMenu`. The incoming dropping that whole instruction is correct.
+
+### The `.light` block, which is a question rather than a fix
+
+The new token block says the `.light` class was "an earlier draft… and the build followed the paragraph", meaning `:root` holds light and `.light` carries nothing.
+
+**The build has both.** `app/globals.css` declares the full light palette on `:root` *and* a `.light` block that mirrors it — measured, 22 variables each, **0 disagreements today**. So there is no live bug and there are two sources of truth.
+
+What makes it worth raising rather than filing: `scripts/contrast.mjs` reads `light: parseBlock(css, ".light {")`. The checker reads the copy, not the original. Nothing asserts the two agree, so editing `:root` alone — which is what the new documentation tells the next person to do — would move the rendered light theme while `check:contrast` went on measuring the stale block and reporting green.
+
+And deleting `.light` naively is worse than leaving it. `parseBlock` matches the literal `.light {`, which also appears in the `color-scheme` rule below; with the palette gone the parser would land there and find no variables at all. That is the failure this file keeps recording — a check that stops asserting its subject without stopping passing.
+
+Not done, because it is a change to the theming layer and rule 10 applies. The shape I would recommend: delete the `.light` palette, repoint `contrast.mjs` at `:root {`, and leave `.light` in the `color-scheme` rule and the `html:not(.light):not(.dark)` pre-paint guard, where it is a selector rather than a palette.
+
+### And the `.light` block is now one block
+
+Austine's call, taken after the finding above.
+
+`app/globals.css` carried the light palette twice — `:root` and a `.light`
+mirroring it — and `scripts/contrast.mjs` read the copy. The duplicate is
+deleted and the script parses `:root`. `.light` survives only where it is a
+selector with no values to drift: the `color-scheme` rule and the
+`html:not(.light):not(.dark)` pre-paint guard.
+
+**Two mutations, because the change is about a check that could stop asking.**
+
+Breaking `--foreground` in `:root` fails `check:contrast` with exit 1 and the
+line `✘ light --foreground worst 1.29 on --input` — so the light half is
+genuinely read from `:root` and not from anywhere stale.
+
+Pointing the script back at `.light` — which is now the `color-scheme` rule —
+throws `The light palette parsed to 0 tokens, which is not a palette` rather
+than passing. That guard is new and exists because `parseBlock` throws on a
+missing selector and returns `{}` on a present one holding nothing, which is
+the difference between a check that fails and a check that stops asking. Twenty
+is the floor; the palette is twenty-two.
+
+**A smaller trap closed on the way.** `parseBlock` locates a block with
+`indexOf`, so a selector written as a literal inside a comment *above* the real
+rule is the block the parser reads. Both of the comments explaining this change
+originally contained one. Neither does now, and `globals.css` holds exactly one
+occurrence of each literal — the rules themselves.
+
+---
+
+## v1.4 — A1's consent defect, B2's clamp, and the harness that hid a session
+
+### A1 — the room published media nobody agreed to
+
+Reported from the deployed app: joined without granting anything at pre-join,
+and the camera was live, publishing to two other people.
+
+One comparison. `RoomStage` read `stored.cameraOn !== false` from
+`localStorage`, and `undefined !== false` is `true` — so somebody who had never
+granted anything, and therefore had no stored preference, reached
+`setCameraEnabled(true)`. **That call is the `getUserMedia` prompt.** The room
+asked the browser for a camera on their behalf and published what came back.
+The comment above it stated the wrong default outright: "an absent preference
+means the person never touched the toggle, and the default is on."
+
+**The channel was as wrong as the comparison, and fixing only the comparison
+would have left the defect.** `parley:devices` is `localStorage` — a standing
+choice carried between meetings, right for *which* camera and wrong for
+*whether*. Someone who joined with video on last week and grants nothing today
+still reads "on". Consent belongs to a visit, so it now travels in the
+`sessionStorage` handoff beside the token, read as `=== true`, and the room
+takes it as a prop rather than reading storage at all. No handoff — direct link,
+restored tab, storage refused — means nothing was agreed to, so both off.
+
+`media.micOn` was also the wrong source at the pre-join end, and taking it would
+have rebuilt the bug one file over: those flags are the toggle's position, not a
+permission, and they initialise `true` and stay `true` through a denial. The
+handoff carries the conjunction of granted, toggled on, and device present.
+
+### The check, and the backstop it nearly shipped as
+
+Nothing could have caught this: every project grants camera and microphone and
+launches with `--use-fake-ui-for-media-stream`. There was no ungranted path to
+fail on. `e2e/consent.spec.ts` therefore replaces `getUserMedia` with a stub
+that counts calls, which answers A1's real question — a camera track cannot
+exist without a `getUserMedia` that resolved, so **zero calls on the room route
+is a statement about publications**, not about the label drawn over them.
+
+The third case was written with the refusing stub and **passed against the
+restored defect**, which the mutation caught and nothing else would have. Of
+course it passed: with `getUserMedia` rejecting, no track starts however the
+room is written — a backstop being reported as a defence, the exact shape
+`CLAUDE.md` names. It now runs in a *granted* context where pre-join still never
+asks, which is the only arrangement that reproduces the report, and it fails on
+the defect with "a participant who granted nothing is on camera for the rest of
+the room". All three fail on the mutation now.
+
+### B2's clamp does not work, and measuring is what showed that
+
+B2 prescribes a width clamp copied from the sibling menu. Applied, measured,
+and the menu was still at **x = −41.8**: `min(260px, calc(100vw - 2rem))` on a
+375pt viewport is `min(260, 343)` = 260, so the clamp changed nothing. A panel
+anchored `right-0` to a trigger 218px from the left edge must overflow at 260px
+wide, whatever its ceiling. The design's menu is not clipped because it is the
+last control in the bar.
+
+So the panel is nudged by its measured deficit instead — the same shape as
+`SelfViewPiP`'s corner clamp — in a layout effect, so the correction lands in
+the paint that opens it. The width clamp stays as a ceiling for a genuinely
+narrow screen, with a comment that no longer claims to be the fix.
+
+`check:targets` could not have caught this either: it measures each control's
+*size*, and a menu clipped off-screen keeps its size. The new case reads an
+**origin**, which is the same gap that let the control bar overflow with a green
+check.
+
+### `signIn` established no session and said nothing
+
+The issue raised at the end of the v1.3 pass, and the cause of most of a
+session's confusion. `app/auth/callback/route.ts` redirects to
+`/sign-in?error=…` carrying the reason; `e2e/auth.ts` never read it. A sign-in
+that did not take returned normally, the caller carried on to a signed-in page,
+the middleware bounced it, and the test died twenty seconds later on
+`expect(heading "Meetings")` — reporting "element not found" for a dashboard
+that was never going to render, while the explanation sat unread in a query
+parameter.
+
+That is why three full runs failed on nine different innocent assertions and
+every one of them passed in isolation: not a check that fails, **a check that
+stops asking**.
+
+Two assertions now, and the cookie is the load-bearing one — landing somewhere
+plausible is not the same as holding a session. Proven by mutation: corrupting
+the token yields "signIn(…) established no session. Landed on /sign-in with
+error: That link has expired or has already been used." rather than a timeout
+against an innocent locator.
+
+**Deliberately no retry.** A bounded retry would make the suite green and hide
+whatever causes this.
+
+### The whole room suite was resting on the A1 defect
+
+Two tests failed after the consent fix, and they were right to.
+
+`share-support.spec` and `devices.spec` waited on `getByRole("button", { name: /Mute/ })` and found nothing, because the bar now read **"Unmute"**: those tests walk pre-join without ever pressing "Allow camera and microphone", so they granted nothing and correctly arrived with both off. §3.3 forbids firing the prompt on load, so that press is the only thing that grants.
+
+**Before the fix they published anyway** — `undefined !== false` reached
+`setCameraEnabled(true)`, and Chrome's `--use-fake-ui-for-media-stream`
+auto-accepted the prompt the room fired. `joinAs` has the same gap, so **every
+room test in the suite was getting its media from the defect**. Nothing said so,
+because the outcome was the one the tests wanted.
+
+So `joinAs` now grants explicitly, the way a person does, and waits for the
+grant to land before Join — a press before `useMediaPreview` resolves
+`enumerateDevices` would hand over a decision made too early.
+`withMedia: false` still skips it, which is now reached by not granting rather
+than by a stored preference the room no longer consults. `share-support`'s
+hand-rolled flow needed the same press for the same reason.
+
+The media project is the proof: 36/36 including two-way video, the speaking ring
+and screen share. It had not run at all in the failing suite — `check:media`
+chains its two invocations with `&&`, so the app project's failure meant the
+media project never started, and the one suite that could confirm media still
+flows was the one that was skipped.

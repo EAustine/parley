@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * A menu button, with the keyboard behaviour `role="menu"` promises.
@@ -65,6 +65,29 @@ export function PopupMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   /** The whole surface, for the outside-press test — the header counts as inside. */
   const popupRef = useRef<HTMLDivElement>(null);
+  /**
+   * How far the panel has to move right to stay on screen — v1.4 B2.
+   *
+   * **The reported fix does not work, and measuring is what showed that.** B2
+   * prescribes a width clamp, copied from the sibling menu in the design file.
+   * A clamp cannot help here: the panel is anchored `right-0` to its trigger,
+   * so its left edge is `trigger.right - width`, and on a 375pt phone the
+   * overflow control sits about 218px from the left with a 260px panel hanging
+   * off it. The first attempt applied `min(260px, calc(100vw - 2rem))`,
+   * measured **x = -41.8**, and the clamp had changed nothing — `min()` of 260
+   * and 343 is 260. The design's menu is not clipped because it is the last
+   * control in the bar, not because of its clamp.
+   *
+   * So the panel is nudged instead, by exactly its deficit, the same shape as
+   * `SelfViewPiP`'s corner clamp: measure the rendered box, and if it starts
+   * left of the margin, translate it back. Nothing is repositioned when it
+   * already fits, which is every desktop case and the account menu.
+   *
+   * A layout effect, so the correction lands in the same paint as the open —
+   * a `useEffect` here shows one frame of the clipped position first.
+   */
+  const [nudge, setNudge] = useState(0);
+
 
   const items = () =>
     Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
@@ -124,6 +147,24 @@ export function PopupMenu({
     }
   };
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setNudge(0);
+      return;
+    }
+    const panel = popupRef.current;
+    if (!panel) return;
+    // Read with the correction removed, so this converges instead of
+    // compounding each time the menu is reopened.
+    panel.style.transform = "";
+    const MARGIN = 8;
+    const { left, right } = panel.getBoundingClientRect();
+    if (left < MARGIN) setNudge(Math.ceil(MARGIN - left));
+    else if (right > window.innerWidth - MARGIN)
+      setNudge(-Math.ceil(right - (window.innerWidth - MARGIN)));
+    else setNudge(0);
+  }, [open]);
+
   return (
     <div className="relative inline-flex">
       <button
@@ -158,9 +199,17 @@ export function PopupMenu({
         // The shadow is theme-aware. It was `rgba(0,0,0,0.5)` unconditionally,
         // which is right over the room's near-black ground and far too heavy
         // on a white one — this surface now appears on both.
-        className={`absolute right-0 z-40 min-w-[260px] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] ${
+        /*
+         * The width clamp is a ceiling for a very narrow viewport, and it is
+         * **not** what stops the clipping — the `nudge` above is. Kept
+         * because 260px of menu on a 240px screen is its own problem, and
+         * written as `min()` inside the `min-w` value because `min-width` beats
+         * `max-width` in the cascade, so a bare `max-w` would lose.
+         */
+        className={`absolute right-0 z-40 min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] ${
           placement === "above" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"
         }`}
+        style={nudge ? { transform: `translateX(${nudge}px)` } : undefined}
       >
         {header}
         <div ref={menuRef} id={id} role="menu" aria-label={menuLabel}>

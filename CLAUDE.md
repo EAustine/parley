@@ -51,6 +51,10 @@ Dropping hue instead is not the answer here: §4.2 spends the entire chroma budg
 **5. No hue except where it is the meaning.**
 Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.
 
+**Reactions are not a third exception, and calling them one was the wrong fix.** v1.3's guardrails described them as "the sanctioned exception", which would make the rule a list that grows. They are not an exception because the rule governs **how the interface encodes state**, and a reaction is not state — it is content a participant sent, and its meaning is carried by the glyph. Desaturate a 🎉 and it is still a 🎉; desaturate a red tile border and the tile is just bordered. That is the actual test, and it is the same one §4.2 states as "nothing depends on hue alone". Emoji pass it; a hued speaking ring does not.
+
+This is why the six ship as Fluent 3D assets without contradicting anything, and equally why a reaction must never be given a job — no per-participant tint, no colour standing for urgency or sentiment. The moment a hue in a reaction *means* something, it is state, and rule 5 applies to it in full.
+
 The dashboard's live indicator follows the same rule and the same precedent: a solid `--foreground` dot, no hue and no pulse, with upcoming and past rows carrying no dot at all. "Active right now" is the speaking ring's problem wearing different clothes, and answering it twice — once in value, once in hue — would give the product two answers to one question. A pulse also fails "no ambient animation", and an indicator that `prefers-reduced-motion` has to suppress is one that does not work.
 
 The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--boundary` at 3.93:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
@@ -111,9 +115,66 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
 **Keep these hex values verbatim.** Do not convert to OKLCH — the conversion shifts computed values and invalidates the verified contrast table below. Map them through `@theme inline` and override whatever `shadcn init` writes.
 
 ```css
-/* app/globals.css — .dark block shown; :root mirrors the light values */
+/* app/globals.css — light on :root, dark on .dark, per the convention above.
+   An earlier draft of this block wrote the light values into a `.light`
+   class while the paragraph above said `:root`. next-themes does put
+   `.light` on <html> when the theme resolves light, but it needs to carry
+   nothing: `.light` is on the same element as `:root`, so the palette below
+   already applies.
+
+   The build carried *both* until this was checked — `:root` and a `.light`
+   mirroring it, 22 tokens each, agreeing exactly. Not a bug and not inert:
+   `scripts/contrast.mjs` read the copy, so an edit to `:root` alone would
+   have moved the rendered theme while the check went on measuring the stale
+   block and passing. The duplicate is gone; the script parses `:root`, and
+   refuses to run if that block yields fewer than twenty tokens, because a
+   selector repointed at a non-palette rule would otherwise empty half the
+   matrix in silence. `.light` survives only where it is a selector — the
+   `color-scheme` rule and the pre-paint `:not()` guard.
+
+   Neither selector appears in a comment above its own rule anywhere in
+   `globals.css`. `parseBlock` finds a block with `indexOf`, so a mention in
+   prose is a block the parser will read instead. */
 
 @layer base {
+  /* Light first, dark second. `:root` and `.dark` have equal specificity
+     (0,1,0), so source order is what decides — a `.dark` block written above
+     `:root` is overridden by it and the room renders light. */
+  :root {
+    --background:             #FFFFFF;
+    --foreground:             #16181D;
+    --card:                   #F7F8F9;
+    --card-foreground:        #16181D;
+    --popover:                #FFFFFF;
+    --popover-foreground:     #16181D;
+    --primary:                #16181D;
+    --primary-foreground:     #FFFFFF;
+    --secondary:              #F0F2F4;
+    --secondary-foreground:   #16181D;
+    --muted:                  #F0F2F4;
+    --muted-foreground:       #5C636E;
+    --accent:                 #F0F2F4;
+    --accent-foreground:      #16181D;
+    --destructive:            #C62B31;
+    --destructive-foreground: #FFFFFF;
+    --border:                 #E3E6EA;
+    --input:                  #E3E6EA;
+    --ring:                   #16181D;
+
+    --state-critical:         #C62B31;
+    --state-warning:          #8A5300;
+    --boundary:               #687284;   /* room is dark in both themes */
+
+    /* theme-invariant: the scrim always sits over video, and video
+       surfaces are always dark — so anything drawn on it must be too.
+       These are separate variable names, so nothing in `.dark` overrides
+       them and no second selector is needed to protect them. */
+    --scrim:            rgba(14, 16, 19, 0.72);
+    --on-scrim:         #F2F4F7;   /* 7.01:1 over the brightest video */
+    --on-scrim-muted:   #C6CAD1;   /* 4.70:1 */
+    --radius: 0.5rem;
+  }
+
   .dark {
     --background:             #0E1013;
     --foreground:             #F2F4F7;
@@ -144,41 +205,6 @@ Dark is the default, and the only mode for the in-call surface. Video is the lig
        boundary --border cannot provide at 1.29:1 */
     --boundary:               #687284;
   }
-
-  .light {
-    --background:             #FFFFFF;
-    --foreground:             #16181D;
-    --card:                   #F7F8F9;
-    --card-foreground:        #16181D;
-    --popover:                #FFFFFF;
-    --popover-foreground:     #16181D;
-    --primary:                #16181D;
-    --primary-foreground:     #FFFFFF;
-    --secondary:              #F0F2F4;
-    --secondary-foreground:   #16181D;
-    --muted:                  #F0F2F4;
-    --muted-foreground:       #5C636E;
-    --accent:                 #F0F2F4;
-    --accent-foreground:      #16181D;
-    --destructive:            #C62B31;
-    --destructive-foreground: #FFFFFF;
-    --border:                 #E3E6EA;
-    --input:                  #E3E6EA;
-    --ring:                   #16181D;
-
-    --state-critical:         #C62B31;
-    --state-warning:          #8A5300;
-    --boundary:               #687284;   /* room is dark in both themes */
-  }
-
-  /* theme-invariant: the scrim always sits over video, and video
-     surfaces are always dark — so anything drawn on it must be too */
-  :root, .dark, .light {
-    --scrim:            rgba(14, 16, 19, 0.72);
-    --on-scrim:         #F2F4F7;   /* 7.01:1 over the brightest video */
-    --on-scrim-muted:   #C6CAD1;   /* 4.70:1 */
-    --radius: 0.5rem;
-  }
 }
 ```
 
@@ -193,6 +219,7 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 | `--state-warning` | all | 4.5 | 6.49 |
 | `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
 | `--boundary` | tile edges, panel edges, form-field borders — on `--background`, `--card`, `--popover`, `--muted`, `--secondary`. **Not on `--input`** (2.73). | 3.0 | 3.05 |
+| `--on-scrim` / `--on-scrim-muted` | `scrim-over-white` only. **`--foreground` is not permitted here** — it flips with the theme and the scrim does not. | 4.5 | 4.70 |
 
 `--boundary` is the boundary colour for any surface with no usable fill contrast against what it sits on — which in this palette is every surface, since the whole ramp spans 0.2 of a contrast point. Tiles, panels, and form fields all qualify. It is never a text colour.
 
@@ -203,9 +230,8 @@ Contrast is verified, not assumed. Do not change these values without recomputin
 `--input` is not a boundary token and must not be used as one. At 1.44:1 dark and 1.25:1 light it was failing SC 1.4.11 on every `Input` and every `SelectTrigger`, invisibly, because `check:contrast` only ever evaluated it as a surface for text.
 
 **`check:contrast` must evaluate every token in both roles it is used in.** A value can pass as a text surface and fail as a boundary; the script comparing token against token in one role only is how both this and the tile edge shipped.
-| `--on-scrim` / `--on-scrim-muted` | `scrim-over-white` only. **`--foreground` is not permitted here** — it flips with the theme and the scrim does not. | 4.5 | 4.70 |
 
-**`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` currently computes foreground against opaque tokens only, so the one rule the room chrome depends on is enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
+**`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` computed foreground against opaque tokens only, which left the one rule the room chrome depends on enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
 
 Model it as `0.72 × #0E1013 + 0.28 × #FFFFFF` — white is the worst case for light text, and video can be anything. That resolves to roughly `#515355`, where `--state-warning` falls to 3.79:1 and `--state-critical` to 2.53:1, and light-mode `--foreground` collapses to 2.3:1.
 
@@ -323,7 +349,11 @@ Meeting links are `https://<host>/j/kqr-8mzt-vnp`. `/j/` rather than a bare root
 
 ## Shape and motion
 
-Radius `0.5rem`. Tiles `0.75rem`. Call controls are circles: 48px for mic, camera, and leave; 44px for secondary. **The leave button is a wide pill — the only non-circular control.** Shape distinguishes it, not just colour.
+Radius `0.5rem`. Tiles `0.75rem`.
+
+Call controls follow C2's tiers: **primary is a 48px labelled pill** (Mute, Stop video, Present), **secondary is a 44px circle** (reactions, chat, people, more), **Leave is a 48px pill** in its own group at the end of the bar.
+
+**"The leave button is a wide pill — the only non-circular control" was true and is not.** It described a bar of eight identical circles. C2 made the primary tier pills, so shape now separates Leave from the secondary tier and not from Present. What separates it is its visible label naming a destructive action, its `--destructive` fill, and its own group — the label being what keeps it off hue alone. `PRD.md` §3.4 carries the same correction and flags it as a decision worth revisiting rather than a settled one.
 
 | Change | Duration | Easing |
 |---|---|---|
@@ -359,7 +389,10 @@ Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD
 
 - Every control keyboard reachable, `--ring` focus at 2px offset
 - **Modal surfaces are focus-trapped. Non-modal panels are not.** The reconnect overlay and the shortcuts dialog trap: they are the task, and everything behind them is inert. Chat and participants do not: the meeting continues behind them, and `PRD.md` §3.4 requires the control bar to stay reachable while a panel is open. A trap there makes mute reachable only by shortcut, and mute is a privacy control.
-- **One panel at a time.** Panel state is a single value — `null | 'chat' | 'participants'` — not two booleans. Opening one closes the other. This is why the floor no longer speaks of "both panels open": that state is unreachable, and the reasoning survives unchanged, since the control bar must stay reachable with any panel open.
+- **One panel, two tabs.** There is no longer a one-at-a-time constraint to enforce, because there is no longer a second panel: C3 merged Chat and People into a single `RoomPanel` whose bodies are `tabpanel`s. Opening People while Chat shows switches the tab; nothing closes. The state that could go wrong is gone rather than guarded, which is the better shape of the same fix — this line previously specified `null | 'chat' | 'participants'` and was describing the guard.
+- **The tabs are real tabs.** Arrow keys, Home and End, roving `tabIndex`. `role="tab"` is a promise about keyboard behaviour and making it without keeping it is the same lie as `aria-modal` without a trap. `check:room`'s disclosure scan pairs `aria-controls` with `aria-expanded` **or** `aria-selected` for exactly this reason — a tab selects, it does not expand; `aria-controls` with neither partner still fails.
+- **Two bar buttons, two disclosures.** Chat and People keep independent `aria-expanded`. One flag shared between them would claim chat was on screen when people was. The panel's own close button is a single "Close panel".
+- **Both bodies stay mounted, one hidden**, so switching tabs does not reset Chat's scroll position or its unread count.
 - Non-modal panel behaviour: focus moves into the panel on open, the room stays tabbable throughout, Escape closes and returns focus to the trigger. Mark them as labelled regions, never `role="dialog"` with `aria-modal` — the ARIA attribute is what promises a trap, so using it without one is the lie. Order the panel in the DOM adjacent to its trigger so tabbing out lands somewhere sensible.
 - **State toggles** (mic, camera) name the action and change with it: "Turn off microphone" → "Turn on microphone". No `aria-pressed` — carrying both an action name and a pressed state announces the same fact twice, in a confusing order
 - **Disclosure controls** (chat, participants) are the other pattern: a noun name plus `aria-expanded` and `aria-controls`. The bar button is "Participants"; the panel's close button is "Close participants". They are different controls doing different things and should not share a name
@@ -425,9 +458,18 @@ Earned the hard way; each one comes from a check that passed while exercising th
 app/
   icon.svg  apple-icon.png  opengraph-image.tsx  twitter-image.tsx
   (marketing)/page.tsx           — two states: signed out and signed in
+  (auth)/sign-in/page.tsx        — public, cold-load; budgeted in §10
+  (auth)/sign-in/actions.ts      — signInWithOtp and signInWithOAuth as
+                                   server actions, so no auth SDK reaches
+                                   the bundle and the form works with JS off
+  auth/callback/route.ts         — Supabase code exchange
+  auth/complete/page.tsx         — reads the fragment on a cross-device open
   (dev)/dev/tokens/page.tsx      — gated on NODE_ENV !== 'production'
   (app)/dashboard/page.tsx
   (app)/schedule/page.tsx
+  (app)/schedule/[code]/page.tsx — meeting detail; edit form behind
+                                   next/dynamic, since most visits copy a
+                                   link and never open it
   j/[code]/page.tsx              — pre-join (public meeting link)
   room/[code]/page.tsx          — in-call (client, dynamic import)
   api/livekit/token/route.ts
@@ -435,6 +477,10 @@ app/
   api/meetings/route.ts
   api/meetings/[code]/route.ts
   api/meetings/[code]/ics/route.ts
+public/
+  favicon.ico  icon-192.png  icon-512.png  icon-512-maskable.png
+  manifest.webmanifest
+  reactions/                     — six Fluent Emoji 3D at 96px WebP
 components/
   brand/                         — Mark, Wordmark, Lockup
   ui/                            — shadcn (sonner for toasts, not the
@@ -449,6 +495,12 @@ lib/
   hooks/
 supabase/migrations/
 ```
+
+Four of these were missing while the routes existed and three of them carried budgets in `PRD.md` §10, which is how a file layout stops being a specification and becomes a partial inventory.
+
+**Three paths here were reconstructed from URLs and build output rather than read off the repo, and have now been checked against it.** Two were wrong: `auth/callback` and `auth/complete` sit at the top of `app/`, **not** inside `(auth)` — the route group holds only `sign-in`. They are corrected above rather than moved, per the instruction that produced this note. `public/reactions/` was right.
+
+Worth knowing why the guess was wrong in a way a URL cannot reveal: a route group contributes nothing to the path, so `(auth)/auth/callback` and `auth/callback` both serve `/auth/callback`. The URL is the same either way, which is exactly why reading the layout off it produced a plausible answer and a false one.
 
 ---
 

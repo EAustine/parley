@@ -183,11 +183,30 @@ export function PreJoin({
         url: string;
         displayName: string;
       };
+      /**
+       * The publish decision, handed to the room — v1.4 A1.
+       *
+       * **`media.micOn` on its own is the wrong answer**, and taking it would
+       * have reproduced the bug in a new place. Those two flags are the
+       * toggle's position, not a permission: they initialise to `true` and stay
+       * `true` through a denial, because on this screen they mean "the button
+       * is pressed in" and there may be no track for them to describe.
+       *
+       * Consent is the conjunction. `granted` is the person having said yes to
+       * the browser; the toggle is them having said yes to us; and `hasCamera`
+       * is there being a device at all, without which `setCameraEnabled(true)`
+       * in the room is a request that can only fail. Any of the three missing
+       * means nothing is published, which is §3.3's both-off arrival and not an
+       * error.
+       */
+      const permitted = media.state === "granted";
       rememberJoin({
         code: meeting.code,
         displayName: needsName ? trimmedName : displayName,
         token,
         serverUrl: url,
+        micOn: permitted && media.micOn && media.hasMicrophone,
+        cameraOn: permitted && media.cameraOn && media.hasCamera,
       });
 
       // The camera is released before navigating: the room re-acquires it, and

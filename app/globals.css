@@ -107,32 +107,22 @@
     --boundary: #687284; /* room is dark in both themes */
   }
 
-  /* next-themes writes .light explicitly; it mirrors :root exactly. */
-  .light {
-    --background: #ffffff;
-    --foreground: #16181d;
-    --card: #f7f8f9;
-    --card-foreground: #16181d;
-    --popover: #ffffff;
-    --popover-foreground: #16181d;
-    --primary: #16181d;
-    --primary-foreground: #ffffff;
-    --secondary: #f0f2f4;
-    --secondary-foreground: #16181d;
-    --muted: #f0f2f4;
-    --muted-foreground: #5c636e;
-    --accent: #f0f2f4;
-    --accent-foreground: #16181d;
-    --destructive: #c62b31;
-    --destructive-foreground: #ffffff;
-    --border: #e3e6ea;
-    --input: #e3e6ea;
-    --ring: #16181d;
+  /* No `.light` palette. next-themes does write `.light` on <html> when the
+     theme resolves light, and it needs to carry nothing: it lands on the same
+     element as `:root`, so the block above already applies.
 
-    --state-critical: #c62b31;
-    --state-warning: #8a5300;
-    --boundary: #687284;
-  }
+     A duplicate here was not inert. `scripts/contrast.mjs` read the *copy*,
+     parsing the `.light` selector, so the light half of the matrix was
+     measured from a second set of values nothing asserted was equal to the
+     first. They were, all 22 of them, right up until somebody edited one and
+     not the other. Then the theme would move and the check would go on
+     reporting green against the stale block, which is this project's oldest
+     failure shape wearing a new hat. The script parses the `:root` block
+     now, and there is one place to edit.
+
+     Neither selector is written here as a literal followed by a brace, on
+     purpose: `parseBlock` locates a block with `indexOf`, so a mention in a
+     comment above the real rule is a block the parser would read instead. */
 
   .dark {
     --background: #0e1013;

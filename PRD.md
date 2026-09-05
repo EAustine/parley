@@ -150,7 +150,7 @@ Joining with camera and mic both off is allowed and must not be treated as an er
 
 Write these before writing layout code.
 
-| Participants | Desktop | Mobile portrait |
+| Tiles | Desktop | Mobile portrait |
 |---|---|---|
 | 1 | Single tile, full area, 16:9 letterboxed | Full area |
 | 2 | Side by side | Stacked, equal |
@@ -159,6 +159,14 @@ Write these before writing layout code.
 | 7–9 | 3 × 3 | 2 × 2 + pages |
 | 10–16 | 4 × 4 | 2 × 2 + pages |
 | 17+ | 4 × 4, overflow as "+N" | 2 × 2 + pages |
+
+**This column counts tiles, not heads, and the two differ by one.** v1.3's C1 lifts the local participant out of the grid and draws it as a corner PiP, so a room of N renders N−1 tiles. Sixteen *remote* participants fill a 4×4 exactly, which puts the "+N" cell at seventeen tiles — eighteen people, not seventeen. The column said "Participants" and meant heads, which left the overflow threshold one out and made "1" ambiguous between one person and one tile.
+
+**Except when you are alone.** With nobody else in the room the grid would hold zero tiles and the only thing on screen would be a small self-view in the corner of an empty rectangle, which reads as broken rather than as waiting. A lone participant stays a full-size tile and there is no PiP; the first arrival takes the grid and you shrink into the corner, which is a reflow the grid already animates. So one person and two people both render one tile, and both letterbox — which is why the letterbox rule is keyed on the tile count and not the head count.
+
+**Self-view.** Your own face does not need equal weight with the people you are talking to; on a two-person call that is the difference between two half-screens and one full one. The PiP is anchored to the video area rather than the viewport, is draggable within it, and cannot be thrown off-screen. Because dragging is not the only way to move it — SC 2.5.7 wants a single-pointer alternative — it is a button with a keyboard path to the same positions, not a `<div>` with pointer handlers.
+
+**The filmstrip is unaffected.** While someone is sharing, the strip is where everyone is, including you, and there is no PiP.
 
 Overflow ordering: most recent speaker first, then join order. The person talking is never the person hidden.
 
@@ -188,25 +196,49 @@ Rationale for the encoding: hue on the tile edge competes with skin tones and vi
 
 A floating bar, bottom-centre, on a scrim. Auto-hides after 4s of pointer inactivity on desktop; always visible on touch. Reappears on any pointer movement, keypress, or focus.
 
-| Control | Shape | Behaviour |
-|---|---|---|
-| Mic | 48px circle | Toggle. Off = filled `--secondary` with a struck-through icon |
-| Camera | 48px circle | Toggle. Off = same treatment |
-| Screen share | 44px circle | Where `getDisplayMedia` exists. Active = filled `--primary` |
-| Reactions | 44px circle | Opens a popover of six emoji |
-| Chat | 44px circle | Toggles panel. Unread dot |
-| Participants | 44px circle | Toggles panel, shows count |
-| Leave | 48px **pill**, wider | The only non-circular control. `--destructive` fill. |
+**Three tiers, and the tier is the affordance.** This was a flat row of eight identical icon circles, which gave the control you reach for under pressure the same weight as the one you reach for idly. v1.3's C2 separated them.
 
-The leave button is distinguished by shape as well as colour, so it is unmistakable without relying on hue.
+| Tier | Controls | Treatment |
+|---|---|---|
+| Primary | Mute · Stop video · Present | 48px labelled pills, `--secondary` on a `--boundary` edge. The ones you hit under pressure, where a wrong guess costs something. Off = filled `--secondary` with a struck-through icon. Present renders only where `getDisplayMedia` exists. |
+| Secondary | Reactions · Chat · People · More | 44px circles, icon with tooltip and `aria-label`. Ghost until hover — transparent, so the backdrop is the bar's own scrim and the value must be `--on-scrim-muted`, never `--muted-foreground` (2.97:1 over bright video). Filled while their panel is open. People carries a 16px inverted pill badge. |
+| Destructive | Leave | 48px pill, `--destructive` fill, in its own group at the end of the bar. Opens a menu for a host; leaves directly for a guest. |
+
+**The visible label is the accessible name on the primary tier.** No `aria-label` — an accessible name that does not contain the visible one fails SC 2.5.3 Label in Name, and "Turn off microphone" over a visible "Mute" does not contain it. Below 900px the label is `sr-only` rather than removed, so the name is "Mute" at every width while only the wide bar draws it.
+
+**More** opens the overflow menu: audio and video settings, keyboard shortcuts on desktop, and below 900px Present and reactions, which leave the bar there. Eight controls do not fit a 390px bar; six fit with room. The reactions appear as a row of six emoji menu items rather than a second popup inside the first.
+
+**Leave is no longer distinguished by shape, and this section used to claim it was.** That was true while the other seven controls were identical circles; the primary tier is pills now, so shape separates Leave from Reactions and not from Present. What separates it is the word — it is the only control whose visible label names a destructive action — plus the `--destructive` fill and its own group at the end of the bar. The label is what keeps this off hue alone. **If that is judged too thin, the next move is a shape or a gap, not a stronger red.**
 
 **Mute-state truth.** Local UI state must derive from the LiveKit track's actual published state, not from a separate React boolean. If a track fails to unmute, the UI shows muted. This is a privacy requirement, not a polish item.
+
+#### Leaving, and ending
+
+Two different actions that are never conflated, which the vocabulary has always said and this section did not specify.
+
+**The whole Leave button opens a menu for a host** — not a split button. A split puts two actions inside one control at different coordinates, and on a mobile bar the target separating "leave" from "end this for everyone" is around 30px wide. That is a mis-click costing other people their meeting.
+
+| Item | Second line |
+|---|---|
+| **Leave the meeting** | "It carries on without you. Your link still works." |
+| **End meeting for everyone** | "Everyone is disconnected and the link stops working." In `--state-critical`. |
+
+Ending then confirms in a native `<dialog>` opened with `showModal()`. The menu is a choice; the dialog is the commitment, and native gives the focus trap, Escape and backdrop inerting that §9 requires of a modal surface.
+
+**A guest has no second option, so the button leaves directly and renders no chevron.** A menu with one item, or a chevron opening something disabled, is worse than the button they had.
+
+Ending uses the same server route and `roomAdmin` grant as removal, after RLS has confirmed the caller is the host. It sets `status = 'ended'` and `ended_at` and disconnects everyone. **§3.8's constraint binds here**: that route ends and removes, and nothing wider — `roomAdmin` also carries unmute on LiveKit's server API, and a route that quietly widened its use would undo the guarantee the client-side absence exists to make.
+
+Everyone else lands on a designed state: "The host ended the meeting", with the duration and **no Rejoin**, since rejoining would fail. Distinct from a connection failure and from having left voluntarily — three different things that must not share a screen.
 
 **Acceptance**
 - Grid reflows without layout thrash when someone joins or leaves
 - Toggling mic updates the icon within one frame of the track state changing
-- Controls remain reachable while a panel is open. Only one panel opens at a time — opening chat closes participants and vice versa.
-- Tab order: controls → chat panel → participant panel → back to controls
+- Controls remain reachable while the panel is open. Mute is a privacy control and must never be reachable only by shortcut.
+- **One panel, two tabs.** Chat and People share a single surface, so opening People while Chat is showing switches tabs rather than closing anything. The one-at-a-time constraint is not enforced any more; the second panel it guarded no longer exists.
+- Tab order: controls → panel → back to controls. Within the panel the tabs are real tabs — arrow keys, Home and End, roving `tabIndex` — because `role="tab"` is a promise about keyboard behaviour.
+- Both bodies stay mounted with one hidden. Chat pins its scroller to the bottom and counts what arrived while you were away; unmounting on a tab change would lose your place every time you looked at People.
+- The two bar buttons stay two disclosures with their own `aria-expanded`. A single flag shared by both would claim chat was on screen when people was.
 - `Cmd/Ctrl + D` toggles mic, `Cmd/Ctrl + E` toggles camera — suppressed while focus is in a text input
 
 ---
@@ -750,9 +782,9 @@ Everything here is `polite`. Next mounts its own `role="alert"` route announcer,
 
 **Discoverability is a focus-visible hint, not a control in the bar.** A skip-link-pattern element at the start of the room — hidden until focused, reading "Press ? for keyboard shortcuts" — appears exactly when a keyboard user tabs in, is announced by a screen reader, and is never seen by mouse or touch users. Control-bar tooltips also carry their own shortcut, giving incidental discovery.
 
-An eighth control in the bar was considered and rejected. The bar is the most contested real estate in the product, §3.4 enumerates seven, and a *keyboard* shortcuts dialog is of no use to the touch visitor it would have been added for — a phone has no keys to press. The population that needs this affordance is exactly the population a focus-visible hint reaches.
+A **dedicated** shortcuts button in the bar was considered and rejected. The bar is the most contested real estate in the product, and a *keyboard* shortcuts dialog is of no use to the touch visitor it would have been added for — a phone has no keys to press. The population that needs this affordance is exactly the population a focus-visible hint reaches.
 
-`ICONS.settings`, `ICONS.more` and `ICONS.user` are declared and used nowhere. Delete them; rule 9 applies to declarations as much as to packages.
+**The count this argument used to rest on has moved, and the argument survives it.** It read "§3.4 enumerates seven," which was true of a flat row of identical circles; C2's bar carries an overflow control, so desktop is eight. What was rejected was spending a *slot* on this, and the overflow menu is the opposite of a slot — the shortcuts item sits inside it on desktop, costing nothing and reachable by mouse. The focus-visible hint remains the affordance that reaches keyboard users at the moment they need it, and control-bar tooltips still carry their own shortcut for incidental discovery.
 
 ### Ownership
 
@@ -830,7 +862,13 @@ Moving the edit form behind `next/dynamic` was the right instinct — most visit
 
 `/j/[code]` is the one that matters. It is a cold load for a stranger on a phone with an empty cache, and §3.3 names it the highest-traffic flow in the product. The dashboard is deliberately loose: it sits behind auth, the same people revisit it, and its bundle amortises across sessions.
 
-**The shared baseline is the leveraged number.** It is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times. Next's App Router floor is roughly 105–120 kB gzipped, which puts a few tens of kilobytes of our own code in the shared chunk before any feature exists. That is worth an itemised look before optimising any individual route — cutting shared beats cutting `/dashboard`.
+**The shared baseline was called the leveraged number, and it was tested as one and failed.** The reasoning was that it is the dominant term in every route above, so a kilobyte removed there is a kilobyte removed five times, and cutting shared beats cutting any single route.
+
+Deleting the ten unrendered components moved the baseline from **160 kB to 156 kB** and changed **no route total at all** — all ten identical either side, both figures reproduced across two clean builds each. Four kilobytes left the baseline and zero kilobytes left any route.
+
+So whatever "First Load JS shared by all" counts, it is not a term the route totals are built from. It is a classification of which chunks happen to be common to every route, and that classification moved without the bytes moving. **Do not use it as an optimisation target**, and do not infer a route win from it dropping. No mechanism is offered here beyond the four builds, deliberately: the last two attempts to narrate chunk behaviour were read off minified output and were both wrong, which is the same lesson as "chunk labels are not evidence" two paragraphs down.
+
+The one part of the old paragraph that survives is context, not a target: Next's App Router floor is roughly 105–120 kB gzipped, so a chunk of the baseline is not ours to cut in the first place.
 
 **The first four route numbers were provisional, and have been recalibrated.** They were inferred from a baseline measured against a nearly empty app, before any route did its real work, which is how the two guesses above happened — the tightest constraint landing on the wrong route. A budget invented ahead of the code is a guess wearing a number. The table is now set against routes that do their work; the paragraph stays because the mistake is the kind that repeats.
 

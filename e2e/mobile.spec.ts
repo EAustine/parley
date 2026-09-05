@@ -29,6 +29,41 @@ test.describe("the room on a phone", () => {
     await participant.context.close().catch(() => {});
   });
 
+  /**
+   * v1.4 B2: the overflow menu is on screen, measured rather than declared.
+   *
+   * It was `min-w-[260px]` with no ceiling, anchored `right-0` to a trigger
+   * near the left of a 375pt bar, so its left edge sat off the viewport and
+   * Present and the reactions inside it were unreachable. Nothing measured it —
+   * `check:targets` reads each control's *size*, and a menu clipped off-screen
+   * keeps its size, which is the same blind spot that let the control bar
+   * overflow with a green check.
+   *
+   * So this reads an origin, not a width. `left >= 0` is the claim; the right
+   * edge is checked too, since `right-0` anchoring makes that the easy one to
+   * assume and the cheap one to assert.
+   */
+  test("the overflow menu opens fully on screen", async ({ browser, meetingCode }) => {
+    participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode, viewport: IPHONE });
+    const { page } = participant;
+
+    await wakeControls(page);
+    await page.getByRole("button", { name: "More" }).click();
+
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    const box = await menu.boundingBox();
+    expect(box, "the overflow menu rendered no box").not.toBeNull();
+    expect(
+      Math.round(box!.x),
+      `the menu is clipped off the left edge at x=${box!.x}`,
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      Math.round(box!.x + box!.width),
+      "the menu runs past the right edge",
+    ).toBeLessThanOrEqual(IPHONE.width);
+  });
+
   test("the control bar fits the viewport", async ({ browser, meetingCode }) => {
     participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode, viewport: IPHONE });
     const { page } = participant;

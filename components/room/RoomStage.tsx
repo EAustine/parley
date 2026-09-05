@@ -82,11 +82,37 @@ export function RoomStage({
   code,
   token,
   serverUrl,
+  micOn,
+  cameraOn,
 }: {
   code: string;
   token: string;
   serverUrl: string;
+  /**
+   * What pre-join agreed to publish — v1.4 A1, and binding.
+   *
+   * Props rather than another `readDevices()` call, because these are the one
+   * thing in this component that must not come from `localStorage`. See the
+   * publish block below for what that cost.
+   */
+  micOn: boolean;
+  cameraOn: boolean;
 }) {
+  /**
+   * The arrival decision, read once and then left alone — v1.4 A1.
+   *
+   * A ref rather than a dependency of the connect effect, and the distinction
+   * is behavioural. These describe what was agreed to *on the way in*; once the
+   * room is up, the control bar owns the tracks and rule 3 derives the UI from
+   * their published state. Listing them as dependencies would say a change
+   * should tear down the connection and rebuild it, which is what pressing
+   * Unmute would then do.
+   *
+   * Seeded at mount, so a resume (`resumeNonce`) rebuilds the room with the
+   * same consent it started with rather than re-reading anything.
+   */
+  const arrivedWith = useRef({ micOn, cameraOn });
+
   const [room, setRoom] = useState<Room | null>(null);
   const [stage, setStage] = useState<Stage>({ kind: "connecting" });
   /**
@@ -222,12 +248,36 @@ export function RoomStage({
         // A publish that fails surfaces through `lastCameraError` on the
         // control bar, where it belongs: next to the control that fixes it.
 
-        // Publish only what pre-join left switched on. `!== false` rather than
-        // a truthiness test: an absent preference means the person never
-        // touched the toggle, and the default is on.
+        /**
+         * Publish exactly what pre-join handed over, and nothing else — v1.4 A1.
+         *
+         * This read `stored.micOn !== false` from `localStorage`, with a
+         * comment explaining that "an absent preference means the person never
+         * touched the toggle, and the default is on". Both halves were wrong,
+         * and together they published video from people who had granted
+         * nothing: `undefined !== false` is `true`, so a visitor who declined
+         * at pre-join — and therefore never had a preference written — reached
+         * `setCameraEnabled(true)`, and **that call is the `getUserMedia`
+         * prompt**. The room asked the browser for a camera on their behalf and
+         * published what came back.
+         *
+         * The channel was wrong as much as the comparison. `parley:devices` is
+         * `localStorage`: a standing choice carried between meetings, which is
+         * right for *which* camera and wrong for *whether*. Consent belongs to
+         * a visit, so it travels in the `sessionStorage` handoff beside the
+         * token, and `recallJoin` reads it as `=== true`.
+         *
+         * Both `false` is the ordinary case now, not a failure: with nothing
+         * handed over these are `false`, `setCameraEnabled(false)` acquires
+         * nothing, and no prompt fires on entry. §3.3: a prompt is a response
+         * to an action, so the first press of Unmute or Start video is what
+         * asks. This is the publish-side twin of rule 3 — the UI may not claim
+         * you are muted when you are not, and nothing may publish what you did
+         * not turn on.
+         */
         void Promise.allSettled([
-          next.localParticipant.setMicrophoneEnabled(stored.micOn !== false),
-          next.localParticipant.setCameraEnabled(stored.cameraOn !== false),
+          next.localParticipant.setMicrophoneEnabled(arrivedWith.current.micOn),
+          next.localParticipant.setCameraEnabled(arrivedWith.current.cameraOn),
         ]);
 
         // The speaker choice pre-join collected but could not apply — it needs

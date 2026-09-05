@@ -44,4 +44,52 @@ export async function signIn(page: Page, email: string, next = "/dashboard") {
     `/auth/callback?token_hash=${link.hashed_token}&type=${link.verification_type}` +
       `&next=${encodeURIComponent(next)}`,
   );
+
+  /**
+   * Assert the session actually took — otherwise this function fails silently
+   * and every caller reports the wrong thing.
+   *
+   * `app/auth/callback/route.ts` redirects to `/sign-in?error=…` when the
+   * exchange fails, carrying the reason. Nothing here read it. So a sign-in that
+   * did not take returned normally, the caller carried on to a signed-in page,
+   * the middleware bounced it back to `/sign-in`, and the test died twenty
+   * seconds later on `expect(getByRole("heading", { name: "Meetings" }))` —
+   * reporting "element not found" for a dashboard that was never going to
+   * render, while the actual explanation sat unread in a query parameter.
+   *
+   * That is the same defect as every entry in `CLAUDE.md`'s testing rules: not
+   * a check that fails, a check that stops asking. It cost most of a session's
+   * debugging, because the failures moved between runs and each one named a
+   * different innocent assertion.
+   *
+   * **Two assertions, and the cookie is the load-bearing one.** The URL check
+   * catches the redirect the route actually performs; the cookie check catches
+   * a session that is absent for any reason the route never saw. Landing
+   * somewhere plausible is not the same as holding a session, and only one of
+   * these is a statement about the thing callers depend on.
+   *
+   * **Deliberately no retry.** A bounded retry here would make the suite green
+   * and hide whatever is causing this, which `CLAUDE.md` is explicit about:
+   * "a suite that is re-run until green is a suite that teaches you to ignore
+   * it." If this throws, that is information.
+   */
+  const landed = new URL(page.url());
+  const reported = landed.searchParams.get("error");
+  if (reported || landed.pathname.startsWith("/sign-in")) {
+    throw new Error(
+      `signIn(${email}) established no session. Landed on ${landed.pathname}` +
+        (reported ? ` with error: ${reported}` : "") +
+        `, expected ${next}.`,
+    );
+  }
+
+  const cookies = await page.context().cookies();
+  const session = cookies.filter((c) => /^sb-.*auth-token/.test(c.name));
+  if (session.length === 0) {
+    throw new Error(
+      `signIn(${email}) reached ${landed.pathname} but set no Supabase auth ` +
+        `cookie, so the next navigation will be treated as signed out. ` +
+        `Cookies present: ${cookies.map((c) => c.name).join(", ") || "none"}.`,
+    );
+  }
 }

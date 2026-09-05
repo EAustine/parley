@@ -127,9 +127,20 @@ test.describe("§3.7 — where screen share is offered", () => {
     participant = { context, page, name: "Kofi Mensah" };
 
     await page.goto(`/j/${meetingCode}`);
+    // Grant before joining — v1.4 A1. This flow is hand-rolled rather than
+    // `joinAs`'d, because the context needs its own init script, so it needs
+    // the same press: consent is binding now, and a participant who never
+    // grants arrives with both off and a bar reading "Unmute".
+    const allow = page.getByRole("button", { name: "Allow camera and microphone" });
+    if (await allow.count()) {
+      await allow.click();
+      await expect(
+        page.getByRole("button", { name: /Turn (off|on) microphone/ }),
+      ).toBeVisible({ timeout: 20_000 });
+    }
     const nameField = page.getByLabel("Your name");
     if (await nameField.count()) await nameField.fill("Kofi Mensah");
-    await page.getByRole("button", { name: "Join meeting" }).click();
+    await page.getByRole("button", { name: /^Join/ }).click();
     await page.waitForURL(`**/room/${meetingCode}`);
     await expect(
       page.getByRole("heading", { name: /Meeting, \d+ participant/ }),

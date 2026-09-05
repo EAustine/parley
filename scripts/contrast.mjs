@@ -292,10 +292,44 @@ for (const token of ["--on-scrim", "--on-scrim-muted"]) {
   INVARIANT[token] = declared[1];
 }
 
+/**
+ * Light comes from `:root`, not from a `.light` block, and that is a change.
+ *
+ * `globals.css` used to carry the light palette twice — once on `:root` and
+ * once on `.light`, which next-themes writes onto the same `<html>`. This
+ * script read the second one. The two agreed on all 22 tokens, so nothing was
+ * wrong; what was wrong was that nothing could tell you if they stopped
+ * agreeing. An edit to `:root` alone would move the rendered theme and leave
+ * this measuring the stale copy, reporting green — the same shape as the
+ * matrix that ran green over a hued element on the scrim.
+ *
+ * The duplicate is gone rather than guarded, which is the better fix and the
+ * one C3 used on the two-panel state. `.light` survives in `globals.css` only
+ * as a selector — the `color-scheme` rule and the pre-paint `:not()` guard —
+ * where it carries no values to drift.
+ */
 const themes = {
   dark: parseBlock(css, ".dark {"),
-  light: parseBlock(css, ".light {"),
+  light: parseBlock(css, ":root {"),
 };
+
+/**
+ * A block that parses to nothing is a check that has stopped asking.
+ *
+ * `parseBlock` throws when its selector is absent and returns `{}` when the
+ * block it found holds no tokens — so repointing it at a rule that is not a
+ * palette would silently empty half the matrix. That is exactly the failure
+ * this whole change is about, so it is asserted rather than assumed.
+ */
+for (const [name, tokens] of Object.entries(themes)) {
+  const count = Object.keys(tokens).length;
+  if (count < 20) {
+    throw new Error(
+      `The ${name} palette parsed to ${count} tokens, which is not a palette. ` +
+        "Check the selector this block is read from in globals.css.",
+    );
+  }
+}
 for (const tokens of Object.values(themes)) {
   tokens[SCRIM_OVER_WHITE] = scrimOverWhite;
   Object.assign(tokens, INVARIANT);

@@ -132,7 +132,9 @@ Three tiers, as v1.2's B4 described:
 
 - **Primary, labelled** — Mute, Stop video, Present. The ones you hit under pressure, and where a wrong guess costs something.
 - **Secondary, icon with tooltip and `aria-label`** — reactions, chat, people. Ghost until hover, filled while their panel is open.
-- **Destructive** — Leave, the only non-circular control.
+- **Destructive** — Leave, in its own group at the end of the bar.
+
+**C2 is what retires "Leave, the only non-circular control".** Making the primary tier labelled makes it pills, so shape now separates Leave from the secondary tier and not from Present. Its label, its `--destructive` fill and its group placement carry it instead, and the label is what keeps it off hue alone. `CLAUDE.md`'s shape section and `PRD.md` §3.4 both said the old thing and are corrected.
 
 **Mobile is six controls**: mic, camera, chat, people, overflow, Leave. Present and reactions move into the overflow menu, which also holds audio and video settings and, on desktop, keyboard shortcuts. Eight controls do not fit a 390px bar; six fit with room.
 
@@ -169,9 +171,19 @@ Reported three times, and "desktop only" was never the right rule. `getDisplayMe
 
 ### C6. Reactions
 
-Fluent Emoji 3D, MIT licensed. Preload the six on room entry — a reaction that arrives before its image is worse than a flat one.
+**Judge the curve before buying anything.** The original complaint arrived when reactions had no animation at all, so "flat" and "motionless" were confounded. The arc, rotation and decelerating ease have since landed and separate them. Look at it on a real phone first — if it reads well, system glyphs stay, cost nothing, and already match the reader's platform.
 
-On "more realistic": the current 2400ms float is what §3.6 specified and was built correctly. **Try the curve before the assets** — an arc rather than a straight rise, slight rotation, and an ease that decelerates before the fade. That may be the whole complaint, and it is free. Reduced motion still fades in place.
+If it still wants 3D after that:
+
+**Fluent Emoji 3D at 96px WebP, roughly 50 kB for the six.** Reactions render at 30px, so 96px covers 3× density, which is every phone shipping. Convert locally with `sharp`, already a Next dependency, so nothing joins `package.json`. The 256px originals are eight times the pixels needed and 212 kB on the route where a stranger meets the product on mobile data — the exact shape of cost §10 exists to prevent.
+
+**Preload after join completes, not on room entry.** Room entry *is* the join path. Fifty kilobytes competing with media negotiation trades time-to-first-video for a decoration nobody has used yet. Connect, get media flowing, then fetch — the only exposure is a reaction in the first second of a session.
+
+**Know the trade on iOS.** Fluent 3D replaces Apple Color Emoji, which is the best-looking set on any platform and already three-dimensional. On Android and Windows this is an upgrade; on iPhone it is lateral at best, and iPhone is a large share of the guests this product is built for. The consistency argument is also weaker than it looks: reactions live 2400 ms, nobody compares them across devices, and platform-varying emoji is what every messaging app already does.
+
+Reduced motion still fades in place.
+
+**Both halves have shipped.** The curve landed first and the assets followed, at 22.3 kB for the six rather than the 50 estimated. `ReactionPreload` waits on `connection.phase === "healthy"`, per the amendment above. This section reverted to its pre-decision draft once in a docs bundle; if it reads as "try the curve before the assets" again, that is the revert and not a new instruction.
 
 ---
 
