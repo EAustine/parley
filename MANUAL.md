@@ -439,7 +439,16 @@ Kept so the list does not lose the record of what was once open.
   redirect list and `NEXT_PUBLIC_APP_URL`; the Google callback is Supabase's and
   does not change.
 
-  **Verifying it is now `npm run check:public -- https://…`**, and that is
+  **Status: verified** (2026-09-05, `npm run check:public` against
+  `parley-eluro-austines-projects.vercel.app` — 2/2, a cookieless request gets
+  Parley's own HTML from both `/` and a `/j/[code]` link). Protection is off on
+  that deployment. This is the first time the claim has been checked rather than
+  assumed, and it had been open since v1.3.
+
+  What that does *not* establish: that the deployment is current, or that a real
+  phone can hold a meeting on it. Those are other rows in this file.
+
+  **Verifying it is `npm run check:public:prod`, or `npm run check:public -- https://…`**, and that is
   deliberately not left as "borrow a phone". A5's own diagnosis is that the fault
   "is invisible to whoever built the project, because they are signed into
   Vercel" — so the manual check asks the one person who cannot see it to look,

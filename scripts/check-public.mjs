@@ -25,13 +25,21 @@
  * **Disabled**, or a custom domain, which removes it structurally — and both
  * need the dashboard.
  *
- * Run with: npm run check:public -- https://your-deployment.vercel.app
- * or:       PARLEY_PUBLIC_URL=https://… npm run check:public
+ * Run with: npm run check:public:prod
+ * or:       npm run check:public -- https://any-deployment.vercel.app
  *
- * The URL is an argument rather than read from `.env.local`, deliberately.
- * `CLAUDE.md` forbids this repo's tooling from reading that file, and the check
- * is just as valid pointed at a preview deployment — which is where protection
- * is most often left on.
+ * **A correction to this file's first version.** It said the URL was an argument
+ * because "CLAUDE.md forbids this repo's tooling from reading `.env.local`",
+ * and that overstated the rule in both directions. The rule is addressed to
+ * *Claude* — "anything you read enters your context and can end up quoted back
+ * into the conversation or a commit message" — and nine scripts already run
+ * with `--env-file=.env.local` for exactly this reason: the process reads it,
+ * the assistant does not. `NEXT_PUBLIC_APP_URL` is not even a secret; it is
+ * shipped to every browser in the page's own meta tags.
+ *
+ * So `check:public:prod` reads it, and the argument stays for the case it was
+ * always better at: pointing this at a **preview** deployment, which is where
+ * protection is most often left on and which no environment variable names.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -39,14 +47,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const target = (process.argv[2] ?? process.env.PARLEY_PUBLIC_URL ?? "").replace(/\/$/, "");
+const target = (
+  process.argv[2] ??
+  process.env.PARLEY_PUBLIC_URL ??
+  process.env.NEXT_PUBLIC_APP_URL ??
+  ""
+).replace(/\/$/, "");
 if (!target) {
   console.error(
-    "Usage: npm run check:public -- https://your-deployment.vercel.app\n" +
-      "   or: PARLEY_PUBLIC_URL=https://… npm run check:public\n\n" +
-      "The deployment URL is not read from .env.local — CLAUDE.md forbids this\n" +
-      "tooling from touching that file, and the check is equally valid against a\n" +
-      "preview deployment.",
+    "Usage: npm run check:public:prod            (reads NEXT_PUBLIC_APP_URL)\n" +
+      "   or: npm run check:public -- https://…    (any preview deployment)",
   );
   process.exit(2);
 }
@@ -143,6 +153,16 @@ async function probe(path, expect) {
     return { url, ok: false, why: `HTTP 200 from Parley, but ${expect} is not in it` };
   }
   return { url, ok: true };
+}
+
+if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(target)) {
+  console.log(
+    `Checking ${target} — a local server, so this says nothing about Deployment\n` +
+      "Protection. Useful for proving the check itself works; point it at the\n" +
+      "deployment to answer the question A5 asks.\n",
+  );
+} else {
+  console.log(`Checking ${target}\n`);
 }
 
 const results = [

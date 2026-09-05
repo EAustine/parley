@@ -8189,3 +8189,40 @@ from the trigger resolves to 0 on surfaces with no bar.
 Three defects behind one screenshot, and the second and third were only visible
 because the assertion hit-tests the pixel rather than comparing rectangles — a
 clipped element keeps its box, and an occluded one keeps it too.
+
+### A5 is verified, and the migration is not applicable from here
+
+**A5: verified.** `npm run check:public` against
+`parley-eluro-austines-projects.vercel.app` returns 2/2 — a request carrying no
+cookies gets Parley's own HTML from both `/` and a `/j/[code]` link. Deployment
+Protection is off on that deployment. The claim had been open since v1.3 and is
+now checked rather than assumed.
+
+Stated narrowly, because the check is narrow: it proves a signed-out stranger
+reaches the app. It does not prove the deployment is current, and it says nothing
+about whether a real phone can hold a meeting on it.
+
+**Two corrections to `scripts/check-public.mjs`, both mine.**
+
+Its docstring claimed the URL was an argument because "CLAUDE.md forbids this
+repo's tooling from reading `.env.local`". That overstated the rule in both
+directions: it is addressed to *Claude* — "anything you read enters your
+context" — and nine scripts already run with `--env-file=.env.local` on exactly
+that basis, the process reading what the assistant does not.
+`NEXT_PUBLIC_APP_URL` is not a secret at all; it ships in every page's meta tags.
+So `check:public:prod` reads it, and the argument stays for the case it was
+always better at — a **preview** deployment, which no variable names and where
+protection is most often left on.
+
+And the first run of `check:public:prod` reported a clean-looking failure against
+`http://localhost:3000`, because that is what `NEXT_PUBLIC_APP_URL` holds
+locally. A localhost result says nothing about Deployment Protection either way,
+so the script now says so rather than letting a red or green localhost run be
+mistaken for an answer about production.
+
+**The migration cannot be applied from here, and this is mechanical rather than
+a matter of permission.** There is no `supabase` CLI and no `psql` on this
+machine, and the app declares no database connection string — only the Supabase
+URL and its keys, which reach PostgREST over HTTP. `alter table … drop not null`
+is DDL and needs a real postgres connection. `20260905180000_clear_email_display_names.sql`
+still wants the dashboard's SQL editor or the CLI with the database password.
