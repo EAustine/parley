@@ -8090,3 +8090,44 @@ failure it exists to explain.
 **Still unknown, and deliberately not guessed at:** the mechanism. What has
 changed is that the next occurrence will name it instead of being three
 indistinguishable possibilities behind one sentence.
+
+### A5 — the setting is Austine's; the verification no longer is
+
+I cannot flip Deployment Protection. The Vercel CLI is not installed, the Vercel
+MCP server needs an OAuth round trip this session cannot run, and the deployment
+URL lives only in `.env.local`, which `CLAUDE.md` forbids this tooling from
+reading. Project → Settings → Deployment Protection → Vercel Authentication →
+Disabled is a dashboard action.
+
+What was worth building is the half that kept the item open. A5 asks for a check
+"from a device that has never signed into Vercel or Parley", and that has sat
+unverified across two versions — because, as A5 itself diagnoses, the fault "is
+invisible to whoever built the project, because they are signed into Vercel."
+The manual check asks the one person who cannot see the defect to look for it,
+and "borrow a phone" is a step that gets skipped.
+
+`npm run check:public -- https://…` is **stronger than the manual check, not a
+substitute for it**. `fetch` sends no cookies at all: a permanently fresh device,
+every run, with no way to accidentally be signed in. It probes `/` and a
+`/j/[code]` link — the flow A5 is actually about — and reports the dashboard path
+when it meets a wall.
+
+Three things it does deliberately:
+
+**The URL is an argument, never read from `.env.local`.** The rule against
+touching that file has no exception for tooling, and the check is equally valid
+against a preview deployment, which is where protection is most often left on.
+
+**The meeting code is compiled from `lib/meetings/code.ts`.** A hand-typed code
+containing `0` or `1` is rejected as malformed by our own route before the
+request proves anything about Vercel, which is `CLAUDE.md`'s fixture rule
+applying somewhere it would have quietly mattered.
+
+**The wall patterns are broad, and the pass condition is narrow.** Vercel's
+challenge has changed shape across its own versions, so recognising only today's
+form is a check that goes quiet later; anything that is not our own page fails,
+and the patterns only make the *report* specific.
+
+Proven in both directions: 2/2 against a local production build, and 2/2
+failures with the correct remediation against a server simulating Vercel's
+`sso-api` redirect.

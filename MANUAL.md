@@ -423,3 +423,35 @@ Kept so the list does not lose the record of what was once open.
   is still readable, and the chip does not run into the mic and camera icons.
   Worth doing at 375px as well as on a desktop panel, since that is where the
   original collision was reported.
+
+- **Deployment Protection, and whether a guest can reach the app** — the setting
+  is yours; the verification is not manual any more.
+
+  v1.3 A5: Vercel enables Standard Protection by default, bouncing anyone who is
+  not a Vercel user with project access to a Vercel login page. Its scope exempts
+  production *custom* domains, and a generated `*.vercel.app` URL is inside the
+  protected set. That is the guest flow — the highest-traffic path in the product
+  and the thing the tagline is about.
+
+  **Turning it off needs the dashboard**: Project → Settings → Deployment
+  Protection → Vercel Authentication → **Disabled**. Or add a custom domain,
+  which removes it structurally — and if you do, update Supabase's Site URL and
+  redirect list and `NEXT_PUBLIC_APP_URL`; the Google callback is Supabase's and
+  does not change.
+
+  **Verifying it is now `npm run check:public -- https://…`**, and that is
+  deliberately not left as "borrow a phone". A5's own diagnosis is that the fault
+  "is invisible to whoever built the project, because they are signed into
+  Vercel" — so the manual check asks the one person who cannot see it to look,
+  which is why it stayed open for two versions. `fetch` sends no cookies: it is a
+  permanently fresh device, with no way to accidentally be signed in, which makes
+  the automated check **stronger** than the manual one rather than a stand-in for
+  it.
+
+  It probes `/` and a `/j/[code]` link, and fails with the exact dashboard path
+  when it meets a wall. Proven in both directions against a local build and a
+  simulated Vercel redirect.
+
+  What it does not cover, and still wants eyes once: that the *app itself* works
+  end to end from a real phone on a real network — media, permissions, joining.
+  That is the other rows in this file, not this one.
