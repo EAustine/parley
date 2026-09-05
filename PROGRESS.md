@@ -8131,3 +8131,61 @@ and the patterns only make the *report* specific.
 Proven in both directions: 2/2 against a local production build, and 2/2
 failures with the correct remediation against a server simulating Vercel's
 `sso-api` redirect.
+
+### The row menu was clipped, and the fix uncovered two more layers
+
+Reported from the deployed app with a screenshot: the row menu's last item read
+"They are disconnected straight", sheared off mid-sentence.
+
+**Three attempts failed to reproduce it before one did, and each failure was
+informative.** Desktop with two people passed; a phone with three passed; a
+shorter phone with the menu on the second row passed. Printing the geometry
+explained why: the menu was **76px — one item**. `withMedia: false` arrives
+muted, so §3.8 correctly withholds "Ask to mute", and a one-item menu fits with
+its bottom at exactly the list's bottom edge, 563 against 563. The screenshot
+showed both items because that guest was unmuted. Unmuting the fixture gives a
+149px menu ending at 651 inside a list ending at 563 — reproduced.
+
+A muted fixture is a test that cannot see the bug it is named for, and only the
+numbers said so.
+
+**The clipper is `overflow-y: auto` on the people list.** A visible `overflow-x`
+computes to `auto` when the other axis is not visible, so the list clips both
+ways, and an absolutely positioned menu inside it is clipped like any other
+child.
+
+`position: fixed` answers it — the viewport becomes the containing block and an
+ancestor's overflow stops applying. It also subsumes B2's nudge, which solved
+the same problem against a different clipper, so there is one mechanism for both
+now rather than two. **Not a portal**, deliberately: `document.body` is outside
+the room's `.dark` wrapper, so a portalled menu would render in the light
+palette, and it would leave the subtree the outside-press test and focus
+handling are written against.
+
+**Then the fix broke two things, and both were worth the trip.**
+
+*The menu closed in the same tick it opened.* Focusing the first item scrolls it
+into view, the new close-on-scroll heard that, and the menu vanished — the test
+reported "rendered nothing to hit-test". `preventScroll` on the focus and arming
+the listener a frame late; the same lesson `RoomPanel` and `ParticipantsPanel`
+already carry, load-bearing here rather than cosmetic.
+
+*Focus stopped entering the menu at all.* The panel renders `visibility: hidden`
+for the one commit before it is measured, and a `visibility: hidden` element
+cannot take focus — `focus()` on it fails silently. The effect depended on
+`[open]`, so it ran during that commit, did nothing, and never ran again. `pos`
+is a dependency now. Caught by `leave.spec`'s Escape test failing on the line
+*before* the Escape.
+
+**And the hit test found a third layer.** With the clipping gone the menu was no
+longer cut — it was **occluded**: `elementFromPoint` returned a 44px control
+where the last item should be. `fixed` escapes clipping but not the panel's
+*stacking context*, so a `z-40` popup inside a `z-20` panel still paints beneath
+the `z-30` control bar. Raising the z-index would not help and §3.4 wants the bar
+on top regardless, so the bar's height is the bottom limit and the menu flips
+above when there is no room below. `--parley-controls-h` inherits, so reading it
+from the trigger resolves to 0 on surfaces with no bar.
+
+Three defects behind one screenshot, and the second and third were only visible
+because the assertion hit-tests the pixel rather than comparing rectangles — a
+clipped element keeps its box, and an occluded one keeps it too.

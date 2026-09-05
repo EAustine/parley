@@ -66,27 +66,35 @@ export function PopupMenu({
   /** The whole surface, for the outside-press test — the header counts as inside. */
   const popupRef = useRef<HTMLDivElement>(null);
   /**
-   * How far the panel has to move right to stay on screen — v1.4 B2.
+   * Where the panel actually goes, measured — v1.4.
    *
-   * **The reported fix does not work, and measuring is what showed that.** B2
-   * prescribes a width clamp, copied from the sibling menu in the design file.
-   * A clamp cannot help here: the panel is anchored `right-0` to its trigger,
-   * so its left edge is `trigger.right - width`, and on a 375pt phone the
-   * overflow control sits about 218px from the left with a 260px panel hanging
-   * off it. The first attempt applied `min(260px, calc(100vw - 2rem))`,
-   * measured **x = -41.8**, and the clamp had changed nothing — `min()` of 260
-   * and 343 is 260. The design's menu is not clipped because it is the last
-   * control in the bar, not because of its clamp.
+   * It was `absolute`, anchored to the trigger, which fails in two different
+   * ways that look like one bug.
    *
-   * So the panel is nudged instead, by exactly its deficit, the same shape as
-   * `SelfViewPiP`'s corner clamp: measure the rendered box, and if it starts
-   * left of the margin, translate it back. Nothing is repositioned when it
-   * already fits, which is every desktop case and the account menu.
+   * **Off the viewport.** B2: a 260px panel anchored `right-0` to a control
+   * 218px from the left edge of a 375pt phone starts at x = -41.8. A width
+   * clamp cannot help — `min(260px, 100vw - 2rem)` is 260px there — and the
+   * design file's mobile rule does not clamp either, it re-anchors to the
+   * centre.
    *
-   * A layout effect, so the correction lands in the same paint as the open —
-   * a `useEffect` here shows one frame of the clipped position first.
+   * **Clipped by an ancestor.** The participant row's menu lives inside the
+   * people list, which is `overflow-y: auto` — and `overflow-y: auto` with a
+   * visible x computes to `auto` on both axes, so it clips. Measured at 149px
+   * of menu ending at y = 651 inside a list ending at 563: the last item read
+   * "They are disconnected straight", with the rest sheared off.
+   *
+   * `fixed` answers both, because it takes the viewport as its containing block
+   * rather than the nearest positioned ancestor, and `overflow` on an ancestor
+   * does not clip it. Coordinates come from the trigger's rect at open, clamped
+   * to the viewport on both axes — the nudge this replaces, generalised from one
+   * direction to four.
+   *
+   * Not a portal, deliberately. A portal to `document.body` would escape the
+   * room's `.dark` wrapper and render the menu in the light palette, and it
+   * would move the popup out of the subtree the outside-press test and the
+   * focus handling are written against. `fixed` keeps the DOM where it is.
    */
-  const [nudge, setNudge] = useState(0);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
 
   const items = () =>
@@ -98,10 +106,27 @@ export function PopupMenu({
     if (returnFocus) triggerRef.current?.focus();
   };
 
+  /**
+   * Focus enters the menu once it has somewhere to be.
+   *
+   * **`pos` is a dependency, not decoration.** The panel renders
+   * `visibility: hidden` for the one commit before it is measured, and a
+   * `visibility: hidden` element cannot take focus — `focus()` on it silently
+   * does nothing. Depending on `[open]` alone, this ran during that commit,
+   * failed quietly, and never ran again, so the leave menu opened with focus
+   * still on its trigger and every arrow key went nowhere. Caught by
+   * `leave.spec`'s "Escape closes the menu and puts focus back on Leave",
+   * which failed on the line *before* the Escape.
+   *
+   * `preventScroll`, for the reason `RoomPanel` and `ParticipantsPanel` both
+   * give — and here it is load-bearing rather than cosmetic. This menu can open
+   * inside a scrolling list, and the close-on-scroll below cannot tell a person
+   * scrolling away from the browser scrolling *to* the thing being focused.
+   */
   useEffect(() => {
-    if (!open) return;
-    items()[0]?.focus();
-  }, [open]);
+    if (!open || !pos) return;
+    items()[0]?.focus({ preventScroll: true });
+  }, [open, pos]);
 
   /**
    * `pointerdown` rather than `click`: a press that lands on another control
@@ -149,21 +174,88 @@ export function PopupMenu({
 
   useLayoutEffect(() => {
     if (!open) {
-      setNudge(0);
+      setPos(null);
       return;
     }
+    const trigger = triggerRef.current;
     const panel = popupRef.current;
-    if (!panel) return;
-    // Read with the correction removed, so this converges instead of
-    // compounding each time the menu is reopened.
-    panel.style.transform = "";
-    const MARGIN = 8;
-    const { left, right } = panel.getBoundingClientRect();
-    if (left < MARGIN) setNudge(Math.ceil(MARGIN - left));
-    else if (right > window.innerWidth - MARGIN)
-      setNudge(-Math.ceil(right - (window.innerWidth - MARGIN)));
-    else setNudge(0);
-  }, [open]);
+    if (!trigger || !panel) return;
+
+    const place = () => {
+      const t = trigger.getBoundingClientRect();
+      // The panel is laid out by CSS at this point, so its *size* is real even
+      // though its position is about to be replaced.
+      const { width, height } = panel.getBoundingClientRect();
+      const M = 8;
+      // Right-aligned to the trigger, which is what `right-0` meant.
+      const left = Math.max(
+        M,
+        Math.min(t.right - width, window.innerWidth - width - M),
+      );
+
+      /**
+       * The floor is the control bar, not the viewport.
+       *
+       * `fixed` escapes the panel's clipping but not its **stacking context**:
+       * the popup is `z-40` inside a panel at `z-20`, and the control bar is
+       * `z-30` in the parent context — so the bar paints over the whole panel
+       * subtree however high the popup's own z-index goes. A menu that merely
+       * fits the viewport can therefore sit *underneath* the bar, which is what
+       * the hit test caught after the clipping was fixed: not clipped, occluded,
+       * with a 44px control found where the menu's last item should be.
+       *
+       * Raising the popup's z-index would not help, and §3.4 wants the bar on
+       * top anyway — it has to stay reachable with a panel open. So the bar's
+       * height is the bottom limit. The variable inherits, so reading it from
+       * the trigger works wherever it is published, and resolves to 0 on
+       * surfaces that have no bar — the dashboard's account menu.
+       */
+      const bar =
+        parseFloat(
+          getComputedStyle(trigger).getPropertyValue("--parley-controls-h"),
+        ) || 0;
+      const floor = window.innerHeight - bar - M;
+
+      // Flip when the requested side has no room and the other does. A menu
+      // that opens the wrong way is better than one that opens where it cannot
+      // be read.
+      const below = t.bottom + M;
+      const above = t.top - height - M;
+      const fitsBelow = below + height <= floor;
+      const fitsAbove = above >= M;
+      const useAbove = placement === "above" ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove;
+
+      const top = useAbove
+        ? Math.max(M, above)
+        : Math.min(below, Math.max(M, floor - height));
+      setPos({ left, top });
+    };
+    place();
+
+    /*
+     * Fixed coordinates go stale the moment anything moves, and this opens
+     * inside a scrolling list. Closing is the honest response — repositioning
+     * mid-scroll makes a menu that chases the pointer, and every menu in the
+     * product already closes on an outside press.
+     */
+    const close = () => setOpen(false);
+    /*
+     * Armed a frame late, so the opening itself cannot trigger it. Focus moving
+     * into the menu, and the layout settling around a newly shown panel, both
+     * produce scroll events that are not a person scrolling away — and a menu
+     * that closes on its own arrival is worse than one that does not close on
+     * scroll at all.
+     */
+    const armed = requestAnimationFrame(() => {
+      window.addEventListener("scroll", close, true);
+      window.addEventListener("resize", close);
+    });
+    return () => {
+      cancelAnimationFrame(armed);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open, placement]);
 
   return (
     <div className="relative inline-flex">
@@ -206,10 +298,8 @@ export function PopupMenu({
          * written as `min()` inside the `min-w` value because `min-width` beats
          * `max-width` in the cascade, so a bare `max-w` would lose.
          */
-        className={`absolute right-0 z-40 min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] ${
-          placement === "above" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"
-        }`}
-        style={nudge ? { transform: `translateX(${nudge}px)` } : undefined}
+        className={`fixed z-40 min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)]`}
+        style={pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" }}
       >
         {header}
         <div ref={menuRef} id={id} role="menu" aria-label={menuLabel}>

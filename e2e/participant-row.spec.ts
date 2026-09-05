@@ -161,6 +161,129 @@ test.describe("the participant row", () => {
   });
 
   /**
+   * The menu is not clipped by the list it lives in.
+   *
+   * Reported from the deployed app: the row menu's second item was cut off
+   * mid-sentence — "They are disconnected straight". The panel body and the
+   * participant `<ul>` are both `overflow-y-auto`, and an absolutely positioned
+   * menu inside a scroll container is clipped by it. Same class as B2's menu off
+   * the left edge, different axis and a different clipper: there it was the
+   * viewport, here it is an ancestor.
+   *
+   * **Asserted by hit-testing, not by comparing rectangles.** A clipped element
+   * keeps its box — `getBoundingClientRect` reports the full menu whether or not
+   * any of it is painted, which is the same blind spot that let a menu sit at
+   * x = -41.8 with every size check green. `elementFromPoint` asks the browser
+   * what is actually at that spot, which is the question.
+   */
+  test("the row menu is not clipped by the panel's scroll container", async ({
+    browser,
+    hostedMeeting,
+  }) => {
+    test.setTimeout(180_000);
+    /*
+     * A phone, and a third person — the conditions the report was made under.
+     *
+     * At desktop width with two people this passes against the broken build:
+     * the drawer is full height, the list is short, and a menu opening below
+     * row two has room. The sheet is capped at 55dvh on a phone, so the same
+     * menu opens below a row that is already near the bottom. Reproducing the
+     * geometry is the test; a viewport that cannot show the bug is a test that
+     * reports the fix either way.
+     */
+    const host = await joinAs(browser, "Ama Serwaa", {
+      code: hostedMeeting.code,
+      withMedia: false,
+      asHost: hostedMeeting.email,
+      viewport: { width: 375, height: 667 },
+    });
+    const guest = await joinAs(browser, "Kwabena Osei-Bonsu", {
+      code: hostedMeeting.code,
+      withMedia: false,
+    });
+    const third = await joinAs(browser, "Adwoa Mensimah", {
+      code: hostedMeeting.code,
+      withMedia: false,
+    });
+    open.push(host, guest, third);
+    await expectParticipants(host.page, 3);
+
+    /*
+     * Unmute the guest, which is what makes the menu two items tall.
+     *
+     * Measured, after three attempts that passed against the broken build: with
+     * `withMedia: false` the guest is muted, "Ask to mute" is correctly not
+     * offered (§3.8), and the menu is **76px** — one item, which fits with its
+     * bottom edge at exactly the list's bottom (563 and 563). The screenshot in
+     * the report shows both items, because that guest was unmuted. A second item
+     * is what pushes it past the edge, and a muted fixture is a test that cannot
+     * see the bug it is named for.
+     */
+    await wakeControls(guest.page);
+    await guest.page.getByRole("button", { name: "Unmute" }).click();
+    await expect(guest.page.getByRole("button", { name: "Mute" })).toBeVisible();
+
+    await wakeControls(host.page);
+    await host.page.getByRole("button", { name: "Participants" }).click();
+    const panel = host.page.getByRole("tabpanel", { name: "People" });
+    await expect(
+      host.page.getByRole("button", { name: /^Actions for Kwabena/ }),
+    ).toBeVisible();
+    await panel.getByRole("button", { name: /^Actions for Kwabena/ }).click();
+    const menu = host.page.getByRole("menu", { name: /^Actions for / });
+    await expect(menu).toBeVisible();
+
+    const hit = await host.page.evaluate(() => {
+      /*
+       * The *open* one. `PopupMenu` puts `hidden` on the popup wrapper, not on
+       * the `role="menu"` element, so every row contributes a menu node to the
+       * document and `querySelector` takes the first — which is closed, and
+       * measures 0×0. The first version of this probe did exactly that and
+       * reported "menu bottom 0", which reads like a clipped menu and was a
+       * broken selector.
+       */
+      /*
+       * The *open* one, found by its wrapper rather than by `offsetParent`.
+       *
+       * `PopupMenu` puts `hidden` on the popup wrapper, not on the `role="menu"`
+       * element, so every row contributes a menu node and `querySelector` takes
+       * the first — which is closed and measures 0x0. The first version did
+       * that and reported "menu bottom 0", which reads like a clipped menu and
+       * was a broken selector.
+       *
+       * The second version used `offsetParent !== null`, which broke on the fix
+       * itself: `offsetParent` is **null for a `position: fixed` element**, so
+       * every menu looked closed. Asking whether an ancestor carries `hidden`
+       * is the question that survives how the thing is positioned.
+       */
+      const el = [
+        ...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label^="Actions for"]'),
+      ].find((m) => !m.closest("[hidden]"));
+      if (!el) return { found: false as const };
+      const box = el.getBoundingClientRect();
+      // A point just inside the bottom edge, horizontally centred — the part
+      // the screenshot showed sheared off.
+      const x = Math.round(box.left + box.width / 2);
+      const y = Math.round(box.bottom - 4);
+      const at = document.elementFromPoint(x, y);
+      return {
+        found: true as const,
+        insideMenu: !!at && el.contains(at),
+        landedOn: at ? `${at.tagName.toLowerCase()}.${(at.className || "").toString().slice(0, 40)}` : "nothing",
+        bottom: Math.round(box.bottom),
+        viewport: window.innerHeight,
+      };
+    });
+
+    expect(hit.found, "the row menu rendered nothing to hit-test").toBe(true);
+    expect(
+      hit.insideMenu,
+      `the menu's bottom edge is not painted — clipped. At that point the browser ` +
+        `found ${hit.landedOn} (menu bottom ${hit.bottom}, viewport ${hit.viewport}).`,
+    ).toBe(true);
+  });
+
+  /**
    * B1: "The `⋮` renders always. Hover-reveal is invisible to touch and
    * invisible to keyboard until focus arrives; the host on a phone had no route
    * to Remove."
