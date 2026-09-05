@@ -7898,3 +7898,80 @@ and screen share. It had not run at all in the failing suite — `check:media`
 chains its two invocations with `&&`, so the app project's failure meant the
 media project never started, and the one suite that could confirm media still
 flows was the one that was skipped.
+
+## v1.4 Track B and A2
+
+### B1 — the participant row, and a diagnosis that was wrong
+
+B1 reports "hovering a row replaced the participant's name with the action
+buttons". **There is no hover logic in `ParticipantsPanel`**, and looking for
+some was the first thing this cost.
+
+The row was a `min-w-0 flex-1` identity block beside `shrink-0` text buttons,
+and flex does exactly what that asks: the fixed-width actions take every pixel
+they need and the name truncates toward nothing. It looked like hover because
+the buttons render only for a host — so the only people who ever saw the squeeze
+were the people about to act on the row.
+
+That distinction decides the fix. A hover bug is fixed by changing a hover rule;
+this is fixed by making the other two zones cost less. Actions collapse to one
+persistent `⋮` opening a `PopupMenu` — the leave menu's component, not a second
+idiom — with Remove behind the shared `ConfirmDialog`, replacing an inline
+two-step that could not survive the move (a menu closes on activation).
+Connection becomes an inline `--secondary` chip instead of a wrapping `<p>`.
+
+Proven by mutation, and the result was sharper than the assertion written for
+it: widening the actions zone to 220px fails the case at `toBeVisible` rather
+than at the width bound — the name is not squeezed, it is **gone**, which is the
+report word for word.
+
+**The two undiagnosed items.** The `⋮` is measured at 44px on a real Android
+context — B1 predicted "a 40px `⋮` would be the fourth time the room floor has
+been undercut" — and added to `targets.spec` where the leave menu lives, because
+the state list cannot reach a surface needing a host, a second participant and a
+tab selection. The mic-icon-on-hover report has no hover branch to fix; what it
+was really about is rule 3, so the row's `aria-label` is read from the same
+element at rest and under the pointer, in both mute states.
+
+**What the suite cannot cover, recorded in `MANUAL.md` rather than implied.**
+The connection chip renders only when quality is not good, which a local test
+against a healthy SFU never produces. The one-line claim is measured for the
+identity and actions zones and *not* for the chip.
+
+### B2's sheet — the menu was right and the contents were wrong
+
+Pressing an emoji closed the overflow menu, and that is correct: `role="menu"`
+dismisses on activation. The bug was that reactions were `menuitem`s at all.
+§3.6's two rules — the picker stays open, everything else closes on activation —
+cannot hold in one surface.
+
+So they left. `ReactionSheet` sits above the control bar at the bar's *measured*
+height, keeps no `menuitem` anywhere, and closes only on its own control,
+Escape, or a press outside. C2 put them inline to avoid "a second popup inside
+the first", which was an argument about **space** and does not survive a bottom
+sheet. The menu is a plain menu again, and its "Send a reaction" item dismisses
+on activation like every other one.
+
+Mutation: making the sheet close on select fails with "the sheet closed on a
+selection".
+
+**B2's open question answered.** Present was in the mobile menu all along —
+`share.supported && <MenuItem>`. The test round saw neither it nor a clipped
+trace because the whole menu was off the left edge at x = -41.8. One bug, not
+the two the question allowed for, and it is pinned now so it is not re-derived.
+
+### A2 — the same fix C4 already made, one surface along
+
+`ConnectionBar` was `absolute inset-x-0 top-0`; `ConnectionPill` is
+`absolute left-2 top-2` on each tile. They occupied one region by construction.
+
+C4 had already answered this for the sharing bar — "an absolute band covers the
+top of the grid… in flow it takes its own 8px of the stage and the tiles get the
+rest" — so the bar moves into the stage's column rather than inventing a second
+answer. That also retires the `top: 3.5rem` it carried to sit below the sharing
+bar: two flow children stack by themselves, and an offset tuned to another
+component's height goes wrong the moment that component wraps.
+
+Driven by `setOffline` rather than by waiting for a degradation a local SFU
+never produces, and asserted as boxes. Mutation: restoring `absolute` fails with
+"the connection bar overlaps the grid, where the first tile draws its pill".

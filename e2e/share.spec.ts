@@ -356,6 +356,9 @@ test.describe("participants panel", () => {
 
     await openParticipants(ama);
     const panel = ama.page.getByRole("tabpanel", { name: "People" });
+    // v1.4 B1: a guest sees no `⋮` at all, so the check is that the row offers
+    // no actions control rather than that one particular item is missing.
+    await expect(panel.getByRole("button", { name: /^Actions for / })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: /Ask to mute/ })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
   });

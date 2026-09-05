@@ -262,4 +262,64 @@ test.describe("touch targets, in the room", () => {
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }
   });
+
+  /**
+   * The participant row's actions — v1.4 B1, which asks for this by name:
+   * "`check:targets` should be measuring this row. A 40px `⋮` would be the
+   * fourth time the room floor has been undercut by a component that looked
+   * fine."
+   *
+   * The state list cannot reach it. Those states are routes with a viewport,
+   * and this one needs a host, a *second* participant to have a row with
+   * actions on it, and the panel open on the People tab — so it lives here with
+   * the leave menu, which needed a host for the same reason.
+   */
+  test("the participant row's actions clear the 44px floor", async ({
+    browser,
+    hostedMeeting,
+  }) => {
+    test.setTimeout(180_000);
+    participant = await joinAs(browser, "Abena Poku", {
+      code: hostedMeeting.code,
+      withMedia: false,
+      asHost: hostedMeeting.email,
+    });
+    const guest = await joinAs(browser, "Kwabena Osei", {
+      code: hostedMeeting.code,
+      withMedia: false,
+    });
+    const { page } = participant;
+
+    try {
+      for (const viewport of [DESKTOP, PHONE]) {
+        const where = `${viewport.width}px`;
+        await page.setViewportSize(viewport);
+
+        await wakeControls(page);
+        await page.getByRole("button", { name: "Participants" }).click();
+        await expect(
+          page.getByRole("button", { name: /^Actions for Kwabena/ }),
+        ).toBeVisible();
+        await assertFloor(page, {
+          floor: 44,
+          atLeast: 4,
+          label: `the room, people tab with a host's row actions, at ${where}`,
+        });
+
+        // And the menu it opens — two lines of text in a button, so nothing
+        // about the items is obviously 44px.
+        await page.getByRole("button", { name: /^Actions for Kwabena/ }).click();
+        await expect(page.getByRole("menu", { name: /^Actions for/ })).toBeVisible();
+        await assertFloor(page, {
+          floor: 44,
+          atLeast: 2,
+          label: `the room, participant row menu open, at ${where}`,
+        });
+        await page.keyboard.press("Escape");
+      }
+    } finally {
+      await leave(guest).catch(() => {});
+      await guest.context.close().catch(() => {});
+    }
+  });
 });

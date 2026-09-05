@@ -68,7 +68,10 @@ test.describe("a host asking someone to mute", () => {
 
     await wakeControls(host.page);
     await host.page.getByRole("button", { name: "Participants" }).click();
-    await host.page.getByRole("button", { name: /Ask to mute/ }).first().click();
+    // v1.4 B1: the host's actions live behind one `⋮` per row now, so reaching
+    // "Ask to mute" is open-the-menu-then-choose rather than one press.
+    await host.page.getByRole("button", { name: /^Actions for / }).first().click();
+    await host.page.getByRole("menuitem", { name: /Ask to mute/ }).click();
 
     const prompt = guest.page.getByRole("status").filter({ hasText: "asked you to mute" });
     await expect(prompt).toBeVisible({ timeout: 20_000 });
@@ -165,7 +168,10 @@ test.describe("a host asking someone to mute", () => {
 
     await wakeControls(host.page);
     await host.page.getByRole("button", { name: "Participants" }).click();
-    await host.page.getByRole("button", { name: /Ask to mute/ }).first().click();
+    // v1.4 B1: the host's actions live behind one `⋮` per row now, so reaching
+    // "Ask to mute" is open-the-menu-then-choose rather than one press.
+    await host.page.getByRole("button", { name: /^Actions for / }).first().click();
+    await host.page.getByRole("menuitem", { name: /Ask to mute/ }).click();
 
     const prompt = guest.page.getByRole("status").filter({ hasText: "asked you to mute" });
     await expect(prompt).toBeVisible({ timeout: 20_000 });

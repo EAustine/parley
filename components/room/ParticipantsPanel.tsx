@@ -14,7 +14,8 @@ import { TILE_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
 
 import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
 
 /**
  * §3.8. Everyone present, what their devices are doing, and — for a host — the
@@ -131,6 +132,20 @@ function ParticipantRow({
   const showActions = isLocalHost && !participant.isLocal;
 
   return (
+    /**
+     * Three zones, and identity never yields — v1.4 B1.
+     *
+     * The row was avatar, a `min-w-0 flex-1` identity block, the device icons,
+     * and then "Ask to mute" and "Remove" as `shrink-0` text buttons. Flex does
+     * exactly what that asks: the fixed-width actions win and the name truncates
+     * toward nothing, so the row you were about to remove someone from stopped
+     * saying who they were. It was reported as a hover bug and there is no hover
+     * logic in this file — it is a squeeze, and it happened whenever a host
+     * looked at a row long enough to act on it.
+     *
+     * Identity is still the flexible zone; what changed is how much the other
+     * two cost. Status is two icons and a short chip, actions are one control.
+     */
     <li className="flex items-center gap-3 rounded-lg px-2 py-2">
       <div
         className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary"
@@ -141,45 +156,45 @@ function ParticipantRow({
         </span>
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="type-body truncate">{name}</span>
-          {/*
-            v1.2 C2: "(you)" in `--muted-foreground` rather than at the same
-            weight as the name. It was inside the name span, so it read as part
-            of what someone is called.
-          */}
-          {participant.isLocal && (
-            <span className="type-body shrink-0 text-muted-foreground">(you)</span>
-          )}
-          {/*
-            A small outlined chip, not a word. `--boundary` is the room
-            ground's boundary token and belongs to no other surface, so the
-            chip takes `--border` — 1.29:1 against the panel, which is a
-            boundary rather than a divider and is what the token is for. The
-            label itself carries the contrast at `--muted-foreground`.
-          */}
-          {isHost(participant) && (
-            <span className="type-caption shrink-0 rounded-full border border-border px-2 py-0.5 text-muted-foreground">
-              Host
-            </span>
-          )}
-        </div>
-        <ConnectionLabel participant={participant} />
+      {/* --- identity ------------------------------------------------------ */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="type-body truncate">{name}</span>
+        {/*
+          v1.2 C2: "(you)" in `--muted-foreground` rather than at the same
+          weight as the name. It was inside the name span, so it read as part
+          of what someone is called.
+        */}
+        {participant.isLocal && (
+          <span className="type-body shrink-0 text-muted-foreground">(you)</span>
+        )}
+        {/*
+          A small outlined chip, not a word. `--boundary` is the room
+          ground's boundary token and belongs to no other surface, so the
+          chip takes `--border` — 1.29:1 against the panel, which is a
+          boundary rather than a divider and is what the token is for. The
+          label itself carries the contrast at `--muted-foreground`.
+        */}
+        {isHost(participant) && (
+          <span className="type-caption shrink-0 rounded-full border border-border px-2 py-0.5 text-muted-foreground">
+            Host
+          </span>
+        )}
       </div>
 
-      {/*
-        Device state, as **two icons, always** — v1.3 C3: "Two icons, because
-        one cannot express 'camera off, mic on'."
-
-        An icon was rendered only for a device that was *off*, so a row with one
-        icon was ambiguous until you looked at which one it was, and a row with
-        none meant everything is on — a state told entirely by absence. Now the
-        pair is always there and the glyph carries the state.
-
-        Rule 5: no hue. A muted mic is a different icon, not a red one.
-      */}
+      {/* --- status -------------------------------------------------------- */}
       <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
+        <ConnectionChip participant={participant} />
+        {/*
+          Device state, as **two icons, always** — v1.3 C3: "Two icons, because
+          one cannot express 'camera off, mic on'."
+
+          An icon was rendered only for a device that was *off*, so a row with one
+          icon was ambiguous until you looked at which one it was, and a row with
+          none meant everything is on — a state told entirely by absence. Now the
+          pair is always there and the glyph carries the state.
+
+          Rule 5: no hue. A muted mic is a different icon, not a red one.
+        */}
         <HugeiconsIcon
           icon={ICONS[participant.isMicrophoneEnabled ? "micOn" : "micOff"].icon}
           size={16}
@@ -196,51 +211,136 @@ function ParticipantRow({
         />
       </div>
 
+      {/* --- actions ------------------------------------------------------- */}
       {showActions && (
-        <div className="flex shrink-0 items-center gap-1">
-          {/* Only offered while they are unmuted. §3.8: a host can silence,
-              never activate — so there is nothing to press once they are. */}
-          {participant.isMicrophoneEnabled && (
-            <Button
-              size="touch"
-              variant="ghost"
-              onClick={() => onRequestMute(participant.identity)}
-            >
-              Ask to mute
-            </Button>
-          )}
-          {confirmingRemove ? (
-            <>
-              <Button
-                size="touch"
-                variant="ghost"
-                className="text-[var(--state-critical)]"
-                onClick={() => {
-                  onRemove(participant.identity);
-                  setConfirmingRemove(false);
-                }}
-              >
-                Confirm
-              </Button>
-              <Button size="touch" variant="ghost" onClick={() => setConfirmingRemove(false)}>
-                Keep
-              </Button>
-            </>
-          ) : (
-            // Two steps, because it cannot be undone from here — the person is
-            // gone and has to be sent the link again.
-            <Button
-              size="touch"
-              variant="ghost"
-              onClick={() => setConfirmingRemove(true)}
-              aria-label={`Remove ${name} from the meeting`}
-            >
-              Remove
-            </Button>
-          )}
-        </div>
+        <RowActions
+          name={name}
+          canAskToMute={participant.isMicrophoneEnabled}
+          onRequestMute={() => onRequestMute(participant.identity)}
+          onRemove={() => setConfirmingRemove(true)}
+        />
+      )}
+
+      {/*
+        Removing cannot be undone from here — the person is gone and has to be
+        sent the link again — so the destructive item asks rather than acts.
+        `ConfirmDialog` is the same surface the leave menu's End meeting uses,
+        which is B1's instruction: reuse the shape rather than grow a second
+        one. It replaces an inline two-step that could not survive the move into
+        a menu, because a menu closes on activation.
+      */}
+      {confirmingRemove && (
+        <ConfirmDialog
+          id={`remove-${participant.identity}`}
+          title={`Remove ${name} from the meeting?`}
+          body="They are disconnected straight away. They can rejoin if they still have the link, so this is not a ban."
+          confirmLabel="Remove"
+          pending={false}
+          onConfirm={() => {
+            onRemove(participant.identity);
+            setConfirmingRemove(false);
+          }}
+          onDismiss={() => setConfirmingRemove(false)}
+        />
       )}
     </li>
+  );
+}
+
+/**
+ * The host's two powers, behind one control — v1.4 B1.
+ *
+ * They were two adjacent buttons, one of them destructive, which is exactly the
+ * construction §3.4 refused for Leave and End meeting: "a split puts two actions
+ * inside one control at different coordinates". It refused it on a 48px bar,
+ * where the targets are *larger* than these were.
+ *
+ * **Always rendered, never revealed on hover.** A hover-revealed action does not
+ * exist for a touch device and does not exist for a keyboard user until focus
+ * has already arrived, so the host on a phone had no route to Remove at all.
+ *
+ * `PopupMenu` rather than a second menu idiom, so the arrow keys, Escape and
+ * focus return are the ones already written — and `placement="below"`, because
+ * this sits in a scrolling list rather than on the control bar.
+ */
+function RowActions({
+  name,
+  canAskToMute,
+  onRequestMute,
+  onRemove,
+}: {
+  name: string;
+  canAskToMute: boolean;
+  onRequestMute: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <PopupMenu
+      id={`row-actions-${name.replace(/\W+/g, "-")}`}
+      menuLabel={`Actions for ${name}`}
+      triggerLabel={`Actions for ${name}`}
+      placement="below"
+      // 44px, not the 40 a dense list would suggest. The room is a 44px surface
+      // and the floor does not bend — the same call the control bar, the panel
+      // tabs and the sharing bar already made.
+      triggerClassName="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
+      trigger={
+        <HugeiconsIcon
+          icon={ICONS.rowActions.icon}
+          size={20}
+          strokeWidth={1.5}
+          color="currentColor"
+          aria-hidden
+        />
+      }
+    >
+      {(close) => (
+        <>
+          {/*
+            Only offered while they are unmuted. §3.8: a host can silence, never
+            activate — so there is nothing to press once they are.
+          */}
+          {canAskToMute && (
+            <MenuItem
+              icon={
+                <HugeiconsIcon
+                  icon={ICONS.micOff.icon}
+                  size={18}
+                  strokeWidth={1.5}
+                  color="currentColor"
+                  aria-hidden
+                />
+              }
+              title="Ask to mute"
+              detail="They choose whether to accept."
+              onSelect={() => {
+                close();
+                onRequestMute();
+              }}
+            />
+          )}
+          {canAskToMute && <hr className="mx-1 my-1.5 border-t border-border" />}
+          <MenuItem
+            icon={
+              <HugeiconsIcon
+                icon={ICONS.leave.icon}
+                size={18}
+                strokeWidth={1.5}
+                color="currentColor"
+                aria-hidden
+              />
+            }
+            title="Remove from the meeting"
+            detail="They are disconnected straight away."
+            critical
+            onSelect={() => {
+              close();
+              onRemove();
+            }}
+          />
+        </>
+      )}
+    </PopupMenu>
   );
 }
 
@@ -250,7 +350,7 @@ function ParticipantRow({
  *
  * Silence means fine — §3.11: "Excellent, good → No indicator."
  */
-function ConnectionLabel({ participant }: { participant: Participant }) {
+function ConnectionChip({ participant }: { participant: Participant }) {
   const { quality } = useConnectionQualityIndicator({ participant });
   const treatment = treatmentFor(quality as Quality);
 
@@ -268,9 +368,24 @@ function ConnectionLabel({ participant }: { participant: Participant }) {
   // case directly.
   if (treatment === "none") return null;
 
+  /**
+   * A chip in the row, not a line under the name — v1.4 B1.
+   *
+   * It was a `<p>` below the name, so "Unstable connection" wrapped and pushed
+   * the row to two and three lines, which is what drove it into the device
+   * icons. Inline and `shrink-0`, the row stays one line at every width and the
+   * name is what gives.
+   *
+   * `--secondary` rather than the panel's own `--popover`: rule 4 wants hued
+   * text on an opaque chip, and a chip the same colour as its surface is not a
+   * chip. Both values are permitted there — `--state-critical` 4.84:1 on
+   * `--secondary` is its worst permitted surface, and `--state-warning` clears
+   * comfortably. Rule 5 sanctions the hue itself: connection state is one of
+   * the exactly two things the chroma budget is spent on.
+   */
   return (
-    <p
-      className="type-caption"
+    <span
+      className="shrink-0 rounded-full bg-secondary px-2 py-0.5 type-caption"
       style={{
         color:
           treatment === "lost"
@@ -279,6 +394,6 @@ function ConnectionLabel({ participant }: { participant: Participant }) {
       }}
     >
       {TILE_COPY[treatment]}
-    </p>
+    </span>
   );
 }

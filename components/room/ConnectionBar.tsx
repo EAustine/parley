@@ -36,14 +36,11 @@ export function ConnectionBar({
   attempts,
   code,
   displayName,
-  sharing,
 }: {
   phase: Exclude<RoomPhase, "healthy" | "failed">;
   attempts: number;
   code: string;
   displayName: string;
-  /** Whether the sharing bar is above us, which occupies the same edge. */
-  sharing: boolean;
 }) {
   const critical = barTone(phase) === "critical";
   /**
@@ -72,18 +69,24 @@ export function ConnectionBar({
       // text query matches both — which is the collision CLAUDE.md's
       // "scope queries by role or test id" rule is about, found the usual way.
       data-connection-bar={phase}
-      className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-3 pt-3"
       /**
-       * Below the sharing bar when there is one.
+       * In the stage's own column — v1.4 A2, and C4's move for the sharing bar
+       * applied to the surface that has the same problem.
        *
-       * Both are `absolute inset-x-0 top-0` and the sharing bar is `z-30`, so
-       * this was painted underneath it whenever someone was sharing — and
-       * `RoomStage` carried a comment saying the two stacked, which was true of
-       * the intent and not of the boxes. A connection warning that disappears
-       * exactly when it is most likely to matter is the silent failure §3.11
-       * exists to prevent.
+       * It was `absolute inset-x-0 top-0`, which is precisely where the first
+       * tile draws its own `ConnectionPill` (`absolute left-2 top-2`). §3.11
+       * gives the two different scopes — the pill is a remote's, the bar is
+       * your own — so they are not duplicate reports and neither can be
+       * dropped. What was wrong is that they occupied one region, on desktop
+       * and mobile both.
+       *
+       * In flow it takes its own band and the tiles get the rest, so the pill
+       * has nowhere to collide with. That also retires the `top: 3.5rem` this
+       * carried to sit below the sharing bar: two flow children stack by
+       * themselves, and an offset tuned to another component's height is a
+       * number that goes wrong the moment that component wraps.
        */
-      style={{ top: sharing ? "3.5rem" : 0 }}
+      className="pointer-events-none flex shrink-0 justify-center px-3 pt-3"
     >
       <div
         className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-lg px-3 py-2"

@@ -29,6 +29,7 @@ import { ResumePrompt } from "@/components/room/ResumePrompt";
 import { MuteRequestPrompt } from "@/components/room/MuteRequestPrompt";
 import { RoomPanel } from "@/components/room/RoomPanel";
 import { ReactionOverlay } from "@/components/room/ReactionOverlay";
+import { ReactionSheet } from "@/components/room/ReactionSheet";
 import { ReplaceShareDialog } from "@/components/room/ReplaceShareDialog";
 import { ReplacedNotice } from "@/components/room/ReplacedNotice";
 import { EndMeetingDialog } from "@/components/room/EndMeetingDialog";
@@ -392,6 +393,15 @@ function RoomSurface({
   retry: RetryCounter;
   onResume: () => void;
 }) {
+  /**
+   * The mobile reactions sheet — v1.4 B2.
+   *
+   * Held here rather than inside `RoomControls`, because the sheet is a room
+   * surface: it sits above the control bar in the stage's own stacking context,
+   * the way the mute prompt does, and a bar that owned it would be positioning
+   * a panel outside itself.
+   */
+  const [reactionsOpen, setReactionsOpen] = useState(false);
   const visible = useControlVisibility();
   /**
    * One panel at a time — BUILD-PLAN v1.2 A3.
@@ -629,6 +639,20 @@ function RoomSurface({
         */}
         {share.sharing && <SharingBar onStop={share.stop} />}
 
+        {/*
+          §3.11's local-user bar, in the same column as the sharing bar — v1.4
+          A2. Both can be true at once and neither is optional, and in flow they
+          stack without either knowing the other's height.
+        */}
+        {connection.phase !== "healthy" && connection.phase !== "failed" && (
+          <ConnectionBar
+            phase={connection.phase}
+            attempts={connection.attempts}
+            code={code}
+            displayName={displayNameOf(localParticipant)}
+          />
+        )}
+
         <div className="min-h-0 flex-1">
         {share.presenter && !share.presenter.isLocal ? (
           // §3.4: shared content takes the main area, participants collapse to
@@ -691,18 +715,6 @@ function RoomSurface({
         </div>
       </div>
 
-      {/* §3.11's local-user bar. Sits below §3.7's sharing bar rather than
-          displacing it: both can be true at once, and neither is optional. */}
-      {connection.phase !== "healthy" && connection.phase !== "failed" && (
-        <ConnectionBar
-          phase={connection.phase}
-          attempts={connection.attempts}
-          code={code}
-          displayName={displayNameOf(localParticipant)}
-          sharing={share.sharing}
-        />
-      )}
-
       {/*
         §3.11's last row. The room stays mounted underneath — see the
         component, and `onDisconnected` above.
@@ -741,6 +753,13 @@ function RoomSurface({
         <ReplacedNotice by={share.replacedBy} onDismiss={share.dismissReplaced} />
       )}
 
+      {/* v1.4 B2: the six emoji on a phone, out of the overflow menu. */}
+      <ReactionSheet
+        open={reactionsOpen}
+        onReact={messages.sendReaction}
+        onClose={() => setReactionsOpen(false)}
+      />
+
       {messages.muteRequest && (
         <MuteRequestPrompt
           from={messages.muteRequest.from}
@@ -772,6 +791,7 @@ function RoomSurface({
         onToggleChat={toggleChat}
         onToggleParticipants={toggleParticipants}
         onReact={messages.sendReaction}
+        onOpenReactions={() => setReactionsOpen(true)}
         onLeave={onLeave}
         isHost={localIsHost}
         onEnd={() => setEndOpen(true)}

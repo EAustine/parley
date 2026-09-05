@@ -9,7 +9,6 @@ import { useEffect, useState } from "react";
 import { chordFor } from "@/lib/room/shortcuts";
 import { usePlatform } from "@/lib/hooks/usePlatform";
 import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
-import { REACTIONS, REACTION_NAMES, type Reaction } from "@/lib/room/messages";
 
 /**
  * The control bar's overflow — v1.3 B2, and the beginning of C2.
@@ -34,13 +33,14 @@ import { REACTIONS, REACTION_NAMES, type Reaction } from "@/lib/room/messages";
 export function OverflowMenu({
   onOpenDevices,
   onOpenShortcuts,
-  onReact,
+  onOpenReactions,
   share,
 }: {
   onOpenDevices: () => void;
   onOpenShortcuts: () => void;
   /** v1.3 C2: reactions live here below 900px, where the bar has no room. */
-  onReact: (emoji: Reaction) => void;
+  /** Opens the reactions sheet — v1.4 B2. The menu no longer holds them. */
+  onOpenReactions: () => void;
   share: { supported: boolean; sharing: boolean; toggle: () => void };
 }) {
   const platform = usePlatform();
@@ -104,12 +104,36 @@ export function OverflowMenu({
             the same action in two places at once is how a person learns to
             trust neither.
           */}
+          {/*
+            What the bar hands over below 900px — C2: "Present and reactions
+            move into the overflow menu". Rendered only at that width, because
+            the same action in two places at once is how a person learns to
+            trust neither.
+
+            **Reactions are no longer among them — v1.4 B2.** They were a row of
+            `role="menuitem"` buttons, so pressing one closed the menu. That is
+            correct menu behaviour and the wrong surface for a burst medium:
+            §3.6 wants the picker to survive repeated selections, and a menu
+            promises the opposite. They open `ReactionSheet` now, and this item
+            dismisses on activation like every other one here — which is the
+            contract `role="menu"` makes, kept rather than bent.
+          */}
           {!wide && (
             <>
-              <ReactionRow
-                onReact={(emoji) => {
+              <MenuItem
+                icon={
+                  <HugeiconsIcon
+                    icon={ICONS.reactions.icon}
+                    size={18}
+                    strokeWidth={1.5}
+                    color="currentColor"
+                    aria-hidden
+                  />
+                }
+                title="Send a reaction"
+                onSelect={() => {
                   close();
-                  onReact(emoji);
+                  onOpenReactions();
                 }}
               />
               {share.supported && (
@@ -187,21 +211,3 @@ export function OverflowMenu({
  * Each is 44px — the room's floor — and each carries its name, since an emoji
  * has no accessible name of its own.
  */
-function ReactionRow({ onReact }: { onReact: (emoji: Reaction) => void }) {
-  return (
-    <div className="flex items-center justify-between gap-0.5 px-1 py-1">
-      {REACTIONS.map((emoji) => (
-        <button
-          key={emoji}
-          type="button"
-          role="menuitem"
-          onClick={() => onReact(emoji)}
-          aria-label={`React with ${REACTION_NAMES[emoji]}`}
-          className="flex size-11 items-center justify-center rounded-full text-[22px] hover:bg-secondary focus-visible:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]"
-        >
-          <span aria-hidden>{emoji}</span>
-        </button>
-      ))}
-    </div>
-  );
-}

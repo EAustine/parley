@@ -47,6 +47,7 @@ export function RoomControls({
   onToggleChat,
   onToggleParticipants,
   onReact,
+  onOpenReactions,
   onLeave,
   isHost,
   onEnd,
@@ -63,6 +64,8 @@ export function RoomControls({
   onToggleChat: () => void;
   onToggleParticipants: () => void;
   onReact: (emoji: Reaction) => void;
+  /** Opens the mobile reactions sheet — v1.4 B2. */
+  onOpenReactions: () => void;
   onLeave: () => void;
   /** §3.8: only a host is offered "End meeting for everyone" — B1. */
   isHost: boolean;
@@ -407,7 +410,7 @@ export function RoomControls({
           <OverflowMenu
             onOpenDevices={onOpenDevices}
             onOpenShortcuts={onOpenShortcuts}
-            onReact={onReact}
+            onOpenReactions={onOpenReactions}
             share={share}
           />
         </div>

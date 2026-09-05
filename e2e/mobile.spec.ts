@@ -64,6 +64,60 @@ test.describe("the room on a phone", () => {
     ).toBeLessThanOrEqual(IPHONE.width);
   });
 
+  /**
+   * v1.4 A2: the connection bar and a tile's pill do not share a region.
+   *
+   * The bar was `absolute inset-x-0 top-0` and `ConnectionPill` is
+   * `absolute left-2 top-2` on each tile, so they overlapped by construction —
+   * on desktop and mobile both. §3.11 gives them different scopes (the pill is
+   * a remote's, the bar is your own), so neither can be dropped; only the
+   * placement was wrong.
+   *
+   * Driven by forcing the bar to render rather than by waiting for a real
+   * degradation, which a local SFU never produces. The assertion is the boxes,
+   * which is the thing that was wrong.
+   */
+  test("the connection bar does not sit on a tile's pill", async ({
+    browser,
+    meetingCode,
+  }) => {
+    participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode, viewport: IPHONE });
+    const { page } = participant;
+    const second = await joinAs(browser, "Kwabena Osei", { code: meetingCode, withMedia: false });
+
+    try {
+      // Offline drives §3.11's reconnecting phase, which is what renders the bar.
+      await page.context().setOffline(true);
+      const bar = page.locator("[data-connection-bar]");
+      await expect(bar).toBeVisible({ timeout: 30_000 });
+
+      const boxes = await page.evaluate(() => {
+        const bar = document.querySelector("[data-connection-bar]")!.getBoundingClientRect();
+        const tile = document.querySelector(".grid [data-participant]")?.getBoundingClientRect();
+        return {
+          barBottom: Math.round(bar.bottom),
+          barTop: Math.round(bar.top),
+          tileTop: tile ? Math.round(tile.top) : null,
+        };
+      });
+
+      expect(boxes.tileTop, "no tile rendered to compare against").not.toBeNull();
+      /*
+       * The bar owns a band the grid does not draw into — which is A2's first
+       * option and C4's move for the sharing bar. The pill sits 8px inside the
+       * tile's top, so a bar ending at or above the tile's top cannot reach it.
+       */
+      expect(
+        boxes.barBottom,
+        "the connection bar overlaps the grid, where the first tile draws its pill",
+      ).toBeLessThanOrEqual(boxes.tileTop!);
+    } finally {
+      await page.context().setOffline(false);
+      await leave(second).catch(() => {});
+      await second.context.close().catch(() => {});
+    }
+  });
+
   test("the control bar fits the viewport", async ({ browser, meetingCode }) => {
     participant = await joinAs(browser, "Ama Serwaa", { code: meetingCode, viewport: IPHONE });
     const { page } = participant;

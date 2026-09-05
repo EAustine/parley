@@ -20,6 +20,7 @@ import {
   Mail01Icon,
   MinimizeScreenIcon,
   MoreHorizontalIcon,
+  MoreVerticalIcon,
   Mic02Icon,
   MicOff02Icon,
   Moon02Icon,
@@ -120,6 +121,20 @@ export const ICONS = {
     icon: MoreHorizontalIcon,
     export: "MoreHorizontalIcon",
     label: "More options",
+  },
+  /**
+   * v1.4 B1: the participant row's actions, behind one control.
+   *
+   * Vertical rather than the bar's horizontal `more`, because they are
+   * different affordances in different places — a row's overflow reads down the
+   * list it belongs to, and the bar's reads along the bar. Resolved against the
+   * installed package: `MoreVerticalIcon` is there beside the Circle and Square
+   * variants, which are not what this wants.
+   */
+  rowActions: {
+    icon: MoreVerticalIcon,
+    export: "MoreVerticalIcon",
+    label: "Participant actions",
   },
   settings: {
     icon: Settings01Icon,
