@@ -60,6 +60,18 @@ export async function POST(request: NextRequest) {
 
   // host_id comes from the session, never from the body. RLS would refuse a
   // forged one anyway — this makes it impossible to send in the first place.
+  /**
+   * `waiting_room` is decided here, not by a column default — v1.5 A1.
+   *
+   * "On for scheduled meetings, off for instant." The reasoning is that risk
+   * tracks how long a link has been in the world: a scheduled link went out
+   * days ago to a list nobody re-reads, an instant link was pasted seconds ago
+   * to somebody already waiting. A column default cannot express that, because
+   * it cannot see `scheduled_start`.
+   *
+   * Reversible in both directions, and A1 asks for it to be revisited "once
+   * there is any usage to look at" rather than defended.
+   */
   const base: Omit<MeetingInsert, "code"> =
     input.kind === "instant"
       ? {
@@ -68,6 +80,7 @@ export async function POST(request: NextRequest) {
           scheduled_start: null,
           scheduled_end: null,
           timezone: "UTC",
+          waiting_room: false,
         }
       : {
           host_id: user.id,
@@ -79,6 +92,7 @@ export async function POST(request: NextRequest) {
               input.durationMinutes * 60_000,
           ).toISOString(),
           timezone: input.timezone,
+          waiting_room: true,
         };
 
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {

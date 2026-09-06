@@ -92,7 +92,7 @@ export function ReactionSheet({
        * inset, so a constant would be wrong on exactly the devices this exists
        * for. `z-20`, below the bar's `z-30`: the bar stays reachable.
        */
-      className={`${open ? "flex" : "hidden"} absolute inset-x-2 bottom-[calc(var(--parley-controls-h)+0.5rem)] z-20 flex-col gap-2 rounded-xl border border-boundary bg-popover p-2`}
+      className={`${open ? "flex" : "hidden"} absolute inset-x-2 bottom-[calc(var(--parley-controls-h)+0.5rem)] z-[var(--layer-surfaces)] flex-col gap-2 rounded-xl border border-boundary bg-popover p-2`}
       role="group"
       aria-label="Send a reaction"
     >

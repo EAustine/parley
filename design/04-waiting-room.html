@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parley — the waiting room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOKENS — verbatim from CLAUDE.md. Translate token NAMES.
+   Room surfaces are FORCED DARK regardless of theme (PRD §4.2).
+   The meeting detail page follows the theme; shown dark here so
+   the two can sit in one file.
+   ============================================================ */
+.dark{
+  --background:#0E1013; --foreground:#F2F4F7; --card:#171A1F; --popover:#1B1F25;
+  --primary:#F2F4F7; --primary-foreground:#0E1013; --secondary:#242830;
+  --muted:#1F232A; --muted-foreground:#9AA1AC; --accent:#242830;
+  --destructive:#D32F2F; --destructive-foreground:#FFFFFF;
+  --border:#242830; --input:#2B303A; --ring:#F2F4F7;
+  --state-critical:#F26669; --state-warning:#F5A524; --boundary:#687284;
+}
+:root,.dark,.light{
+  --scrim:rgba(14,16,19,.72);
+  --on-scrim:#F2F4F7;        /* 7.01:1 — --foreground is NOT permitted here */
+  --on-scrim-muted:#C6CAD1;  /* 4.70:1 */
+  --radius:.5rem;
+
+  /* ---- D1 · THE LAYER SCALE ----------------------------------
+     Every stacking decision in the room, in one place. The bug this
+     fixes: .pip shipped z-index:3 and .rx shipped none at all, so a
+     reaction drew under the self-view. No bare z-index anywhere;
+     check:layers fails the build on one.
+     ------------------------------------------------------------ */
+  --z-base:0;      /* tiles, grid, filmstrip        */
+  --z-self:10;     /* the PiP                       */
+  --z-ephemera:20; /* reactions — ABOVE the PiP     */
+  --z-chrome:30;   /* control bar, panel            */
+  --z-menu:40;     /* overflow, leave, participant ⋮*/
+  --z-dialog:50;   /* confirm, settings, failure    */
+  --z-notice:60;   /* toasts, the waiting notice    */
+}
+:root,.dark{color-scheme:dark}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--background);color:var(--foreground);
+  font-family:"Instrument Sans",ui-sans-serif,system-ui,"Noto Sans",sans-serif;
+  font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.mono{font-family:"JetBrains Mono",ui-monospace,"SF Mono",monospace}
+.t-small{font-size:13px;line-height:18px}
+.dim{color:var(--muted-foreground)}
+.card{background:var(--popover);border:1px solid var(--boundary);border-radius:12px}
+
+.view{display:none;min-height:100%;padding:0 0 76px}
+.view[data-on]{display:block}
+.vhead{padding:28px 24px 4px;max-width:1120px;margin:0 auto}
+.vhead h1{font-size:22px;line-height:28px;font-weight:600}
+.vhead p{color:var(--muted-foreground);font-size:14px;line-height:20px;margin-top:6px;max-width:68ch}
+.stack{max-width:1120px;margin:0 auto;padding:20px 24px;display:grid;gap:28px}
+.note{font-size:13px;line-height:19px;color:var(--muted-foreground);max-width:70ch}
+.note b{color:var(--foreground);font-weight:600}
+
+/* ============ 1 · THE QUEUE IN PEOPLE ============ */
+.panelframe{width:100%;max-width:380px;background:var(--card);border:1px solid var(--boundary);
+  border-radius:12px;overflow:hidden;display:flex;flex-direction:column;height:600px}
+.tabs{display:flex;align-items:center;border-bottom:1px solid var(--border);flex:none}
+.tabs button{flex:1;min-height:52px;background:none;border:none;color:var(--muted-foreground);
+  font:inherit;font-size:14px;font-weight:500;cursor:pointer;position:relative;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+.tabs button[aria-selected="true"]{color:var(--foreground)}
+.tabs button[aria-selected="true"]::after{content:"";position:absolute;left:16px;right:16px;bottom:-1px;
+  height:2px;background:var(--foreground)}
+.tabs .x{flex:none;width:52px;min-height:52px;justify-content:center}
+/* the badge carries the ROSTER count normally… */
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--secondary);
+  border:1px solid var(--boundary);color:var(--foreground);font-size:11px;line-height:18px;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center}
+/* …and is TAKEN by the waiting count while a queue exists. Inverted fill,
+   not a colour: three present and two waiting is not five, and the two
+   numbers must not be mistaken for each other. Weight and value, rule 5. */
+.badge.waiting{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.pbody{flex:1;min-height:0;overflow-y:auto;padding:16px}
+
+.qhead{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.qhead h3{font-size:13px;line-height:18px;font-weight:600}
+.qhead .n{font-size:12px;color:var(--muted-foreground)}
+/* A pending decision, not a roster row: the row exists solely to be
+   answered, both answers are expected, and Deny is reversible. That is why
+   these are two adjacent controls where the participant row's are not. */
+.req{display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--radius);
+  background:var(--muted);border:1px solid var(--border)}
+.req+.req{margin-top:6px}
+.req .av{width:32px;height:32px;border-radius:999px;background:var(--secondary);flex:none;
+  display:grid;place-items:center;font-size:13px;font-weight:600}
+.req .who{flex:1;min-width:0}
+.req .who .nm{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.req .who .sub{font-size:12px;line-height:16px;color:var(--muted-foreground)}
+.req .acts{display:flex;gap:6px;flex:none}
+.req .acts button{min-height:44px;padding:0 12px;border-radius:var(--radius);font:inherit;font-size:13px;
+  font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.req .allow{background:var(--primary);color:var(--primary-foreground)}
+.req .deny{background:transparent;color:var(--muted-foreground);border-color:var(--boundary)}
+.req .deny:hover{background:var(--secondary);color:var(--foreground)}
+.req .allow:focus-visible,.req .deny:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.qrule{border:0;border-top:1px solid var(--border);margin:16px 0}
+
+/* participant row — v1.4 B1 anatomy, a hard prerequisite for the queue.
+   Three zones. Identity never yields; the ⋮ is always drawn. */
+.person{display:flex;align-items:center;gap:10px;min-height:44px}
+.person+.person{margin-top:2px}
+.person .av{width:32px;height:32px;border-radius:999px;background:var(--secondary);flex:none;
+  display:grid;place-items:center;font-size:13px;font-weight:600}
+.person .id{flex:1;min-width:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.person .nm{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.chip{font-size:11px;line-height:16px;font-weight:500;padding:1px 7px;border-radius:999px;
+  border:1px solid var(--boundary);color:var(--muted-foreground);flex:none;white-space:nowrap}
+/* connection is a CHIP, not a wrapped second line — that wrap is what drove
+   the row to three lines and ran the text into the icons. Opaque, rule 4. */
+.chip.warn{color:var(--state-warning);background:var(--popover)}
+.person .st{display:flex;gap:8px;color:var(--muted-foreground);flex:none}
+.kebab{flex:none;width:44px;height:44px;border-radius:999px;border:none;background:none;
+  color:var(--muted-foreground);cursor:pointer;display:grid;place-items:center}
+.kebab:hover{background:var(--secondary);color:var(--foreground)}
+.kebab:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+
+/* ============ 2 · THE NOTICE ============ */
+.roomframe{position:relative;height:420px;border-radius:12px;overflow:hidden;
+  border:1px solid var(--boundary);background:var(--background);display:flex;flex-direction:column}
+.fakegrid{flex:1;margin:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ftile{border-radius:.75rem;border:1px solid var(--boundary);position:relative;overflow:hidden}
+.v1{background:radial-gradient(40% 48% at 52% 42%,#6b5c4a 0%,#4a4136 46%,rgba(42,38,33,0) 100%),
+  linear-gradient(160deg,#2f2a24 0%,#1c1b1c 58%,#141517 100%)}
+.v2{background:radial-gradient(42% 50% at 46% 40%,#3f5563 0%,#2b3a44 48%,rgba(30,38,44,0) 100%),
+  linear-gradient(200deg,#26333b 0%,#1a2126 60%,#141719 100%)}
+.ftile .lbl{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:flex-end;
+  padding:0 10px 8px;color:var(--on-scrim);font-size:13px;
+  background:linear-gradient(to top,var(--scrim) 0%,rgba(14,16,19,0) 100%)}
+/* ONE toast for a queue of any size, never one per person. A hint that the
+   badge is the truth of — it auto-dismisses, the badge does not. */
+.toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:var(--z-notice);
+  display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;border-radius:12px;
+  background:var(--popover);border:1px solid var(--boundary);box-shadow:0 12px 32px rgba(0,0,0,.5)}
+.toast .txt{font-size:14px}
+.toast button{min-height:36px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--boundary);
+  background:var(--secondary);color:var(--foreground);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.fakebar{flex:none;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;
+  z-index:var(--z-chrome)}
+.fctl{height:48px;padding:0 16px;border-radius:999px;background:var(--secondary);
+  border:1px solid var(--boundary);display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
+.fsec{width:44px;height:44px;border-radius:999px;background:none;border:none;color:var(--on-scrim-muted);
+  display:grid;place-items:center;position:relative;cursor:pointer}
+.fsec .badge{position:absolute;top:-2px;right:-2px}
+.fleave{height:48px;padding:0 18px;border-radius:999px;background:var(--destructive);
+  color:var(--destructive-foreground);display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;
+  margin-left:8px}
+
+/* the reaction now rises ABOVE the PiP — the whole point of D1 */
+.fpip{position:absolute;right:16px;bottom:76px;width:150px;aspect-ratio:16/9;border-radius:.75rem;
+  overflow:hidden;border:1px solid var(--boundary);background:var(--card);z-index:var(--z-self);
+  box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.fpip .lbl{height:34px;font-size:12px}
+.rx{position:absolute;right:64px;bottom:96px;font-size:34px;z-index:var(--z-ephemera);pointer-events:none;
+  animation:rise 2400ms cubic-bezier(.22,.6,.3,1) infinite}
+@keyframes rise{
+  0%{opacity:0;transform:translate(0,0) scale(.8)}
+  8%{opacity:1;transform:translate(0,-6%) scale(1)}
+  70%{opacity:1}
+  100%{opacity:0;transform:translate(10px,-150px) scale(1) rotate(6deg)}
+}
+@media (prefers-reduced-motion:reduce){
+  .rx{animation:fade 2400ms linear infinite}
+  @keyframes fade{0%,10%{opacity:0}20%,70%{opacity:1}100%{opacity:0}}
+}
+
+/* ============ 3 · THE WAITING SCREEN ============ */
+.waitwrap{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.wait{padding:28px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
+.wait h2{font-size:19px;line-height:25px;font-weight:600}
+.wait p{font-size:14px;line-height:20px;color:var(--muted-foreground);max-width:36ch}
+.wait .selfprev{width:100%;aspect-ratio:16/9;border-radius:.75rem;border:1px solid var(--boundary);
+  position:relative;overflow:hidden;margin-bottom:2px}
+.wait .selfprev .lbl{position:absolute;left:0;right:0;bottom:0;height:44px;display:flex;align-items:flex-end;
+  padding:0 10px 8px;font-size:12px;color:var(--on-scrim);
+  background:linear-gradient(to top,var(--scrim) 0%,rgba(14,16,19,0) 100%)}
+/* held, not publishing: the pre-join choice is kept and applied on admission */
+.heldrow{display:flex;gap:8px;justify-content:center}
+.held{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+  background:var(--muted);border:1px solid var(--border);font-size:12px;color:var(--muted-foreground)}
+.dots{display:flex;gap:5px;height:8px;align-items:center}
+.dots i{width:6px;height:6px;border-radius:999px;background:var(--muted-foreground);
+  animation:blink 1400ms ease-in-out infinite}
+.dots i:nth-child(2){animation-delay:180ms}
+.dots i:nth-child(3){animation-delay:360ms}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.6}}
+.wbtn{min-height:44px;padding:0 16px;border-radius:var(--radius);font:inherit;font-size:14px;
+  font-weight:500;cursor:pointer;border:1px solid var(--boundary);background:var(--secondary);
+  color:var(--foreground)}
+.wbtn.solid{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.statename{font-size:12px;line-height:16px;font-weight:600;color:var(--muted-foreground);
+  margin-bottom:8px}
+
+/* ============ 4 · THE RECORD ============ */
+.tablewrap{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+thead th{text-align:left;font-size:12px;line-height:16px;font-weight:600;color:var(--muted-foreground);
+  padding:12px 14px;background:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+td .who{display:flex;align-items:center;gap:10px}
+td .av{width:28px;height:28px;border-radius:999px;background:var(--secondary);flex:none;
+  display:grid;place-items:center;font-size:12px;font-weight:600}
+/* Outcome is encoded in FILL, never hue — an outlined chip left, a filled
+   chip did not. Removed and denied are records, not live warnings. */
+.oc{font-size:12px;line-height:16px;font-weight:500;padding:2px 9px;border-radius:999px;
+  border:1px solid var(--boundary);color:var(--muted-foreground);white-space:nowrap}
+.oc.filled{background:var(--secondary);color:var(--foreground);border-color:var(--secondary)}
+.idsrc{font-size:12px;line-height:16px;color:var(--muted-foreground)}
+@media (max-width:720px){
+  thead{display:none}
+  tbody td{display:flex;justify-content:space-between;gap:16px;padding:8px 14px;border:none}
+  tbody td::before{content:attr(data-l);color:var(--muted-foreground);font-size:12px;flex:none}
+  tbody td:first-child{padding-top:14px}
+  tbody tr{display:block;border-bottom:1px solid var(--border);padding-bottom:8px}
+}
+
+/* ============ 5 · THE TOGGLE ============ */
+.togglerow{display:flex;align-items:flex-start;gap:14px;padding:14px;border-radius:var(--radius);
+  background:var(--muted);border:1px solid var(--border);max-width:520px}
+.togglerow .tx{flex:1}
+.togglerow .tx b{font-size:14px;font-weight:600;display:block}
+.togglerow .tx span{font-size:13px;line-height:18px;color:var(--muted-foreground)}
+.sw{flex:none;width:44px;height:26px;border-radius:999px;background:var(--input);
+  border:1px solid var(--boundary);position:relative;cursor:pointer;margin-top:2px}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:999px;
+  background:var(--muted-foreground);transition:transform .14s,background-color .14s}
+.sw[aria-checked="true"]{background:var(--primary);border-color:var(--primary)}
+.sw[aria-checked="true"]::after{transform:translateX(18px);background:var(--primary-foreground)}
+.sw:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+
+/* ============ layer scale diagram ============ */
+.layers{display:grid;gap:4px;max-width:520px}
+.layer{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--muted)}
+.layer .tok{font-size:12px;color:var(--muted-foreground);min-width:112px}
+.layer .wh{font-size:13px}
+.layer.hi{border-color:var(--boundary);background:var(--secondary)}
+
+/* ============ demo nav ============ */
+.demo-nav{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:99;display:flex;
+  gap:4px;padding:5px;border-radius:999px;background:var(--popover);border:1px solid var(--boundary);
+  box-shadow:0 12px 32px rgba(0,0,0,.5);max-width:calc(100vw - 24px);overflow-x:auto}
+.demo-nav button{font:inherit;font-size:12px;font-weight:500;padding:6px 12px;border-radius:999px;
+  border:none;background:none;color:var(--muted-foreground);cursor:pointer;white-space:nowrap}
+.demo-nav button[data-on]{background:var(--secondary);color:var(--foreground)}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 · THE HOST'S QUEUE ============ -->
+<section class="view" data-view="queue" data-on>
+  <div class="vhead">
+    <h1>The queue lives in People</h1>
+    <p>A section above the roster, not a third tab — C3 merged two panels into one surface with two tabs and a third would undo it. The People badge is taken by the waiting count while a queue exists and handed back when it clears.</p>
+  </div>
+  <div class="stack">
+    <div class="panelframe">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="false">Chat</button>
+        <button role="tab" aria-selected="true">People <span class="badge waiting">2</span></button>
+        <button class="x" aria-label="Close panel">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="pbody">
+        <div class="qhead">
+          <h3>Waiting to join</h3>
+          <span class="n">2</span>
+        </div>
+
+        <div class="req">
+          <div class="av">G</div>
+          <div class="who">
+            <div class="nm">Godcraft</div>
+            <div class="sub">Guest · name entered</div>
+          </div>
+          <div class="acts">
+            <button class="allow">Allow</button>
+            <button class="deny">Deny</button>
+          </div>
+        </div>
+
+        <div class="req">
+          <div class="av">H</div>
+          <div class="who">
+            <div class="nm">HisImage</div>
+            <div class="sub">Guest · name entered</div>
+          </div>
+          <div class="acts">
+            <button class="allow">Allow</button>
+            <button class="deny">Deny</button>
+          </div>
+        </div>
+
+        <hr class="qrule">
+
+        <div class="person">
+          <div class="av">A</div>
+          <div class="id">
+            <span class="nm">Austine Eluro</span>
+            <span class="chip">You</span>
+            <span class="chip">Host</span>
+          </div>
+          <div class="st">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l20 20M9 9v3a3 3 0 0 0 5.1 2.1M12 2a3 3 0 0 1 3 3v6M19 10v2a7 7 0 0 1-.7 3M12 19v3"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 10l5-3v10l-5-3v-4zM3 7h12v10H3z"/></svg>
+          </div>
+        </div>
+
+        <div class="person">
+          <div class="av">M</div>
+          <div class="id">
+            <span class="nm">Maame Serwaa</span>
+            <span class="chip">Signed in</span>
+          </div>
+          <div class="st">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 10l5-3v10l-5-3v-4zM3 7h12v10H3z"/></svg>
+          </div>
+          <button class="kebab" aria-label="Actions for Maame Serwaa">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+          </button>
+        </div>
+
+        <div class="person">
+          <div class="av">K</div>
+          <div class="id">
+            <span class="nm">Kojo</span>
+            <span class="chip">Guest</span>
+            <span class="chip warn">Unstable</span>
+          </div>
+          <div class="st">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l20 20M9 9v3a3 3 0 0 0 5.1 2.1M12 2a3 3 0 0 1 3 3v6M19 10v2a7 7 0 0 1-.7 3M12 19v3"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 10l5-3v10l-5-3v-4zM3 7h12v10H3z"/></svg>
+          </div>
+          <button class="kebab" aria-label="Actions for Kojo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <p class="note"><b>Allow and Deny sit side by side, and the participant row's actions do not.</b> A roster row is passive — it exists to be read, and a stray press acts on someone you were only looking at. A waiting request exists solely to be answered, both answers are expected, and Deny is reversible. Allow is primary, Deny is outlined and quieter, both on the 44px floor, neither revealed on hover.</p>
+
+    <p class="note"><b>Every name says where it came from.</b> Signing in buys accountability, not authorisation — anyone can sign in with any account — so a guest can type your name and sit in the list looking like you. <em>Signed in</em> and <em>Guest</em> are both marked, so neither is the unmarked default that reads as trusted.</p>
+  </div>
+</section>
+
+<!-- ============ 2 · THE NOTICE, AND THE LAYER FIX ============ -->
+<section class="view" data-view="notice">
+  <div class="vhead">
+    <h1>One notice, whatever the queue length</h1>
+    <p>The toast is a hint; the badge is the truth. A toast auto-dismisses, so a request that arrives while the host is talking is one nobody sees if the toast is the only notice. Ten people waiting produces one toast, never ten.</p>
+  </div>
+  <div class="stack">
+    <div class="roomframe">
+      <div class="toast">
+        <span class="txt">2 people are waiting to join</span>
+        <button>Review</button>
+      </div>
+      <div class="fakegrid">
+        <div class="ftile v1"><div class="lbl">Maame Serwaa</div></div>
+        <div class="ftile v2"><div class="lbl">Kojo</div></div>
+      </div>
+      <div class="fpip v2"><div class="lbl">You</div></div>
+      <div class="rx">👏</div>
+      <div class="fakebar">
+        <div class="fctl">Unmute</div>
+        <div class="fctl">Stop video</div>
+        <button class="fsec" aria-label="Reactions">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01" stroke-linecap="round"/></svg>
+        </button>
+        <button class="fsec" aria-label="People, 2 waiting">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M22 19v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>
+          <span class="badge waiting">2</span>
+        </button>
+        <div class="fleave">Leave</div>
+      </div>
+    </div>
+
+    <p class="note"><b>The clap is rising in front of the PiP, which is the bug this pass fixes.</b> <code class="mono">.pip</code> shipped <code class="mono">z-index:3</code> and <code class="mono">.rx</code> shipped none at all, so a reaction drew underneath the self-view the moment there was a PiP to draw under. Nothing was wrong with the reaction — nobody owned the order.</p>
+
+    <div class="layers">
+      <div class="layer"><span class="tok mono">--z-base</span><span class="wh">Tiles, grid, filmstrip</span></div>
+      <div class="layer hi"><span class="tok mono">--z-self</span><span class="wh">The PiP</span></div>
+      <div class="layer hi"><span class="tok mono">--z-ephemera</span><span class="wh">Reactions — above the PiP</span></div>
+      <div class="layer"><span class="tok mono">--z-chrome</span><span class="wh">Control bar, panel</span></div>
+      <div class="layer"><span class="tok mono">--z-menu</span><span class="wh">Overflow, leave, participant ⋮</span></div>
+      <div class="layer"><span class="tok mono">--z-dialog</span><span class="wh">Confirm, settings, failure overlay</span></div>
+      <div class="layer"><span class="tok mono">--z-notice</span><span class="wh">Toasts, the waiting notice</span></div>
+    </div>
+
+    <p class="note">Reactions sit above the PiP because a reaction hidden behind your own face is the reported bug, and below chrome because a reaction over a control is worse than one over a face. <code class="mono">check:layers</code> fails the build on any bare <code class="mono">z-index</code> — a scale nobody can violate is worth more than one everybody agrees to.</p>
+  </div>
+</section>
+
+<!-- ============ 3 · THE WAITING SCREEN ============ -->
+<section class="view" data-view="waiting">
+  <div class="vhead">
+    <h1>Five endings that must not share a screen</h1>
+    <p>Waiting is not joining. The camera and mic choice made at pre-join is held and applied at the moment of admission — a person who is not in a meeting is not on camera in it.</p>
+  </div>
+  <div class="stack">
+    <div class="waitwrap">
+
+      <div class="card wait">
+        <div class="statename">Waiting</div>
+        <div class="selfprev v1"><div class="lbl">You</div></div>
+        <h2>Waiting for the host to let you in</h2>
+        <p>Product planning, Thursday</p>
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="heldrow">
+          <span class="held">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l20 20M9 9v3a3 3 0 0 0 5.1 2.1M12 2a3 3 0 0 1 3 3v6M19 10v2a7 7 0 0 1-.7 3"/></svg>
+            Mic off
+          </span>
+          <span class="held">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 10l5-3v10l-5-3v-4zM3 7h12v10H3z"/></svg>
+            Camera on
+          </span>
+        </div>
+        <button class="wbtn">Leave</button>
+      </div>
+
+      <div class="card wait">
+        <div class="statename">Host has not arrived</div>
+        <h2>The host hasn't arrived yet</h2>
+        <p>Nobody can join until they do. You'll go straight in when they get here.</p>
+        <div class="dots"><i></i><i></i><i></i></div>
+        <button class="wbtn">Leave</button>
+      </div>
+
+      <div class="card wait">
+        <div class="statename">Denied</div>
+        <h2>The host didn't let you in</h2>
+        <p>You can try again in 10 minutes, or ask the host for a new link.</p>
+        <button class="wbtn solid">Back to Parley</button>
+      </div>
+
+      <div class="card wait">
+        <div class="statename">Removed</div>
+        <h2>The host removed you from the meeting</h2>
+        <p>You can rejoin in 10 minutes if the host lets you back in sooner.</p>
+        <button class="wbtn solid">Back to Parley</button>
+      </div>
+
+    </div>
+
+    <p class="note"><b>Denied and removed carry the same block and different words.</b> Being turned away and being ejected are different experiences, and the product should not tell someone the wrong one happened to them. The fifth ending is §3.4's <em>host ended the meeting</em>, unchanged, with no Rejoin.</p>
+
+    <p class="note"><b>Leave is live from the first second.</b> Nobody is made to watch something they cannot interrupt — §3.11's rule about the reconnect countdown, applied to a wait whose length nobody controls.</p>
+  </div>
+</section>
+
+<!-- ============ 4 · THE RECORD ============ -->
+<section class="view" data-view="record">
+  <div class="vhead">
+    <h1>Who was in the meeting</h1>
+    <p>On the detail page once a meeting has ended. Host only, enforced by RLS, like every other meeting row.</p>
+  </div>
+  <div class="stack">
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Identity</th><th>Joined</th><th>Left</th><th>Outcome</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-l="Name"><span class="who"><span class="av">A</span> Austine Eluro</span></td>
+            <td data-l="Identity"><span class="idsrc">Signed in</span></td>
+            <td data-l="Joined">14:58</td>
+            <td data-l="Left">15:47</td>
+            <td data-l="Outcome"><span class="oc">Host</span></td>
+          </tr>
+          <tr>
+            <td data-l="Name"><span class="who"><span class="av">M</span> Maame Serwaa</span></td>
+            <td data-l="Identity"><span class="idsrc">Signed in</span></td>
+            <td data-l="Joined">15:01</td>
+            <td data-l="Left">15:47</td>
+            <td data-l="Outcome"><span class="oc">Left</span></td>
+          </tr>
+          <tr>
+            <td data-l="Name"><span class="who"><span class="av">K</span> Kojo</span></td>
+            <td data-l="Identity"><span class="idsrc">Name entered</span></td>
+            <td data-l="Joined">15:03</td>
+            <td data-l="Left">15:44</td>
+            <td data-l="Outcome"><span class="oc">Left</span></td>
+          </tr>
+          <tr>
+            <td data-l="Name"><span class="who"><span class="av">H</span> HisImage</span></td>
+            <td data-l="Identity"><span class="idsrc">Name entered</span></td>
+            <td data-l="Joined">15:09</td>
+            <td data-l="Left">15:21</td>
+            <td data-l="Outcome"><span class="oc filled">Removed</span></td>
+          </tr>
+          <tr>
+            <td data-l="Name"><span class="who"><span class="av">G</span> Godcraft</span></td>
+            <td data-l="Identity"><span class="idsrc">Name entered</span></td>
+            <td data-l="Joined">—</td>
+            <td data-l="Left">—</td>
+            <td data-l="Outcome"><span class="oc filled">Denied</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note"><b>The Identity column is the load-bearing one.</b> A record listing “Austine Eluro” without saying whether that was attested or typed implies an attestation the product cannot make. <em>Name entered</em> is the honest description of a string somebody typed into a box.</p>
+
+    <p class="note"><b>A denied person has no times, and that is the shape of the row rather than missing data.</b> They never joined, so no <code class="mono">participant_joined</code> ever fired — which is also the first thing to test against the partial unique index, since it was built for rows that have a join.</p>
+
+    <p class="note">Outcome is encoded in fill, not hue: outlined for the ordinary endings, filled for the two the host caused. Removed and denied are records of what happened, not live warnings, so <code class="mono">--state-critical</code> would be spending hue on something that is not a warning.</p>
+  </div>
+</section>
+
+<!-- ============ 5 · THE TOGGLE ============ -->
+<section class="view" data-view="toggle">
+  <div class="vhead">
+    <h1>Two homes for one switch</h1>
+    <p>Pre-join is where an instant meeting gets one. The room's overflow menu is where a meeting already running gets one, which is the case that actually happens — you start open, someone unexpected appears, you lock the door.</p>
+  </div>
+  <div class="stack">
+    <div>
+      <p class="note" style="margin-bottom:10px"><b>In pre-join, host only.</b> §3.3 has had no host variant until now.</p>
+      <div class="togglerow">
+        <div class="tx">
+          <b>Ask before guests join</b>
+          <span>You'll approve each guest. People signed in to Parley come straight in.</span>
+        </div>
+        <button class="sw" role="switch" aria-checked="false" aria-label="Ask before guests join"></button>
+      </div>
+    </div>
+
+    <div>
+      <p class="note" style="margin-bottom:10px"><b>In the room, from the overflow menu.</b> Same words, same switch.</p>
+      <div class="togglerow">
+        <div class="tx">
+          <b>Ask before guests join</b>
+          <span>2 people are waiting.</span>
+        </div>
+        <button class="sw" role="switch" aria-checked="true" aria-label="Ask before guests join"></button>
+      </div>
+    </div>
+
+    <p class="note"><b>On for scheduled meetings, off for instant ones.</b> Risk tracks how long a link has been in the world: a scheduled link went out days ago to a list nobody re-reads, an instant link was pasted seconds ago to someone already waiting. Reversible in both directions, and worth revisiting once there is any usage to look at.</p>
+
+    <p class="note"><b>“Ask before guests join” rather than “Waiting room”.</b> The vocabulary table names things by what they do for the person setting them, and a host toggling this is deciding whether they get asked — not naming a room.</p>
+  </div>
+</section>
+
+<nav class="demo-nav">
+  <button data-go="queue" data-on>Queue</button>
+  <button data-go="notice">Notice</button>
+  <button data-go="waiting">Waiting</button>
+  <button data-go="record">Record</button>
+  <button data-go="toggle">Toggle</button>
+</nav>
+
+<script>
+document.querySelectorAll('.demo-nav [data-go]').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.view').forEach(v=>v.removeAttribute('data-on'));
+    document.querySelector('.view[data-view="'+b.dataset.go+'"]').setAttribute('data-on','');
+    document.querySelectorAll('.demo-nav [data-go]').forEach(x=>x.removeAttribute('data-on'));
+    b.setAttribute('data-on','');
+    window.scrollTo(0,0);
+  });
+});
+document.querySelectorAll('.sw').forEach(s=>{
+  s.addEventListener('click',()=>s.setAttribute('aria-checked',s.getAttribute('aria-checked')==='true'?'false':'true'));
+});
+</script>
+</body>
+</html>

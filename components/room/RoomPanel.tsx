@@ -48,6 +48,9 @@ export function RoomPanel({
   cooldown,
   code,
   isLocalHost,
+  waiting,
+  onDecide,
+  deciding,
   onTab,
   onClose,
   onSend,
@@ -60,6 +63,10 @@ export function RoomPanel({
   cooldown: number | null;
   code: string;
   isLocalHost: boolean;
+  /** v1.5 A2's queue, owned by the room — see `useWaitingQueue`. */
+  waiting: import("@/lib/hooks/useWaitingQueue").WaitingRequest[];
+  onDecide: (id: string, decision: "admit" | "deny") => void;
+  deciding: string | null;
   onTab: (next: PanelTab) => void;
   onClose: () => void;
   onSend: (body: string) => void;
@@ -135,7 +142,7 @@ export function RoomPanel({
        * bar is `z-30` and floats over this sheet, because §3.4 requires mute to
        * stay reachable with a panel open.
        */
-      className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-20 max-h-[55dvh] flex-col rounded-t-xl border-t bg-popover pb-[var(--parley-controls-h)] md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
+      className={`parley-panel ${open ? "flex" : "hidden"} absolute inset-x-0 bottom-0 top-auto z-[var(--layer-surfaces)] max-h-[55dvh] flex-col rounded-t-xl border-t bg-popover pb-[var(--parley-controls-h)] md:pb-0 md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[360px] md:rounded-t-none md:border-l md:border-t-0`}
       style={{ borderColor: "var(--boundary)" }}
       onKeyDown={(event) => {
         // Escape closes from anywhere inside, including mid-draft.
@@ -219,6 +226,9 @@ export function RoomPanel({
           open={tab === "participants"}
           code={code}
           isLocalHost={isLocalHost}
+          waiting={waiting}
+          onDecide={onDecide}
+          deciding={deciding}
           onRequestMute={onRequestMute}
           onRemove={onRemove}
         />

@@ -1,0 +1,40 @@
+-- A removal is distinguishable from leaving — BUILD-PLAN v1.5 C1.
+--
+-- C1: "A removal is indistinguishable from leaving. The removal route must
+-- write the reason."
+--
+-- `meeting_participants` records that a session ended, never why. The webhook's
+-- `participant_left` closes the row with `left_at` whether somebody clicked
+-- Leave or was disconnected by the host, so the attendance record could say who
+-- was there and not what happened to them.
+--
+-- **A timestamp rather than an enum.** `removed_at is null` means they left on
+-- their own, which is the overwhelming case and needs no value written for it;
+-- a non-null value carries both the fact and the moment. An enum would need a
+-- 'left' member that every ordinary row has to be given, and a check constraint
+-- to grow every time a new ending appears.
+alter table meeting_participants
+  add column if not exists removed_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- Nothing else is needed here, and that is worth writing down.
+--
+-- **Denied people are not given rows in this table**, which C1's phrasing
+-- invites — "a denied person never joined, so no `participant_joined` ever
+-- fired. They need a row with no join, which means checking the partial unique
+-- index still behaves."
+--
+-- The index behaves; the *count* does not. `mp_open_session_idx` is partial on
+-- `left_at is null`, and the dashboard's live figure counts exactly those rows
+-- — so a denied person inserted with no `left_at` would be indistinguishable
+-- from somebody currently in the meeting, and every gated meeting would report
+-- phantom attendees. Giving them a `left_at` to avoid that means writing a
+-- session that never happened, with a join time that is a lie.
+--
+-- They already have a row, in `meeting_waiting`, carrying the name they typed,
+-- the decision and when it was made. The record reads both tables and joins
+-- them for display, which needs no migration and cannot corrupt a count.
+--
+-- The existing read policies cover it: hosts already read their own meeting's
+-- participants, and `20260906140000_waiting_room.sql` added the same for the
+-- queue.

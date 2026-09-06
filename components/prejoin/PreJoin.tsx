@@ -10,6 +10,7 @@ import { CONTROL_MOTION } from "@/lib/motion";
 import { PermissionNotice } from "@/components/prejoin/PermissionState";
 import { MicMeter } from "@/components/prejoin/MicMeter";
 import { recallName, rememberJoin } from "@/lib/prejoin-handoff";
+import { WaitingRoom, type WaitingState } from "@/components/prejoin/WaitingRoom";
 import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +65,16 @@ export function PreJoin({
   // is what the person watching sees; without it the screen would just sit
   // there, which is the same as failing as far as anyone can tell.
   const [countdown, setCountdown] = useState<number | null>(null);
+  /**
+   * Held at the door — v1.5 A1 and A3.
+   *
+   * Not an error, which is why it is its own state rather than a string in
+   * `error`. Being asked to wait is an ordinary outcome of joining a meeting
+   * with a waiting room on, and rendering it as a red line under the Join
+   * button would be the product telling somebody something went wrong when
+   * nothing did.
+   */
+  const [held, setHeld] = useState<WaitingState | null>(null);
   const attempts = useRef(0);
   const timers = useRef<ReturnType<typeof setInterval>[]>([]);
 
@@ -170,6 +181,27 @@ export function PreJoin({
           }
         }
 
+        /*
+         * The door's four answers — v1.5 A1 and B1. Each is a screen of its
+         * own in `WaitingRoom`, per A3's "five endings that must not share a
+         * screen"; the fifth, the meeting ending, arrives while polling.
+         */
+        if (
+          payload.error === "waiting_for_host" ||
+          payload.error === "waiting_for_admission" ||
+          payload.error === "denied" ||
+          payload.error === "removed"
+        ) {
+          // The camera is released before waiting, for the same reason it is
+          // released before navigating: holding a device you are not using
+          // keeps the light on and is the thing that makes a black tile on
+          // Windows when the room later asks for it.
+          media.stop();
+          setJoining(false);
+          setHeld(payload.error as WaitingState);
+          return;
+        }
+
         setJoining(false);
         setError(joinErrorMessage(payload.error));
         return;
@@ -268,6 +300,34 @@ export function PreJoin({
       {joinLabel}
     </Button>
   );
+
+  if (held) {
+    return (
+      <WaitingRoom
+        code={meeting.code}
+        title={meeting.title}
+        /*
+         * What pre-join settled on, held and applied at admission — A3's
+         * "waiting is not joining". The same conjunction the handoff carries:
+         * a toggle that is on means nothing without a grant behind it.
+         */
+        micOn={media.state === "granted" && media.micOn && media.hasMicrophone}
+        cameraOn={media.state === "granted" && media.cameraOn && media.hasCamera}
+        displayName={needsName ? trimmedName : (signedInName ?? "")}
+        initial={held}
+        /*
+         * Admission hands back here rather than minting its own token: this
+         * screen owns the device state, the handoff and the navigation, and a
+         * second place doing it is a second place to get the publish decision
+         * wrong.
+         */
+        onAdmitted={() => {
+          setHeld(null);
+          void join();
+        }}
+      />
+    );
+  }
 
   return (
     /**
@@ -536,7 +596,7 @@ export function PreJoin({
         the part of it that is safe to put a control in — the same reason the
         room's control bar carries it.
       */}
-      <div className="sticky bottom-0 z-10 mt-auto border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] min-[900px]:hidden">
+      <div className="sticky bottom-0 z-[var(--layer-chrome)] mt-auto border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] min-[900px]:hidden">
         {joinButton}
       </div>
     </div>

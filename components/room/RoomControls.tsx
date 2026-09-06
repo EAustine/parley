@@ -46,6 +46,7 @@ export function RoomControls({
   share,
   onToggleChat,
   onToggleParticipants,
+  waitingCount,
   onReact,
   onOpenReactions,
   onLeave,
@@ -63,6 +64,8 @@ export function RoomControls({
   share: { supported: boolean; sharing: boolean; toggle: () => void };
   onToggleChat: () => void;
   onToggleParticipants: () => void;
+  /** v1.5 A2. Non-zero takes the badge; zero hands it back to the roster count. */
+  waitingCount: number;
   onReact: (emoji: Reaction) => void;
   /** Opens the mobile reactions sheet — v1.4 B2. */
   onOpenReactions: () => void;
@@ -130,7 +133,7 @@ export function RoomControls({
        * that is safe to put a control in.
        */
       ref={bar}
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-[var(--layer-chrome)] flex flex-col items-center gap-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
       // Hidden controls stay in the DOM and keep their tab stops: §3.4 says
       // they reappear on any keypress or focus, which cannot happen if
       // focusing them is what would have brought them back.
@@ -350,7 +353,17 @@ export function RoomControls({
               <button
                 type="button"
                 onClick={onToggleParticipants}
-                aria-label="Participants"
+                /*
+                  The name says which number this is. A badge that silently
+                  swaps what it counts is a badge a screen reader cannot
+                  describe — and §9's floor is that nothing depends on a visual
+                  distinction alone.
+                */
+                aria-label={
+                  waitingCount > 0
+                    ? `Participants, ${waitingCount} waiting to join`
+                    : "Participants"
+                }
                 aria-expanded={participantsOpen}
                 aria-controls="participants-panel"
                 className={`relative flex size-11 items-center justify-center rounded-full border hover:bg-[var(--secondary)] ${CONTROL_MOTION}`}
@@ -385,13 +398,37 @@ export function RoomControls({
                 */}
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-semibold tabular-nums"
-                  style={{
-                    background: "var(--foreground)",
-                    color: "var(--background)",
-                  }}
+                  className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[10px] leading-4 font-semibold tabular-nums"
+                  /**
+                   * v1.5 A2: the badge is **taken** by the waiting count while a
+                   * queue exists, and handed back when it clears.
+                   *
+                   * Never added to it — three people present and two waiting is
+                   * not five, and the two numbers must not be mistaken for each
+                   * other. So the distinction is fill and value, not hue: rule 5
+                   * spends chroma on destructive actions and connection
+                   * warnings, and a queue is neither.
+                   *
+                   * The roster count is the quiet one now, on `--secondary`
+                   * behind a `--boundary` edge; the waiting count takes the
+                   * inverted fill this badge used to carry unconditionally,
+                   * which is what `--primary` resolves to in the room.
+                   */
+                  style={
+                    waitingCount > 0
+                      ? {
+                          background: "var(--primary)",
+                          color: "var(--primary-foreground)",
+                          borderColor: "var(--primary)",
+                        }
+                      : {
+                          background: "var(--secondary)",
+                          color: "var(--foreground)",
+                          borderColor: "var(--boundary)",
+                        }
+                  }
                 >
-                  {participantCount}
+                  {waitingCount > 0 ? waitingCount : participantCount}
                 </span>
               </button>
             </TooltipTrigger>

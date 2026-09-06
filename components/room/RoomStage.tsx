@@ -20,6 +20,7 @@ import { useAnnouncer } from "@/lib/hooks/useAnnouncer";
 import { usePresence } from "@/lib/hooks/usePresence";
 import { useRoomConnection } from "@/lib/hooks/useRoomConnection";
 import { useDevices } from "@/lib/hooks/useDevices";
+import { useWaitingQueue } from "@/lib/hooks/useWaitingQueue";
 import { createRetryCounter, type RetryCounter } from "@/lib/room/retry-counter";
 import { displayNameOf, isHost } from "@/lib/room/participant";
 import { AudioBlockedPrompt } from "@/components/room/AudioBlockedPrompt";
@@ -402,6 +403,7 @@ function RoomSurface({
    * a panel outside itself.
    */
   const [reactionsOpen, setReactionsOpen] = useState(false);
+
   const visible = useControlVisibility();
   /**
    * One panel at a time — BUILD-PLAN v1.2 A3.
@@ -453,6 +455,21 @@ function RoomSurface({
   // C4: the one signal the whole share layout follows — see the branch below.
   const viewport = useViewport();
   const localIsHost = isHost(localParticipant);
+
+  /**
+   * v1.5 A2's queue, polled here rather than inside the People tab.
+   *
+   * Two of its three requirements are about what happens while that tab is
+   * *closed* — the badge carrying the waiting count, and the single toast A2
+   * insists on because "a toast auto-dismisses, so a request arriving while the
+   * host is talking is a request the host never sees if the toast is the only
+   * notice". A badge that only updates when you are looking at the thing it is
+   * telling you about is not a notification.
+   *
+   * Declared after `localIsHost` rather than with the other state, because it
+   * needs it — and a guest polling a route that refuses them is pure noise.
+   */
+  const queue = useWaitingQueue({ code, isHost: localIsHost });
 
   const removeParticipant = useCallback(
     async (identity: string) => {
@@ -792,6 +809,7 @@ function RoomSurface({
       <ReactionOverlay reactions={messages.reactions} anchorFor={anchorFor} />
 
       <RoomControls
+        waitingCount={queue.waiting.length}
         visible={visible}
         unread={messages.unread}
         chatOpen={chatOpen}
@@ -872,6 +890,9 @@ function RoomSurface({
       <div id="participants-panel" />
 
       <RoomPanel
+        waiting={queue.waiting}
+        onDecide={queue.decide}
+        deciding={queue.deciding}
         tab={panel}
         log={messages.log}
         cooldown={messages.chatCooldown}
@@ -887,7 +908,7 @@ function RoomSurface({
       {share.error && (
         <p
           role="status"
-          className="absolute inset-x-0 bottom-24 z-30 text-center type-small text-[var(--state-critical)]"
+          className="absolute inset-x-0 bottom-24 z-[var(--layer-chrome)] text-center type-small text-[var(--state-critical)]"
         >
           {share.error}
         </p>

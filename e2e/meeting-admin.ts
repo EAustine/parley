@@ -216,6 +216,12 @@ export async function createMeeting(
     timezone?: string;
     /** Whose meeting it is. Defaults to the run's fixture host. */
     host?: string;
+    /**
+     * v1.5 A1's door. Off by default here, matching an instant meeting — a
+     * fixture that quietly gated every room test behind a queue would make
+     * every one of them a waiting-room test.
+     */
+    waitingRoom?: boolean;
   } = {},
 ): Promise<string> {
   const {
@@ -226,6 +232,7 @@ export async function createMeeting(
     endedAt = null,
     timezone = "Africa/Accra",
     host = hostId(),
+    waitingRoom = false,
   } = options;
 
   const code = generateMeetingCode();
@@ -242,6 +249,7 @@ export async function createMeeting(
       ended_at: endedAt?.toISOString() ?? null,
       started_at: status === "live" ? new Date().toISOString() : null,
       timezone,
+      waiting_room: waitingRoom,
     }),
   });
   if (!response.ok) {

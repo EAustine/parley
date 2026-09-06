@@ -32,6 +32,8 @@ export type Database = {
           description: string | null;
           host_id: string;
           status: MeetingStatus;
+          /** v1.5 A1. On for scheduled meetings, off for instant — set by the create route. */
+          waiting_room: boolean;
           scheduled_start: string | null;
           scheduled_end: string | null;
           timezone: string;
@@ -48,6 +50,7 @@ export type Database = {
           description?: string | null;
           host_id: string;
           status?: MeetingStatus;
+          waiting_room?: boolean;
           scheduled_start?: string | null;
           scheduled_end?: string | null;
           timezone?: string;
@@ -66,10 +69,70 @@ export type Database = {
         Update: Partial<{ key: string; window_start: string; count: number }>;
         Relationships: [];
       };
+      /** v1.5 A1: the queue. A waiting person holds no token and is not in the room. */
+      meeting_waiting: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          subject: string;
+          subject_type: "user" | "device";
+          user_id: string | null;
+          display_name: string;
+          status: "waiting" | "admitted" | "denied";
+          requested_at: string;
+          decided_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          subject: string;
+          subject_type: "user" | "device";
+          user_id?: string | null;
+          display_name: string;
+          status?: "waiting" | "admitted" | "denied";
+          requested_at?: string;
+          decided_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["meeting_waiting"]["Insert"]>;
+        Relationships: [];
+      };
+      /** v1.5 B1: the ten-minute block. Never by IP — see §7's NAT reasoning. */
+      meeting_blocks: {
+        Row: {
+          id: string;
+          meeting_id: string;
+          subject: string;
+          subject_type: "user" | "device";
+          reason: "denied" | "removed";
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          id?: string;
+          meeting_id: string;
+          subject: string;
+          subject_type: "user" | "device";
+          reason: "denied" | "removed";
+          created_at?: string;
+          expires_at: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["meeting_blocks"]["Insert"]>;
+        Relationships: [];
+      };
       meeting_participants: {
         Row: {
           id: string;
           meeting_id: string;
+          /**
+           * Missing from this Row until v1.5 C1, though the column has existed
+           * since the first migration and `Insert` always listed it.
+           *
+           * Found by the compiler the moment something read it: C1's record has
+           * to say whether a name was attested or typed, and that is exactly
+           * this column. A hand-maintained type that is missing a column is
+           * invisible until somebody needs it.
+           */
+          user_id: string | null;
           /**
            * Nullable on read, required on write — deliberately asymmetric.
            *
@@ -84,12 +147,15 @@ export type Database = {
           role: string;
           joined_at: string;
           left_at: string | null;
+          /** v1.5 C1. Null means they left on their own; a time means the host removed them. */
+          removed_at: string | null;
         };
         Insert: {
           id?: string;
           meeting_id: string;
           user_id?: string | null;
           display_name: string;
+          removed_at?: string | null;
           identity: string;
           role?: string;
           joined_at?: string;

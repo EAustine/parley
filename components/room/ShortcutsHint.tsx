@@ -26,7 +26,7 @@ export function ShortcutsHint({ onOpen }: { onOpen: () => void }) {
       className="
         sr-only
         focus-visible:not-sr-only focus-visible:absolute focus-visible:left-3
-        focus-visible:top-3 focus-visible:z-50 focus-visible:flex
+        focus-visible:top-3 focus-visible:z-[var(--layer-notices)] focus-visible:flex
         focus-visible:h-11 focus-visible:items-center focus-visible:rounded-lg
         focus-visible:px-4 focus-visible:type-small
       "

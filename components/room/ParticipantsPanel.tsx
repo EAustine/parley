@@ -16,6 +16,8 @@ import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
+import { WaitingQueue } from "@/components/room/WaitingQueue";
+import type { WaitingRequest } from "@/lib/hooks/useWaitingQueue";
 
 /**
  * §3.8. Everyone present, what their devices are doing, and — for a host — the
@@ -35,6 +37,9 @@ export function PeopleBody({
   open,
   isLocalHost,
   code,
+  waiting,
+  onDecide,
+  deciding,
   onRequestMute,
   onRemove,
 }: {
@@ -42,6 +47,10 @@ export function PeopleBody({
   isLocalHost: boolean;
   /** The room's own link, for C3's copy row at the top. */
   code: string;
+  /** v1.5 A2's queue, polled in the room so the badge and toast work with this closed. */
+  waiting: WaitingRequest[];
+  onDecide: (id: string, decision: "admit" | "deny") => void;
+  deciding: string | null;
   onRequestMute: (identity: string) => void;
   onRemove: (identity: string) => void;
 }) {
@@ -97,6 +106,11 @@ export function PeopleBody({
         </span>
         <CopyLinkButton code={code} withLabel />
       </div>
+
+      {/* v1.5 A2: above the roster, because a pending decision outranks a list. */}
+      {isLocalHost && (
+        <WaitingQueue waiting={waiting} onDecide={onDecide} deciding={deciding} />
+      )}
 
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {participants.map((participant) => (

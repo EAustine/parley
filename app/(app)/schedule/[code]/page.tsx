@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
 import { toWallClock } from "@/lib/meetings/when";
 import { publicEnv } from "@/lib/env";
+import {
+  AttendanceRecord,
+  type AttendanceRow,
+} from "@/components/schedule/AttendanceRecord";
 import { MeetingSchedule } from "@/components/schedule/MeetingSchedule";
 
 export const metadata: Metadata = { title: "Meeting" };
@@ -35,11 +39,63 @@ export default async function ScheduledMeetingPage({
 
   const { data: meeting } = await supabase
     .from("meetings")
-    .select("code, title, description, scheduled_start, scheduled_end, timezone, status")
+    .select("id, code, title, description, scheduled_start, scheduled_end, timezone, status")
     .eq("code", code)
     .maybeSingle();
 
   if (!meeting || !meeting.scheduled_start) notFound();
+
+  /**
+   * The attendance record — v1.5 C1, and only for a meeting that is over.
+   *
+   * Not shown while a meeting is live or still to come: a partial list read as
+   * a final one is the same error as §3.2's cancelled meeting reading as one
+   * you missed, and there is a live roster in the room for the other case.
+   *
+   * Both reads go through the *user's* client, so RLS is the authorisation —
+   * hosts already read their own meeting's participants, and the queue policy
+   * added in `20260906140000_waiting_room.sql` matches it. A successful read is
+   * the permission; there is no separate ownership check to drift out of step.
+   */
+  const attendance: AttendanceRow[] = [];
+  if (meeting.status === "ended") {
+    const [{ data: sessions }, { data: refused }] = await Promise.all([
+      supabase
+        .from("meeting_participants")
+        .select("id, display_name, user_id, joined_at, left_at, removed_at")
+        .eq("meeting_id", meeting.id)
+        .order("joined_at", { ascending: true }),
+      supabase
+        .from("meeting_waiting")
+        .select("id, display_name, user_id, subject_type, decided_at")
+        .eq("meeting_id", meeting.id)
+        .eq("status", "denied")
+        .order("decided_at", { ascending: true }),
+    ]);
+
+    for (const row of sessions ?? []) {
+      attendance.push({
+        id: row.id,
+        // `display_name` is nullable since the email cleanup; a row without one
+        // is a historical artefact, not somebody called nothing.
+        name: row.display_name ?? "Unknown",
+        verified: Boolean(row.user_id),
+        joinedAt: row.joined_at,
+        leftAt: row.left_at,
+        outcome: row.removed_at ? "removed" : "joined",
+      });
+    }
+    for (const row of refused ?? []) {
+      attendance.push({
+        id: row.id,
+        name: row.display_name,
+        verified: row.subject_type === "user" && Boolean(row.user_id),
+        joinedAt: null,
+        leftAt: null,
+        outcome: "denied",
+      });
+    }
+  }
 
   const start = new Date(meeting.scheduled_start);
   const end = meeting.scheduled_end
@@ -78,6 +134,8 @@ export default async function ScheduledMeetingPage({
         wall={toWallClock(start, meeting.timezone)}
         durationMinutes={Math.round((end.getTime() - start.getTime()) / 60_000)}
       />
+
+      {meeting.status === "ended" && <AttendanceRecord rows={attendance} />}
     </div>
   );
 }

@@ -55,7 +55,7 @@ export function MuteRequestPrompt({
       // Phase 9 note. It is a request, and a request can wait for a gap.
       role="status"
       aria-live="polite"
-      className="absolute bottom-[calc(var(--parley-controls-h)+0.5rem)] left-1/2 z-20 flex w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-stretch gap-2.5 rounded-xl border border-boundary bg-popover px-3.5 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.5)] min-[900px]:w-auto min-[900px]:max-w-[calc(100%-1.5rem)] min-[900px]:flex-row min-[900px]:items-center min-[900px]:gap-3 min-[900px]:pr-2.5"
+      className="absolute bottom-[calc(var(--parley-controls-h)+0.5rem)] left-1/2 z-[var(--layer-surfaces)] flex w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-stretch gap-2.5 rounded-xl border border-boundary bg-popover px-3.5 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.5)] min-[900px]:w-auto min-[900px]:max-w-[calc(100%-1.5rem)] min-[900px]:flex-row min-[900px]:items-center min-[900px]:gap-3 min-[900px]:pr-2.5"
     >
       <span className="flex min-w-0 items-center gap-2.5">
         {/* A struck mic, which says what is being asked before the sentence

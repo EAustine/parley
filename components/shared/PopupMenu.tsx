@@ -298,7 +298,7 @@ export function PopupMenu({
          * written as `min()` inside the `min-w` value because `min-width` beats
          * `max-width` in the cascade, so a bare `max-w` would lose.
          */
-        className={`fixed z-40 min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)]`}
+        className={`fixed z-[var(--layer-menus)] min-w-[min(260px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-boundary bg-popover p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)]`}
         style={pos ? { left: pos.left, top: pos.top } : { visibility: "hidden" }}
       >
         {header}

@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 
+import { createAdminClient } from "@/lib/supabase/admin";
+
 import { createClient } from "@/lib/supabase/server";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
 import { publicEnv } from "@/lib/env";
@@ -70,6 +72,28 @@ export async function DELETE(
     serverEnv.LIVEKIT_API_KEY,
     serverEnv.LIVEKIT_API_SECRET,
   );
+
+  /**
+   * Record *why* before disconnecting them — v1.5 C1.
+   *
+   * "A removal is indistinguishable from leaving. The removal route must write
+   * the reason." It has to be written **first**: `removeParticipant` causes
+   * LiveKit to fire `participant_left`, and that handler closes the row with
+   * `left_at`. Writing afterwards is a race against a webhook that may already
+   * have arrived, and losing it would leave an ejection recorded as a departure
+   * — which is the one thing this column exists to prevent.
+   *
+   * Ordering it this way also fails safe: if the disconnect below throws
+   * because they had already gone, the record says they were removed, which is
+   * what the host did and what they experienced.
+   */
+  const admin = createAdminClient();
+  await admin
+    .from("meeting_participants")
+    .update({ removed_at: new Date().toISOString() })
+    .eq("meeting_id", meeting.id)
+    .eq("identity", identity)
+    .is("left_at", null);
 
   try {
     await service.removeParticipant(code, identity);

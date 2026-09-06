@@ -90,6 +90,19 @@ Two kinds of meeting, one table:
 
 Collision handling: generate, insert, retry on unique-constraint violation. Do not check-then-insert.
 
+**Waiting room** — a per-meeting toggle, **on for scheduled meetings and off for instant** — v1.5 A1.
+
+The default is not a preference, it follows the risk: a scheduled link went out days ago to a list nobody re-reads, an instant link was pasted seconds ago to somebody already waiting. A column default cannot express that, because it cannot see `scheduled_start`, so the create route decides. Reversible in both directions, and worth revisiting once there is usage to look at rather than defended on first principles.
+
+With it on, **two gates rather than one**, and this is the part that reads like a contradiction and is not:
+
+1. **Nobody enters before a host has joined** — signed in or not, including the first arrival. The alternative, an open door until the host lands, is open exactly when the risk is highest: the link-holder who should not be there arrives *early*, which is the natural behaviour of anyone unsure of the time.
+2. **After that, guests are admitted individually and signed-in participants are not.** Signing in buys accountability, which is enough to skip the second gate and not the first.
+
+The host is never held. There is no co-host, so a door that stops them is a meeting that never starts — and the same absence means **a host who never arrives is a meeting nobody enters**. That is a real regression against an open link and it is accepted rather than overlooked, mitigated by copy rather than mechanism: §3.3's waiting screen says so after a wait instead of spinning.
+
+Host presence means **joined, not sitting in pre-join**. A host choosing a camera has not arrived, so a queue can form while they pick a microphone — which is the feature working, not a fault.
+
 **Acceptance**
 - Code is displayed in mono with letter-spacing, and is selectable as a unit
 - Copy link puts the full URL on the clipboard and confirms with a toast that says "Link copied"
@@ -134,12 +147,36 @@ Device labels are empty strings until permission is granted. Do not render an em
 
 Joining with camera and mic both off is allowed and must not be treated as an error.
 
+#### Held at the door
+
+With §3.2's waiting room on, pre-join is followed by a hold rather than a room — v1.5 A3.
+
+**Waiting is not joining, and nothing publishes.** The camera and microphone state chosen at pre-join is *held* and applied at the moment of admission. A waiting person has no token and is not in the room at all, so there is no permission flag that has to be correct for them to be unable to hear it — the queue lives in the database and not in the SFU precisely so that the failure mode "the person you did not admit heard the meeting" is unreachable.
+
+This is §3.4's mute-state truth reaching one step further back, and the same rule as the publish-side one above it: **a person who is not in a meeting is not on camera in it.** The screen shows what is held so that is visible rather than promised.
+
+**Five endings, and they must not share a screen.** §3.11 already refuses to let a dropped connection, a voluntary leave and a host ending the meeting share one; the door adds two more.
+
+| Ending | Says |
+|---|---|
+| Admitted | Enters the room |
+| Denied | "The host didn't let you in." |
+| Removed | "The host removed you from the meeting." |
+| Host never arrived | Says so, after a wait, rather than spinning |
+| Meeting ended while waiting | §3.4's ended state, with no Rejoin |
+
+Denied and removed carry the same block and different words. Being turned away and being ejected are different experiences, and telling somebody the wrong one happened to them is §3.2's cancelled-reads-as-missed error in a new place.
+
+**Leave is live from the first second**, never revealed after a delay — §3.11's rule about the reconnect countdown, applied to a wait whose length nobody controls and which may never end.
+
 **Acceptance**
 - Mic meter responds to speech within 200ms
 - Changing camera in the selector updates the preview without a page reload
 - Selected devices carry into the room
 - Nobody joins with an empty or whitespace-only name — a guest, and equally a signed-in person whose account carries none
 - A host is never named after their email address, on any surface, whichever way they signed in
+- Nothing publishes while somebody is held at the door — asserted by counting `getUserMedia`, not by reading the interface
+- The five endings are distinguished by their words, not only by a status code
 - Preview is mirrored; published video is not
 
 ---
@@ -312,6 +349,26 @@ The original spec had this backwards. Confirming with the replaced person blocks
 ### 3.8 Participants panel
 
 List of everyone present: name, mic state, camera state, connection quality, host badge. Host sees per-participant actions: mute (request), remove.
+
+#### The queue
+
+With §3.2's waiting room on, the People tab gains a section **above** the roster — v1.5 A2. Not a third tab: C3 merged two panels into one surface with two tabs, and a third would undo that rather than build on it.
+
+**Allow and Deny sit side by side, and §3.8's own row rule refused exactly that construction.** The distinction is real. A roster row is *passive* — it exists to be read, and an action beside it acts on somebody you were only looking at. A waiting request is a *pending decision*: the row exists solely to be answered, both answers are expected, and Deny is reversible. Putting one of two expected answers behind a menu costs the common flow and buys no safety.
+
+Allow is primary; Deny is secondary and visually distinct, never `--destructive` — rule 5 spends hue on destructive actions and connection warnings, and a reversible refusal at the door is neither. Both are on the 44px floor, and **neither is hover-revealed**, which is the half this shares with the roster.
+
+**The badge carries the waiting count while a queue exists and hands it back when it clears.** Never added to the roster count: three present and two waiting is not five, and the two numbers must not be mistaken for each other. The distinction is fill and value rather than hue — and the accessible name changes with it, because a badge that silently swaps what it counts is one a screen reader cannot describe.
+
+**The toast is a hint; the panel is the truth.** A toast auto-dismisses, so a request arriving while the host is talking is one the host never sees if the toast is the only notice. The badge persists until the queue empties. Ten people waiting produces **one** toast saying how many, never ten.
+
+#### Verified and typed names are visibly different
+
+Signing in buys **accountability, not authorisation**. Anyone can sign in with any Google account, so a signed-in person is *identifiable* rather than invited — which is why §3.2's second gate is guest-only rather than members-only.
+
+The consequence is that a guest can type your name and sit in the roster looking like you. A surface listing "Austine Eluro" without saying whether that was attested or typed implies an attestation the product cannot make. The queue says which is which, and so does the roster.
+
+#### Host powers
 
 A host cannot unmute someone else. Muting is a request the participant must accept — the host can silence, never activate.
 
@@ -692,6 +749,9 @@ Ended meetings resolve for 30 days so the join page can show "This meeting has e
 | `/api/meetings/[code]` | DELETE | host | Cancel |
 | `/api/meetings/[code]/ics` | GET | public | Calendar file |
 | `/api/livekit/webhook` | POST | signature | Room lifecycle → update status |
+| `/api/meetings/[code]/waiting` | POST | optional | Join the queue, or ask where you stand |
+| `/api/meetings/[code]/waiting` | GET | host | Who is waiting |
+| `/api/meetings/[code]/waiting/[id]` | POST | host | Allow or deny; denying writes the block |
 
 ### Token endpoint contract
 
@@ -714,6 +774,9 @@ Rules for this endpoint:
 - For guests, generate `guest_${nanoid(10)}` server-side
 - Sanitise `displayName`: trim, collapse whitespace, 1–40 characters, strip control characters. A name held on the account goes through the same function — `user_metadata` is writable by its owner, so it is the same untrusted string on a different road
 - **A display name has exactly two sources: the request, or a name already on the account.** There is no third, and `400 display_name_required` is the answer when there is neither. This list did not say so, and the omission is what the bug grew in: the route filled the gap with `?? user.email ?? "Host"`, which named every magic-link host after their inbox and named non-host signed-in participants "Host". An endpoint that can identify the caller must still decline to *name* them
+- **Check the block, then the door, before minting** — v1.5 A1 and B1. The block first, so somebody who was removed meets the same answer whether or not the meeting has a queue, and never appears in it. Then §3.2's two gates. A refusal returns `403` with `waiting_for_host`, `waiting_for_admission`, `denied` or `removed` — four answers because they are four screens, and `Retry-After` on the two that lapse
+- **A waiting person leaves here with no token at all.** That is the design rather than an implementation detail: the queue lives in the database, so there is no permission flag that has to be correct for somebody unadmitted to be unable to hear the meeting. Admitting them with publish and subscribe disabled is the elegant alternative whose failure mode is *the person you did not admit heard the meeting*
+- **Admission is looked up by subject, never taken from the request.** A client handing over its own queue-row id is a client claiming to be a queue entry, which is the same mistake this list already refuses when it derives identity from the session
 - Grant `roomJoin`, `canPublish`, `canSubscribe`, `canPublishData`, `room: code` — nothing wider
 - Set `ttl` to 6 hours
 - Put `displayName` and `role` in token `metadata`, not in the identity string
@@ -732,6 +795,8 @@ The number was also defending the wrong thing. Code enumeration is not a live th
 | Overall | 60 / min / IP | Every request. Accommodates a full room from one NAT with headroom. |
 | Unresolvable code | 5 / min / IP | Counted after lookup — unknown or expired codes only |
 
+**The waiting routes take the same two tiers, and the overall one is wider because polling is the design.** A waiting client asks every two seconds, so one person waiting five minutes is 150 requests and a room filling from one office multiplies that by the people in it. The tight tier is unchanged and still counts only codes that fail to resolve — which is what separates a room full of colleagues from somebody walking the code space, and it is the reason the miss tier exists at all.
+
 Authenticated requests get their own bucket keyed on user id rather than IP, since a signed-in host is not the threat model.
 
 **Malformed codes are rejected before lookup and do not count toward the miss tier.** This is deliberate, not an oversight: a code containing a character outside the alphabet costs nothing to reject — no database round trip — so the overall limit is sufficient cover. Only requests that reach a lookup and fail it are worth counting, because those are the ones that cost something.
@@ -749,6 +814,11 @@ Authenticated requests get their own bucket keyed on user id rather than IP, sin
 - Autolinked URLs get `rel="noopener noreferrer nofollow"`.
 - CSP allowing `wss:` to the LiveKit host and `blob:` for media.
 - LiveKit webhooks verified against the signature header before acting.
+- **The guest block is a cost, not a wall, and is described as one** — v1.5 B1. A denied or removed guest is identified by an opaque 128-bit id in an `httpOnly` cookie, matched against a row scoped to that meeting. It is unforgeable — you cannot guess what you cannot guess — and it needs no signature or signing key for that, which is why it has neither.
+
+  **A private window defeats it.** So does clearing cookies, and so does a second device. What it holds against is reloads, new tabs and a different browser profile on the same machine. That raises the cost of coming back from nothing to knowing to open a private window, which stops the ordinary case and is worth having.
+
+  Stated as a limit deliberately: the moment this is described as a wall, something gets built on the claim. Signed-in people are blocked by account id, which survives everything short of a second account.
 
 ---
 
@@ -916,6 +986,16 @@ Rough estimate: 6–8 weeks focused, roughly 3 months alongside other work.
 
 ## 13. Out of scope for v1
 
-Recording · transcription · live captions · breakout rooms · virtual backgrounds · noise suppression beyond browser default · waiting room / lobby · dial-in · org admin and SSO · persistent chat history · file sharing · polls · whiteboard · e2e encryption · native apps
+Recording · transcription · live captions · breakout rooms · virtual backgrounds · noise suppression beyond browser default · dial-in · org admin and SSO · persistent chat history · file sharing · polls · whiteboard · e2e encryption · native apps
+
+**"Waiting room / lobby" was on this list and is built** — v1.5 Track A. It is
+called out rather than quietly deleted because `BUILD-PLAN-v1.5.md` names this
+as "the line that most needs deleting, because it is the one a future session
+would cite to argue this feature away". A stale out-of-scope entry is not a
+harmless leftover; it is an argument sitting in the specification waiting to be
+used.
+
+It changed status for a specific finding: the meeting link was the entire
+credential, and nothing stood between holding one and being in the room.
 
 End-to-end encryption deserves a note: it is a reasonable ask and it breaks server-side recording and transcription. Decide before adding either, because retrofitting in any direction is expensive.

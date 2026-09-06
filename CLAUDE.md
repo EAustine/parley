@@ -383,6 +383,56 @@ If the snap ever reads as abrupt in use, `@starting-style` with `transition-beha
 
 ---
 
+## Layers
+
+**Every stacking order comes from the scale. No bare numbers, anywhere.**
+`npm run check:layers` fails on `z-50`, `z-[50]`, `z-index: 50` and
+`zIndex: 50` alike, in `app/`, `components/` and `lib/`.
+
+Until v1.5 there was no rule here at all — neither this file nor `PRD.md` said
+anything about z-index — so every layer's order was decided locally by whoever
+wrote the component. Twenty values across seventeen files, none of them wrong on
+its own, and the result was a reaction drawing behind the self-view: C1's PiP
+arrived after the reaction layer existed and won by picking a bigger number.
+That is not a bug that gets fixed once, which is why the scanner matters more
+than the fix.
+
+| Layer | Token | Holds |
+|---|---|---|
+| Base | `--layer-base` | Video tiles, the grid, the filmstrip |
+| Self | `--layer-self` | The self-view PiP |
+| Ephemera | `--layer-ephemera` | Reactions |
+| Surfaces | `--layer-surfaces` | Panel, mute prompt, reactions sheet |
+| Chrome | `--layer-chrome` | The control bar |
+| Menus | `--layer-menus` | Overflow, leave, the participant row's `⋮` |
+| Dialogs | `--layer-dialogs` | Confirm, settings, the connection overlay |
+| Notices | `--layer-notices` | Toasts, hints, the waiting notice |
+
+Written as `z-[var(--layer-chrome)]`. `z-auto` is always allowed and is usually
+the better answer — a component with no opinion should not express one.
+
+**Reactions sit above Self and below Surfaces.** Above, because a reaction
+hidden behind your own face is the reported bug. Below, because a reaction
+occluding a control is worse than one occluding a face — the same rule §3.6
+already states as "reactions never occlude the name label or mic indicator", one
+layer up.
+
+**Surfaces is not in `BUILD-PLAN-v1.5.md`'s table, and it has to exist.** That
+table puts the control bar and the panel together under Chrome. They cannot
+share a value: `RoomPanel` renders *after* `RoomControls`, so at equal z the
+panel paints over the bar, and §3.4 requires the bar to stay reachable with a
+panel open — `mobile.spec` asserts it. The gap was already there as 20-against-30;
+the scale names it rather than inventing it.
+
+**A number is only ever compared inside its own stacking context**, and that is
+the failure mode a scale does not prevent. v1.4's participant menu carried
+`z-40` inside a `z-20` panel and still lost to a `z-30` control bar, because the
+two numbers were never in the same competition. `e2e/layers.spec.ts` therefore
+asserts the shared context as well as the order; a scanner cannot see this, and
+neither can a table.
+
+---
+
 ## Accessibility floor
 
 Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD.md` §9 owns the announcement policy and the reasoning behind its thresholds, and deliberately does not restate these mechanics. Where the two ever appear to disagree, this file wins and §9 is stale.

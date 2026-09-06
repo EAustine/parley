@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 export function ResumePrompt({ onResume }: { onResume: () => void }) {
   return (
     <div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 px-6"
+      className="absolute inset-0 z-[var(--layer-dialogs)] flex items-center justify-center bg-background/80 px-6"
       role="status"
       aria-live="polite"
     >

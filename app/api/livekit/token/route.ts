@@ -3,7 +3,10 @@ import { AccessToken } from "livekit-server-sdk";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAnonClient } from "@/lib/supabase/anon";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { accountDisplayName } from "@/lib/auth/display-name";
+import { decide } from "@/lib/meetings/door";
+import { deviceCookie, readDeviceId, subjectFor } from "@/lib/room/device";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
 import {
   guestIdentity,
@@ -40,7 +43,15 @@ type TokenError =
   | "guests_not_allowed"
   | "meeting_not_found"
   | "meeting_ended"
-  | "rate_limited";
+  | "rate_limited"
+  /* v1.5 A1 and B1. Four outcomes rather than one, because they are four
+     different screens: waiting for a host, waiting to be let in, turned away,
+     and ejected. §3.11's rule that these must not share a screen applies to
+     the door as much as to a dropped connection. */
+  | "waiting_for_host"
+  | "waiting_for_admission"
+  | "denied"
+  | "removed";
 
 function fail(error: TokenError, status: number) {
   return NextResponse.json({ error }, { status });
@@ -164,6 +175,92 @@ export async function POST(request: NextRequest) {
   const displayName = requested ?? accountDisplayName(user);
   if (!displayName) return fail("display_name_required", 400);
 
+  /**
+   * The door — v1.5 A1 and B1, and the only place that can actually refuse.
+   *
+   * A1: "checked in the token endpoint. Not the client — the client is the
+   * thing being kept out." A waiting person leaves here with no token at all,
+   * which is the whole design: they are not in the room, so no permission flag
+   * has to be right for them to be unable to hear it.
+   *
+   * The name is resolved first, deliberately. Somebody joining the queue is
+   * shown to the host by the name they typed, so it has to exist and be
+   * sanitised before a row is written — C1 is blunt that a denied person's name
+   * is "a string typed by someone who never got in".
+   */
+  const device = await readDeviceId();
+  const who = subjectFor(user?.id, device.id);
+
+  /**
+   * The gate's own read, with the service role.
+   *
+   * `get_meeting_by_code` returns six columns and neither of the two this
+   * needs — the row id and `waiting_room`. That narrowness is deliberate and
+   * documented in §6 ("no host identity, no participant list, no settings
+   * beyond the one flag the join page needs"), so the answer is not to widen
+   * it: the join *page* is a display surface and this is a server decision, and
+   * they should not share a contract just because they share a code.
+   *
+   * `createAdminClient` is already the established way to ask a question RLS
+   * has no policy for, and it is `server-only`, so this cannot reach a bundle.
+   */
+  const admin = createAdminClient();
+  const { data: gate } = await admin
+    .from("meetings")
+    .select("id, waiting_room")
+    .eq("code", code)
+    .maybeSingle();
+
+  if (!gate) return fail("meeting_not_found", 404);
+
+  /*
+   * Has the host already let this person in? By subject rather than by an id
+   * the client hands over — a client-supplied row id is a client claiming to be
+   * a queue entry, which is the same mistake as accepting a display identity,
+   * and §7 already refuses that for exactly this reason.
+   */
+  const { data: standing } = await admin
+    .from("meeting_waiting")
+    .select("status")
+    .eq("meeting_id", gate.id)
+    .eq("subject", who.subject)
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const admitted = standing?.status === "admitted";
+
+  const verdict = await decide({
+    db: admin,
+    meetingId: gate.id,
+    code,
+    waitingRoom: Boolean(gate.waiting_room),
+    isHost,
+    isSignedIn: Boolean(user),
+    who,
+    admitted,
+  });
+
+  if (verdict.kind !== "admit") {
+    const body =
+      verdict.kind === "blocked"
+        ? { error: verdict.reason satisfies TokenError, retryAfter: verdict.retryAfter }
+        : {
+            error: (verdict.kind === "wait-for-host"
+              ? "waiting_for_host"
+              : "waiting_for_admission") satisfies TokenError,
+          };
+    /*
+     * 403, not 401: this is not about credentials and there is nothing to log
+     * in with. The device cookie rides along on the refusal so a blocked person
+     * who has never been here before is still identifiable the next time — a
+     * cookie only set on success would issue an identity exactly to the people
+     * who do not need one.
+     */
+    const response = NextResponse.json(body, { status: 403 });
+    if (device.minted) response.cookies.set(deviceCookie(device.id));
+    return response;
+  }
+
   const identity = user ? userIdentity(user.id) : guestIdentity();
 
   const token = new AccessToken(
@@ -191,11 +288,15 @@ export async function POST(request: NextRequest) {
     canPublishData: true,
   });
 
-  return NextResponse.json({
+  const minted = NextResponse.json({
     token: await token.toJwt(),
     url: publicEnv.NEXT_PUBLIC_LIVEKIT_URL,
     identity,
     displayName,
     role: isHost ? "host" : "participant",
   });
+  // Same cookie on the way in as on the way out, so an identity exists before
+  // anybody needs to be kept out with it.
+  if (device.minted) minted.cookies.set(deviceCookie(device.id));
+  return minted;
 }

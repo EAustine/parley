@@ -168,6 +168,32 @@
   :root,
   .light,
   .dark {
+    /* --- the layer scale — v1.5 D1 -------------------------------------
+       Every stacking order in the product, named, because until now there was
+       no rule at all: `CLAUDE.md` and `PRD.md` contained no z-index guidance,
+       so each component's order was decided by whoever wrote it. The reported
+       symptom was a reaction drawing behind the self-view — the PiP arrived
+       after the reaction layer and won by picking a bigger number.
+
+       **`--layer-surfaces` is not in the build plan's table, and it has to be.**
+       That table puts the control bar and the panel together under "Chrome".
+       They cannot share a value: `RoomPanel` renders *after* `RoomControls`, so
+       at equal z the panel paints over the bar — and §3.4 requires the bar to
+       stay reachable with a panel open, which `mobile.spec` asserts. The gap
+       between them is load-bearing and was already there as 20-against-30; this
+       names it rather than inventing it.
+
+       Gaps of ten, so a future layer can land between two without renumbering
+       everything below it. */
+    --layer-base: 0; /* tiles, the grid, the filmstrip */
+    --layer-self: 10; /* the self-view PiP */
+    --layer-ephemera: 20; /* reactions — above your own face, below chrome */
+    --layer-surfaces: 30; /* panel, mute prompt, reactions sheet */
+    --layer-chrome: 40; /* the control bar, which outranks all of those */
+    --layer-menus: 50; /* overflow, leave, the participant row's ⋮ */
+    --layer-dialogs: 60; /* confirm, settings, the connection overlay */
+    --layer-notices: 70; /* toasts, hints, the waiting notice */
+
     --scrim: rgba(14, 16, 19, 0.72);
     --on-scrim: #f2f4f7; /* 7.01:1 over the brightest video */
     --on-scrim-muted: #c6cad1; /* 4.70:1 */

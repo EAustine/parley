@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check:contrast": "node scripts/contrast.mjs",
+    "check:layers": "node scripts/check-layers.mjs",
     "check:env": "node scripts/check-env.mjs",
     "predev": "npm run check:env",
     "check:rls": "node --env-file=.env.local scripts/check-rls.mjs",

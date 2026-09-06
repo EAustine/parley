@@ -35,7 +35,7 @@ export function DeviceChangePrompt({
       // interrupt, and a device appearing is the least urgent thing in it.
       role="status"
       aria-live="polite"
-      className="absolute inset-x-0 top-0 z-30 mx-auto flex w-fit max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-3 rounded-b-xl px-4 py-3"
+      className="absolute inset-x-0 top-0 z-[var(--layer-notices)] mx-auto flex w-fit max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-3 rounded-b-xl px-4 py-3"
       style={{ background: "var(--popover)", border: "1px solid var(--boundary)" }}
     >
       <p className="type-small">

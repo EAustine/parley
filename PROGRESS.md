@@ -8270,3 +8270,235 @@ vaguely:** production has no `/api/version`, because that route ships with this
 commit — which does answer the question this once. Production predates it. How
 far behind remains unknown until the next deploy, and the check will say
 precisely from then on.
+
+---
+
+## v1.5 D1 — the layer scale
+
+The reported symptom is a reaction drawing behind the self-view. The one-line
+fix is a bigger number on the reaction layer, and D1 is explicit that it would
+leave the cause untouched: **neither `CLAUDE.md` nor `PRD.md` contained a
+z-index rule of any kind**, so every layer's order had been decided locally.
+Twenty values across seventeen files, none wrong on its own. `ReactionOverlay`
+was `z-10`, `SelfViewPiP` was `z-30`, and C1's PiP simply arrived later and
+picked a bigger number.
+
+Eight named layers in `app/globals.css`, documented in `CLAUDE.md`, and every
+call site converted. Gaps of ten so a future layer can land between two without
+renumbering.
+
+### The plan's table is missing a rung, and §3.4 depends on it
+
+It puts the control bar and the panel together under "Chrome". They cannot share
+a value: `RoomPanel` renders at line 874 and `RoomControls` at 794, so at equal z
+the panel paints **over** the bar — and §3.4 requires the bar to stay reachable
+with a panel open, which `mobile.spec` asserts. The gap was already in the build
+as 20-against-30. `--layer-surfaces` names it rather than inventing it; collapsing
+the two as written would have been a silent regression with a test to catch it.
+
+### `check:layers` strips comments, and that is not a nicety
+
+Seven of the twenty-nine matches in the first survey were prose *about* z-index —
+`RoomControls` explaining why the bar sits above the panels, `PopupMenu`
+explaining the stacking context that occluded it in v1.4. A scanner that fails on
+those trains people to delete the explanations, which are the most valuable lines
+in those files. Comments are blanked length-preservingly so reported line numbers
+stay true.
+
+Proven both ways: a bare `z-50` in code fails with its file and line; `z-50`,
+`z-[99]` and `zIndex: 12` inside a comment pass.
+
+### And the test asserted the wrong property first
+
+`layers.spec` initially required the two layers to **share a parent**, and failed
+against a working fix — the PiP hangs off the stage's inner column and the
+reaction layer off the stage itself. Sharing a parent is sufficient and not
+necessary, and asserting it fails correct arrangements.
+
+The property that decides whether two numbers compete is that both resolve into
+the same **stacking context**, which is exactly the trap that made v1.4's `z-40`
+row menu lose to a `z-30` control bar. The test walks each element's ancestors
+for anything establishing a context — position, opacity, transform, filter,
+isolation, will-change, contain — and requires the two to land on the same one.
+A scanner cannot see this and neither can a table.
+
+Mutation: restoring the original numbers fails with "reactions (10) must resolve
+above the self-view (30)", which is the report in the assertion's own words.
+
+**Deliberate exception recorded rather than assumed.** This reads resolved
+`z-index` rather than hit-testing, and "assert rendered geometry, never declared
+CSS" is a rule this file takes seriously. The rule guards against reading back
+your own input; `getComputedStyle` is the value *after* the cascade. A hit test
+is genuinely unavailable here — a reaction lives 2400ms, travels, and is laid
+into one of several lanes, while the PiP is draggable and parks in a corner, so
+forcing an overlap tests the arrangement I set up rather than the one the product
+produces.
+
+## v1.5 A1 and B1 — the door and the block
+
+The first pass that adds a feature rather than repairing one, and it exists for
+a specific finding: the meeting link was the entire credential.
+
+### Two gates, and the plan reads like one
+
+A1's two sentences look contradictory — "nobody enters before a host is present,
+including the first arrival" against "signed-in participants pass straight
+through". Austine confirmed the reading: they are two gates. Before a host has
+joined nobody enters, signed in or not. After that, guests are admitted
+individually and signed-in people are not. The host is never held, because with
+no co-host a door that stops them is a meeting that never starts.
+
+`lib/meetings/door.ts` is the decision on its own, separate from the route's
+plumbing, so the rule is readable and a check can put cases to it directly.
+
+### Host presence: the database first, LiveKit only when it says no
+
+Both available answers fail in opposite directions. `meeting_participants` is an
+indexed read and rests entirely on the webhook — and v1.3 A2 exists because
+deliveries were silently not arriving, where "a webhook that 401s on every
+delivery looks exactly like one that was never called". Here that failure means
+**nobody can ever enter the meeting**, which is worse than anything the waiting
+room prevents. LiveKit is authoritative and costs a round trip on a polled path.
+
+So the cheap answer first, and the expensive one spent only where the
+alternative is telling somebody to wait for a host who is already there.
+
+**A host who leaves closes the door again**, and people still waiting keep
+waiting — Austine's call. Worth naming the consequence: somebody already
+admitted who has not finished joining is held too, because presence is checked
+before admission.
+
+### The block identifies a guest without a signature
+
+B1 words it as a "signed `httpOnly` device token". A signature is not what the
+guarantee needs: the property is *unforgeable*, and a 128-bit random value
+delivers that on its own. The cookie is an opaque id that means nothing by
+itself — only ever a lookup key — so possessing one grants nothing and forging
+one lands on no row. A signature would have added a key to manage, an
+environment variable in two places, and a verify path, for a guarantee already
+held.
+
+**Set on the refusal as well as on success.** A cookie issued only on success
+hands an identity to exactly the people who do not need one, and none to the
+person about to be blocked.
+
+**And the limit is written as a limit**, in the code rather than only the docs: a
+private window defeats it, as does clearing cookies or a second device. What it
+holds against is reloads, new tabs and other profiles. B1's own guardrail — "the
+moment the documents describe it as a wall someone will build on the claim".
+
+### `get_meeting_by_code` was not widened
+
+The gate needs the row id and `waiting_room`; that function returns six columns
+and neither. §6 designs it that way. The join page is a display surface and the
+door is a server decision, and they should not share a contract because they
+share a code — so the gate reads through `createAdminClient`, which already
+exists for "a question RLS has no policy for" and is `server-only`.
+
+Also dropped: a `waitingId` in the request body. That is a client claiming to be
+a queue entry, which is the same mistake §7 refuses when it derives identity from
+the session. Admission is looked up by subject.
+
+### Three tests failed, and the product was right each time
+
+All three were signed-in cases expecting a token and getting
+`display_name_required`. That is v1.4's rule working: fixture accounts are
+magic-link and carry no `full_name`, so the route refuses to name them from
+their email, and pre-join is what asks. The real client always sends a name. The
+tests did not, and were wrong.
+
+**The mutation is a case rather than a manual step.** With `waiting_room` off the
+same guest walks straight in — without it, six passing refusals could be
+satisfied by a door that refuses everybody for an unrelated reason.
+
+## v1.5 A3 — the waiting screen
+
+Five endings, each with its own words, wired into `PreJoin` as a *state* rather
+than an error: being asked to wait is an ordinary outcome of joining a meeting
+with the door on, and a red line under the Join button would be the product
+saying something went wrong when nothing did.
+
+**Denied and removed are asserted by their copy, not their status.** Both carry
+the same ten-minute block, so a screen showing the wrong one would look correct
+to every check a status code or a URL could make. Telling somebody they were
+ejected when they were turned away is §3.2's cancelled-reads-as-missed error in
+a new place.
+
+**"Waiting is not joining" is asserted by counting `getUserMedia`**, the way the
+v1.4 consent spec does, because a track cannot exist without a call that
+resolved. Reading the held-device chips would only prove the interface says the
+right thing, and the claim is about what is happening.
+
+**The screen can go backwards.** Austine's call is that a departing host leaves
+people waiting rather than admitting or ejecting them, so `waiting_for_admission`
+has to be able to return to `waiting_for_host`. The ninety-second "hasn't
+arrived" clock resets when a host appears, so a *later* departure does not
+instantly read as "never arrived" — the clock is about this absence, not the
+whole wait.
+
+**A failed poll is not an ending.** Offline or a blink leaves the state alone and
+the next tick asks again, the same reasoning §7 gives for holding pre-join
+through a 429. Only a 410 is terminal, because that is the meeting genuinely
+ending underneath somebody.
+
+### And I invalidated a suite run
+
+Mid-way through wiring this, I ran `npm run build` to check the bundle while a
+full suite was still running — and its server serves from the `.next` I
+overwrote. Any result it produced afterwards would describe a tree that never
+existed, which is the "suite reported failures against a mixed tree" entry in
+this file happening a second time.
+
+Killed rather than reported. The rule is not "do not edit during a build", it is
+**do not touch `.next` while anything is serving from it** — which includes a
+build run for an unrelated reason. Editing source is safe once `next build` has
+finished, because the server holds compiled output; rebuilding is not.
+
+## v1.5 A2 — the queue in People, and the documents
+
+### The polling is in the room, not in the tab
+
+A2 says the queue is "a section at the top of the People tab", which reads like
+it belongs in `PeopleBody`. It cannot: two of its three requirements are about
+what happens while that tab is **closed** — the badge carrying the count, and
+the toast that fires while the host is talking. A badge that only updates when
+you are already looking at the thing it is telling you about is not a
+notification.
+
+### Three test bugs, and the product was right all three times
+
+**The toast locator matched a hidden heading.** `getByText(/waiting to join/i)`
+found the queue section's own `<h3>` inside the closed panel and reported
+"received: hidden" while the toast worked perfectly. `CLAUDE.md`'s rule, in the
+place it keeps applying: scope by role or test id, never by visible text.
+
+**A guest could not join a gated meeting**, which is §3.2's second gate doing
+exactly its job. The test hung for its full 180 seconds waiting for a room the
+guest was never let into. It needs a *signed-in non-host* — the only kind of
+non-host who can be inside a gated meeting without being admitted first.
+
+**And the toast case was sampling a transient element.** Three sequential queue
+posts take several seconds and sonner dismisses after four, so the toast had
+come and gone before the first assertion. Proven by probe: with a single arrival
+it is on screen at t+1s.
+
+The fix states A2's rule more exactly than the original did. A `MutationObserver`
+installed before anybody queues counts every toast **ever raised**, rather than
+how many happen to be on screen — and ten arrivals producing ten toasts that each
+dismissed would pass a snapshot while being precisely what the rule forbids.
+
+### Documents
+
+Six of the nine updated: §13 (the out-of-scope line deleted and its deletion
+called out, because it is "the one a future session would cite to argue this
+feature away"), §3.2 (the toggle, its defaults, the two gates), §3.3 (held at the
+door, waiting is not joining, the five endings), §3.8 (the queue, the badge's two
+meanings, verified versus typed), §7 (the block and door checks, the three
+routes, the polled tier) and §8 (the block's honest limit, written as a limit).
+`CLAUDE.md`'s layer scale landed with D1.
+
+**Two are deliberately not written yet: §3.6's reaction anchor and §3.10's
+attendance record.** D2 and C1 are not built, and a specification describing
+behaviour the build does not have is the same defect as one describing behaviour
+it no longer has — this file has recorded the second kind three times, and the
+first is worse, because nothing contradicts it until somebody trusts it.

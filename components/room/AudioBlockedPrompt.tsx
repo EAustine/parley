@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
  */
 export function AudioBlockedPrompt({ onEnable }: { onEnable: () => void }) {
   return (
-    <div className="absolute inset-x-0 bottom-24 z-30 flex justify-center px-3">
+    <div className="absolute inset-x-0 bottom-24 z-[var(--layer-notices)] flex justify-center px-3">
       <div
         className="flex items-center gap-3 rounded-lg px-3 py-2"
         style={{

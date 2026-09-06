@@ -217,7 +217,7 @@ export function SelfViewPiP({
        * other people are seeing; below a certain size it stops answering that
        * and becomes a thumbnail of a thumbnail.
        */
-      className={`absolute right-4 bottom-4 z-30 flex w-[148px] cursor-grab touch-none flex-col overflow-hidden rounded-xl border border-boundary bg-card p-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] active:cursor-grabbing min-[900px]:w-[260px] ${
+      className={`absolute right-4 bottom-4 z-[var(--layer-self)] flex w-[148px] cursor-grab touch-none flex-col overflow-hidden rounded-xl border border-boundary bg-card p-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] active:cursor-grabbing min-[900px]:w-[260px] ${
         dragging
           ? ""
           : "transition-[translate] duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"
