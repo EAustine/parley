@@ -9,6 +9,7 @@ import { ICONS } from "@/lib/icons";
 import { CONTROL_MOTION } from "@/lib/motion";
 import { PermissionNotice } from "@/components/prejoin/PermissionState";
 import { MicMeter } from "@/components/prejoin/MicMeter";
+import { WaitingRoomToggle } from "@/components/meetings/WaitingRoomToggle";
 import { recallName, rememberJoin } from "@/lib/prejoin-handoff";
 import { WaitingRoom, type WaitingState } from "@/components/prejoin/WaitingRoom";
 import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
@@ -34,6 +35,7 @@ import type { PublicMeeting } from "@/lib/supabase/types";
 export function PreJoin({
   meeting,
   signedInName,
+  host,
 }: {
   meeting: PublicMeeting;
   /**
@@ -51,6 +53,16 @@ export function PreJoin({
    * instead of as their inbox.
    */
   signedInName: string | null;
+  /**
+   * Set only when the viewer is the meeting's host — v1.5 A1.
+   *
+   * `null` for everybody else, and deliberately shaped so that a guest cannot
+   * tell a missing host from a host who is not them: there is no `isHost:
+   * false` to read, just an absent object. The page decides this with RLS
+   * rather than by widening `get_meeting_by_code`, which §6 keeps narrow on
+   * purpose.
+   */
+  host?: { waitingRoom: boolean } | null;
 }) {
   const router = useRouter();
   const media = useMediaPreview();
@@ -551,6 +563,25 @@ export function PreJoin({
                 )}
               </div>
             </details>
+
+            {/*
+              The host's door, on the screen before they walk through it — A1's
+              third home, and the one that matters most for an *instant*
+              meeting: the create route defaults those off, and this is the only
+              moment between making the link and being in the room.
+
+              Host only. A guest never sees it, and `host` is absent rather
+              than false so there is nothing here to infer from.
+            */}
+            {host && (
+              <div className="mt-4 border-t border-boundary pt-4">
+                <WaitingRoomToggle
+                  code={meeting.code}
+                  initial={host.waitingRoom}
+                  id="prejoin-waiting-room"
+                />
+              </div>
+            )}
 
             {/* Desktop keeps Join in the panel, where the eye finishes. Below
                 900px it is pinned to the bottom instead — see the end. */}

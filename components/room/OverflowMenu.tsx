@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { chordFor } from "@/lib/room/shortcuts";
 import { usePlatform } from "@/lib/hooks/usePlatform";
 import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
+import { writeDoor } from "@/lib/meetings/write-door";
 
 /**
  * The control bar's overflow — v1.3 B2, and the beginning of C2.
@@ -35,6 +36,7 @@ export function OverflowMenu({
   onOpenShortcuts,
   onOpenReactions,
   share,
+  door,
 }: {
   onOpenDevices: () => void;
   onOpenShortcuts: () => void;
@@ -42,6 +44,18 @@ export function OverflowMenu({
   /** Opens the reactions sheet — v1.4 B2. The menu no longer holds them. */
   onOpenReactions: () => void;
   share: { supported: boolean; sharing: boolean; toggle: () => void };
+  /**
+   * §3.2's waiting room — v1.5 A1, and its in-room home.
+   *
+   * It was first put above the queue in People, on the argument that the queue
+   * is what the switch causes. The better argument won: the panel's other host
+   * sections are **decisions** — someone is waiting, someone is blocked — and a
+   * setting sitting among them reads as one more thing to answer. A menu is
+   * where settings live, and this menu already holds the other one.
+   *
+   * `null` for a guest and for a host whose first poll has not landed.
+   */
+  door: { code: string; waitingRoom: boolean } | null;
 }) {
   const platform = usePlatform();
 
@@ -154,6 +168,46 @@ export function OverflowMenu({
                   }}
                 />
               )}
+              <hr className="mx-1 my-1.5 border-t border-border" />
+            </>
+          )}
+
+          {/*
+            **Names the action and changes with it** — `CLAUDE.md`'s rule for
+            state toggles, and the reason this is a plain `menuitem` rather than
+            a `menuitemcheckbox`: "carrying both an action name and a pressed
+            state announces the same fact twice, in a confusing order." The rule
+            was written for mic and camera and the reasoning transfers exactly.
+
+            The menu closes on activation, like every other item here, and the
+            toast is what confirms the change landed — including when it did
+            not, which is the case that matters for a security control.
+          */}
+          {door && (
+            <>
+              <MenuItem
+                icon={
+                  <HugeiconsIcon
+                    icon={ICONS.participants.icon}
+                    size={18}
+                    strokeWidth={1.5}
+                    color="currentColor"
+                    aria-hidden
+                  />
+                }
+                title={
+                  door.waitingRoom ? "Turn off waiting room" : "Turn on waiting room"
+                }
+                detail={
+                  door.waitingRoom
+                    ? "People join without waiting."
+                    : "People wait until you let them in."
+                }
+                onSelect={() => {
+                  close();
+                  void writeDoor(door.code, !door.waitingRoom);
+                }}
+              />
               <hr className="mx-1 my-1.5 border-t border-border" />
             </>
           )}

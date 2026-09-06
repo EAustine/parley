@@ -51,6 +51,7 @@ export function MeetingSchedule({
   ended,
   wall,
   durationMinutes,
+  waitingRoom,
 }: {
   code: string;
   title: string;
@@ -62,6 +63,8 @@ export function MeetingSchedule({
   ended: boolean;
   wall: WallClock;
   durationMinutes: number;
+  /** §3.2's door, so the edit form shows the meeting's real setting. */
+  waitingRoom: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -136,7 +139,7 @@ export function MeetingSchedule({
   if (editing) {
     return (
       <ScheduleForm
-        existing={{ code, title, description, wall, durationMinutes }}
+        existing={{ code, title, description, wall, durationMinutes, waitingRoom }}
         /*
          * Both handlers, and the first one is a bug fix.
          *

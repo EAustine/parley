@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { FormSection } from "@/components/schedule/FormSection";
+import { DoorField } from "@/components/meetings/DoorField";
 
 /**
  * §3.9's form, restructured by v1.3 D3 into **three questions rather than a
@@ -58,6 +59,7 @@ export function ScheduleForm({
     description: string | null;
     wall: WallClock;
     durationMinutes: number;
+    waitingRoom: boolean;
   };
   onSaved?: () => void;
   onCancel?: () => void;
@@ -69,6 +71,13 @@ export function ScheduleForm({
   const [date, setDate] = useState(existing?.wall.date ?? "");
   const [time, setTime] = useState(existing?.wall.time ?? "10:00");
   const [timezone, setTimezone] = useState(existing?.wall.timezone ?? "");
+  /*
+   * §3.2's default is the *route's* to pick, not the form's — it is on for
+   * scheduled meetings, and this form only ever makes those. Seeding `true`
+   * here matches what the server would choose anyway, so the control shows the
+   * truth on first paint rather than a value the submit would then contradict.
+   */
+  const [waitingRoom, setWaitingRoom] = useState(existing?.waitingRoom ?? true);
   const [durationMinutes, setDuration] = useState(
     existing?.durationMinutes ?? 30,
   );
@@ -143,6 +152,7 @@ export function ScheduleForm({
           scheduledStart: resolved.instant.toISOString(),
           durationMinutes,
           timezone,
+          waitingRoom,
         }
       : {
           kind: "scheduled" as const,
@@ -151,6 +161,7 @@ export function ScheduleForm({
           scheduledStart: resolved.instant.toISOString(),
           durationMinutes,
           timezone,
+          waitingRoom,
         };
 
     try {
@@ -329,6 +340,25 @@ export function ScheduleForm({
             </Select>
           </div>
         </div>
+      </FormSection>
+
+      {/*
+        **A fourth section, where v1.3 D3 specified three.**
+
+        D3's restructure was "three questions rather than a flat stack of six
+        fields", and this is a deviation from it rather than an application of
+        it — flagged here rather than folded in quietly. The alternatives were
+        worse: "Check it" is a preview of what was entered and a live control
+        does not belong inside it, and the door is not a fact about *when* the
+        meeting is. It is a fourth question, and it reads as one.
+      */}
+      <FormSection title="Who gets in">
+        <DoorField
+          id="waiting-room"
+          checked={waitingRoom}
+          onChange={setWaitingRoom}
+          describedBy="waiting-room-help"
+        />
       </FormSection>
 
       <FormSection title="Check it">

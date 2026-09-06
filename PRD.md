@@ -94,6 +94,22 @@ Collision handling: generate, insert, retry on unique-constraint violation. Do n
 
 The default is not a preference, it follows the risk: a scheduled link went out days ago to a list nobody re-reads, an instant link was pasted seconds ago to somebody already waiting. A column default cannot express that, because it cannot see `scheduled_start`, so the create route decides. Reversible in both directions, and worth revisiting once there is usage to look at rather than defended on first principles.
 
+**Three homes, and the reason there is more than one.** For most of v1.5 the door had none: the create route picked a default and the token endpoint enforced it, so "reversible in both directions" was reversible in neither — a scheduled meeting was gated permanently and an instant one could not be gated at all. The switch was specified and never built, and the specification did not notice because it described the setting rather than the control.
+
+| Where | For | Why there |
+|---|---|---|
+| The schedule form | A meeting being created or edited | The default is the route's to choose; this is where a host overrides it before the link exists |
+| Pre-join, host only | Chiefly **instant** meetings | They are created with the door open, and this is the only moment between making the link and being in the room |
+| The room's overflow menu, host only | A meeting already running | A menu is where settings live, and this one already holds the other one |
+
+The pre-join control is host-only and the page decides that with RLS rather than by widening `get_meeting_by_code`. §6 keeps that function narrow on purpose — "no host identity, no participant list" — and answering "are you the host?" through it would hand every anonymous caller the thing the narrowness protects. A guest is shown nothing and told nothing; there is no `isHost: false` to read.
+
+**Not in the People panel, which is where it was first put.** The argument for putting it above the queue was that the queue is what the switch causes. The argument against is stronger: the panel's other host sections are *decisions* — someone is waiting, someone is blocked — and a setting sitting among them reads as one more thing to answer rather than a state that is simply true. In the menu it names the action and changes with it, per the state-toggle rule, and carries no `aria-pressed`.
+
+**Hiding the control is not the permission check.** The `PATCH` refuses anyone who is not the host, and that is what makes the setting safe; the visibility rule only keeps a guest from being offered something that would fail.
+
+**Toggling the door is not a calendar revision.** §3.9 increments `SEQUENCE` when a scheduled meeting is edited, and nothing about the waiting room reaches the `.ics` — so a door change leaves the sequence alone. Otherwise every attendee's client re-notifies them about a setting they cannot observe.
+
 With it on, **two gates rather than one**, and this is the part that reads like a contradiction and is not:
 
 1. **Nobody enters before a host has joined** — signed in or not, including the first arrival. The alternative, an open door until the host lands, is open exactly when the risk is highest: the link-holder who should not be there arrives *early*, which is the natural behaviour of anyone unsure of the time.

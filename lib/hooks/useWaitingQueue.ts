@@ -60,6 +60,14 @@ export function useWaitingQueue({
 }) {
   const [waiting, setWaiting] = useState<WaitingRequest[]>([]);
   const [blocked, setBlocked] = useState<BlockedPerson[]>([]);
+  /**
+   * The door, as the server currently has it — v1.5 A1's in-room home.
+   *
+   * `null` until the first poll answers, so the control can wait rather than
+   * render a guess and then correct itself. A toggle that flips on its own a
+   * second after the panel opens reads as the product changing the setting.
+   */
+  const [waitingRoom, setWaitingRoom] = useState<boolean | null>(null);
   const [deciding, setDeciding] = useState<string | null>(null);
   /** What the last toast said, so an unchanged queue does not re-announce. */
   const announced = useRef(0);
@@ -81,9 +89,11 @@ export function useWaitingQueue({
       const body = (await response.json()) as {
         waiting: WaitingRequest[];
         blocked: BlockedPerson[];
+        waitingRoom?: boolean;
       };
       setWaiting(body.waiting ?? []);
       setBlocked(body.blocked ?? []);
+      if (typeof body.waitingRoom === "boolean") setWaitingRoom(body.waitingRoom);
     } catch {
       // A blip is not an empty queue. Leaving the last known list up is the
       // safer wrong answer: it shows a request that may already be gone, rather
@@ -184,5 +194,5 @@ export function useWaitingQueue({
     [code, refresh],
   );
 
-  return { waiting, blocked, decide, deciding, letBackIn };
+  return { waiting, blocked, decide, deciding, letBackIn, waitingRoom };
 }

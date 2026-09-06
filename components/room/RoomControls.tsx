@@ -47,6 +47,7 @@ export function RoomControls({
   onToggleChat,
   onToggleParticipants,
   waitingCount,
+  door,
   onReact,
   onOpenReactions,
   onLeave,
@@ -66,6 +67,14 @@ export function RoomControls({
   onToggleParticipants: () => void;
   /** v1.5 A2. Non-zero takes the badge; zero hands it back to the roster count. */
   waitingCount: number;
+  /**
+   * §3.2's waiting room, for the overflow menu — v1.5 A1.
+   *
+   * `null` for anyone who is not the host, and for a host whose first queue
+   * poll has not answered yet. Absent rather than false, so a guest has nothing
+   * to infer from.
+   */
+  door: { code: string; waitingRoom: boolean } | null;
   onReact: (emoji: Reaction) => void;
   /** Opens the mobile reactions sheet — v1.4 B2. */
   onOpenReactions: () => void;
@@ -449,6 +458,7 @@ export function RoomControls({
             onOpenShortcuts={onOpenShortcuts}
             onOpenReactions={onOpenReactions}
             share={share}
+            door={door}
           />
         </div>
 

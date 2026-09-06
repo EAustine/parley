@@ -78,7 +78,23 @@ export async function PATCH(
     .eq("code", code)
     .maybeSingle();
   if (!existing) return fail("not_found", 404);
-  if (!existing.scheduled_start) return fail("not_scheduled", 400);
+
+  /*
+   * **An instant meeting accepts exactly one edit: its door.**
+   *
+   * This guard used to refuse every `PATCH` on a meeting with no
+   * `scheduled_start`, which is right for the edit form — title, times and
+   * timezone are scheduling fields and an instant meeting has none. It is wrong
+   * for `waiting_room`, which every meeting has and which §3.2 promises is
+   * reversible. An instant meeting is precisely the case that needs it: the
+   * create route defaults it *off*, so without this the door could never be
+   * closed on the meetings that start with it open.
+   */
+  const onlyTheDoor =
+    Object.keys(input).length === 1 && input.waitingRoom !== undefined;
+  if (!existing.scheduled_start && !onlyTheDoor) {
+    return fail("not_scheduled", 400);
+  }
   if (existing.status === "ended" || existing.status === "cancelled") {
     return fail("already_ended", 409);
   }
@@ -87,6 +103,7 @@ export async function PATCH(
   if (input.title !== undefined) patch.title = input.title;
   if (input.description !== undefined) patch.description = input.description;
   if (input.timezone !== undefined) patch.timezone = input.timezone;
+  if (input.waitingRoom !== undefined) patch.waiting_room = input.waitingRoom;
   if (input.scheduledStart !== undefined) {
     patch.scheduled_start = input.scheduledStart;
     if (input.durationMinutes !== undefined) {
@@ -96,18 +113,32 @@ export async function PATCH(
     }
   }
 
-  // §3.9: "Editing a scheduled meeting regenerates the .ics with an incremented
-  // SEQUENCE." Incremented here rather than in the ics route, because it counts
-  // revisions of the meeting and not downloads of the file — a client that
-  // fetched twice would otherwise see two revisions of an unchanged event and
-  // have no way to tell that from a real edit.
-  patch.sequence = existing.sequence + 1;
+  /*
+   * §3.9: "Editing a scheduled meeting regenerates the `.ics` with an
+   * incremented SEQUENCE." Incremented here rather than in the ics route,
+   * because it counts revisions of the meeting and not downloads of the file — a
+   * client that fetched twice would otherwise see two revisions of an unchanged
+   * event and have no way to tell that from a real edit.
+   *
+   * **Only for changes a calendar can see.** `waiting_room` is not one: nothing
+   * about it appears in the `.ics`, so bumping the sequence for it would
+   * announce a revision of an event that did not change, and every attendee's
+   * client would re-notify them about a door setting they cannot observe. A
+   * meeting whose door is toggled four times is still revision one.
+   */
+  const calendarVisible =
+    input.title !== undefined ||
+    input.description !== undefined ||
+    input.timezone !== undefined ||
+    input.scheduledStart !== undefined ||
+    input.durationMinutes !== undefined;
+  if (calendarVisible) patch.sequence = existing.sequence + 1;
 
   const { data, error } = await supabase
     .from("meetings")
     .update(patch)
     .eq("code", code)
-    .select("code, title, description, scheduled_start, scheduled_end, timezone, status, sequence")
+    .select("code, title, description, scheduled_start, scheduled_end, timezone, status, sequence, waiting_room")
     .single();
 
   if (error) return fail("update_failed", 500);

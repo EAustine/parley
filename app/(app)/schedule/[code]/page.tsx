@@ -39,7 +39,7 @@ export default async function ScheduledMeetingPage({
 
   const { data: meeting } = await supabase
     .from("meetings")
-    .select("id, code, title, description, scheduled_start, scheduled_end, timezone, status")
+    .select("id, code, title, description, scheduled_start, scheduled_end, timezone, status, waiting_room")
     .eq("code", code)
     .maybeSingle();
 
@@ -123,6 +123,7 @@ export default async function ScheduledMeetingPage({
       </div>
 
       <MeetingSchedule
+        waitingRoom={Boolean(meeting.waiting_room)}
         code={meeting.code}
         title={meeting.title}
         description={meeting.description}

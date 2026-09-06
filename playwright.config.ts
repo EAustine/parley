@@ -230,6 +230,13 @@ export default defineConfig({
     // The production build, not `next dev`. Bundle behaviour is what rule 8 is
     // about, and a dev server chunks differently.
     command: `npm run build && npx next start -p ${PORT}`,
+    /*
+     * Opt in to the dev-only surfaces under `app/(dev)`. They are gated on this
+     * flag rather than on `NODE_ENV`, because this server *is* a production
+     * build — `NODE_ENV` would hide them from the only caller that wants them,
+     * while leaving them visible on preview deployments. Vercel never sets it.
+     */
+    env: { PARLEY_DEV_SURFACES: "1" },
     port: PORT,
     // Never reuse. The command above *builds*, so reusing a server skips the
     // build and runs the suite against whatever was on disk last time — which

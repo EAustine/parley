@@ -81,7 +81,36 @@ export default async function JoinPage({ params }: Params) {
   // the token route enforces the same rule on the way in.
   const signedInName = accountDisplayName(user);
 
-  return <PreJoin meeting={meeting} signedInName={signedInName} />;
+  /*
+   * Is the person looking at this screen the host? — v1.5 A1's third home.
+   *
+   * `get_meeting_by_code` is `security definer` and §6 keeps it deliberately
+   * narrow: "no host identity, no participant list, no settings beyond the one
+   * flag the join page needs". Widening it to answer this would hand every
+   * anonymous caller the host's id, which is the disclosure that narrowness
+   * exists to prevent.
+   *
+   * So the question is asked separately, as the viewer, and **RLS is the
+   * answer**: a host can select their own meeting row and nobody else can. A
+   * guest gets `null` here and is told nothing — not that the query failed, not
+   * that a host exists. The same read carries the current setting, so the
+   * control renders the truth rather than a default.
+   */
+  const { data: own } = user
+    ? await supabase
+        .from("meetings")
+        .select("waiting_room")
+        .eq("code", meeting.code)
+        .maybeSingle()
+    : { data: null };
+
+  return (
+    <PreJoin
+      meeting={meeting}
+      signedInName={signedInName}
+      host={own ? { waitingRoom: Boolean(own.waiting_room) } : null}
+    />
+  );
 }
 
 /**

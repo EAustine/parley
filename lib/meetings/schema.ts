@@ -56,6 +56,15 @@ export const createScheduledMeetingSchema = z.object({
   title,
   description,
   /**
+   * The door, chosen at creation — v1.5 A1.
+   *
+   * Optional, because the *default* is not the form's to state: §3.2 puts it in
+   * the create route, which knows whether the meeting is scheduled or instant
+   * and picks accordingly. This only carries a host's deliberate override, so a
+   * form that omits it still gets the risk-based default rather than `false`.
+   */
+  waitingRoom: z.boolean().optional(),
+  /**
    * UTC instant. The form composes this from date + time + zone.
    *
    * **And it may not be in the past** — v1.3 D3, on the server as well as in
@@ -109,6 +118,15 @@ export const updateMeetingSchema = z
       .max(MAX_DURATION_MINUTES)
       .optional(),
     timezone: timezone.optional(),
+    /**
+     * The door — v1.5 A1, and the only field here an *instant* meeting accepts.
+     *
+     * The create route picks the default from the meeting's shape (on for
+     * scheduled, off for instant) because a column default cannot see
+     * `scheduled_start`. §3.2 then promises it is "reversible in both
+     * directions", and until this field existed it was reversible in neither.
+     */
+    waitingRoom: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "Nothing to change.")
   .refine(

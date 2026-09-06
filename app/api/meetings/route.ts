@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
               input.durationMinutes * 60_000,
           ).toISOString(),
           timezone: input.timezone,
-          waiting_room: true,
+          waiting_room: input.waitingRoom ?? true,
         };
 
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {

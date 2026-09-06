@@ -223,7 +223,7 @@ export async function GET(
   if (!user) return fail("not_host", 403);
   const { data: owned } = await supabase
     .from("meetings")
-    .select("id")
+    .select("id, waiting_room")
     .eq("code", code)
     .maybeSingle();
   if (!owned) return fail("not_host", 403);
@@ -256,6 +256,15 @@ export async function GET(
     .order("attempted_at", { ascending: false, nullsFirst: false });
 
   return NextResponse.json({
+    /*
+     * The door's current state — v1.5 A1's in-room home.
+     *
+     * Carried on the poll the host is already making rather than fetched
+     * separately: the panel needs it every two seconds anyway to stay honest if
+     * the setting is changed from another tab or from pre-join, and a second
+     * request on the same cadence would be the same data twice.
+     */
+    waitingRoom: Boolean(owned.waiting_room),
     blocked: (blocks ?? []).map((b) => ({
       id: b.id,
       name: b.display_name ?? "Someone",

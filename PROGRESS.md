@@ -8708,3 +8708,192 @@ shared helper where it would run for the whole suite.
 The item is not closed. It is downgraded: the grid is verified, and what remains
 is a judgement a person makes with Reduce Motion on — that no surface is left
 mid-fade — rather than a measurement.
+
+---
+
+## The connection chip's geometry — and two defects, one of them in the test
+
+`MANUAL.md` carried "the participant row under a degraded connection" as needing
+a human, because the chip renders only on a bad quality verdict and
+`check:connection` records that `ConnectionQuality.Poor` "is not reachable by any
+local test — killing the network produces no updates rather than a bad one."
+Throttling does not help: it produces silence, not a bad reading.
+
+**The fix was to move the boundary rather than fake the verdict.** `quality` is
+now a prop. `ParticipantRowContainer` subscribes; `ParticipantRow` and
+`ConnectionChip` receive and render. That is the same split rule 3 already draws
+for mute — the thing that renders truth is not the thing that fetches it — and it
+leaves exactly one link manual: whether a genuinely poor connection reports
+`poor`. That link is a mapping, and `check:connection` pins it.
+
+`app/(dev)/dev/rows` renders the row's states; `e2e/row-geometry.spec.ts`
+measures them.
+
+### The product defect: the row holds one line by erasing the name
+
+With the chip up and the panel at its shipped width:
+
+| Surface | Identity | Chip |
+|---|---|---|
+| desktop rail (360px) | **32px** | 132px |
+| phone (375px) | **47px** | 132px |
+
+At 15px body type that is two to four characters and an ellipsis. B1's own
+comment claims "identity is still the flexible zone… status is two icons and **a
+short chip**" — the chip is 132px, four times the identity zone it displaces.
+
+The height claim holds, so `participant-row.spec.ts` stays green. But B1's report
+was never about height: it was that "the row you were about to remove someone
+from stopped saying who they were", and with the chip up it does that again.
+Left as `test.fixme` with the numbers in the comment — the fix is a design
+decision under rule 10 (shorten the copy, drop the label below some width, or let
+the chip truncate before identity does), not a threshold for whoever writes the
+assertion to pick.
+
+### The test defect: the inherited threshold could not fail
+
+The one-line assertion started at `< 72`, copied from `participant-row.spec.ts`.
+**Three mutations failed to break it** — `flex-wrap` on the row, `shrink-0` off
+the chip, `shrink-0` off the status zone — because identity absorbs every squeeze
+by shrinking rather than wrapping. The fourth mutation, putting the chip back
+below the name as v1.4 B1 found it, produced a **70px** row and still passed.
+
+Measured rather than inherited: one line is 52–60px, wrapped is 70px. The
+threshold is now **64**, and the same mutation fails it at both widths. The
+inherited number missed the exact defect it was named for by two pixels, because
+that spec's rows carry a 44px actions control and these do not. **A threshold
+copied from a neighbouring test is a threshold measured against a different box.**
+
+The overlap assertion is kept and labelled a **backstop, not coverage**: the chip
+and the icons are siblings in one flex row, which cannot overlap its own
+children, so nothing inside this structure makes it fail.
+
+### Two fixture corrections, both of which would have produced a false finding
+
+**An impossible row.** The first gallery paired the `Host` badge with the host's
+actions and measured a name squeezed to **zero**. Those cannot co-occur:
+`showActions` is `isLocalHost && !participant.isLocal`, and the badge marks the
+host's own row. An alarming number from a state the product cannot produce.
+
+**The wrong box.** The list was `max-w-[360px]` at every width, which reported
+15px of identity on a phone. `RoomPanel` is full-bleed on mobile and a 360px rail
+at desktop; matching it gives 47px. The gallery now carries the panel's own
+geometry, and desktop turns out to be the *worse* case — a fixed 360px rail is
+narrower than a 375px phone.
+
+### The dev route is gated on a flag, not `NODE_ENV`
+
+`/dev/tokens` uses `NODE_ENV !== "production"`, and the suite's web server is
+`next build && next start` — so that gate 404s the page for the one caller that
+needs it, which is what the first run reported. `PARLEY_DEV_SURFACES` is set by
+`playwright.config.ts` and by nothing else, so production *and* preview both 404,
+which `NODE_ENV` would not have given us on preview either.
+
+---
+
+## The waiting-room switch — a feature specified and never built
+
+Austine noticed it was missing. He was right, and the shape of the gap is worth
+recording because nothing in the build or the documents flagged it.
+
+`waiting_room` had a default (the create route picks it from the meeting's
+shape) and an enforcer (the token endpoint). It had **no control of any kind**,
+and `PATCH` did not accept the field. So §3.2's "reversible in both directions"
+was reversible in neither: a scheduled meeting was gated permanently, an instant
+one could not be gated at all, and the only way to change either was SQL.
+
+**The plan's sequence was complete and the plan had a hole.** D1, A1+B1, A3, A2,
+B2, C1, D2 all landed, and not one of them was the switch — A1 is "a
+`waiting_room` boolean on the meeting, checked in the token endpoint", which is
+the door, not the handle. The document list *did* say "§3.2 — the toggle, its
+defaults and its two homes", so the homes were known about and no item ever built
+them.
+
+**And the §3.2 update described a toggle without checking one existed.** That is
+the failure this file keeps recording in other people's work: a document
+asserting a capability the build does not have. Writing the sentence is not the
+fix; the sentence being true is the fix.
+
+### Three homes, per Austine's call
+
+| Where | For |
+|---|---|
+| The schedule form — a fourth section, "Who gets in" | Creating or editing |
+| Pre-join, host only | Chiefly **instant** meetings, created with the door open |
+| The room's overflow menu, host only | A meeting already running |
+
+The in-room control reads its value from the poll the host is **already**
+making — `GET /waiting` now carries `waitingRoom` — rather than fetching
+separately. It stays honest if the setting is changed from another tab, and
+`null` until the first answer means the control appears a moment late rather
+than rendering a guess and correcting itself.
+
+### Two defects in `PATCH` that had to be fixed first
+
+**It refused instant meetings outright.** `if (!existing.scheduled_start) return
+fail("not_scheduled")` is right for the edit form — title, times and timezone are
+scheduling fields — and wrong for the one field every meeting has. Instant
+meetings are the case that most needs the door, because they start without one.
+
+**It bumped the `.ics` `SEQUENCE` unconditionally.** Nothing about the waiting
+room reaches the calendar file, so toggling it would announce a revision of an
+unchanged event and re-notify every attendee about a setting they cannot observe.
+Sequence now moves only for calendar-visible fields, and the test carries a
+control asserting a genuine edit still increments it.
+
+### Decisions taken, flagged rather than folded in
+
+**A native checkbox, not a switch.** `components/ui` has none, and shadcn's pins
+`@radix-ui/react-switch` — rule 9 says a dependency is asked about first. It is
+also the trade v1.2 already made when it replaced Radix `Select` with a native
+`<select>`: native form controls have the deepest assistive-technology support,
+and that argument does not stop at checkboxes. `accent-color` plus the
+`color-scheme` already declared per theme is what lets it look right without
+being rebuilt.
+
+**Host-ness on pre-join comes from RLS**, not from widening
+`get_meeting_by_code`. §6 keeps that function narrow — "no host identity, no
+participant list" — precisely so an anonymous caller learns nothing about
+ownership, and answering "are you the host?" through it would hand over the thing
+the narrowness protects. The prop is `{ waitingRoom } | null`, with no
+`isHost: false` for a guest to read.
+
+**A fourth form section**, where v1.3 D3 specified three. "Check it" is a preview
+and a live control does not belong inside it; the door is not a fact about *when*
+the meeting is. Flagged for Austine to overrule.
+
+### Proven, not assumed
+
+Each case carries an internal control rather than relying on a one-off mutation:
+the guest-visibility case asserts absence with the **same locator** the host case
+asserts visible, and the sequence case asserts a real edit still increments. The
+security assertion was mutated as well — making the page pass `host`
+unconditionally shows a guest the control and fails the case.
+
+**Hiding the control is not the permission check**, so there is a separate case
+asserting the server refuses an unauthenticated `PATCH` — the assertion a
+visibility test cannot make.
+
+
+### The in-room home moved, on Austine's call
+
+It shipped above the queue in People and moved to the overflow menu. I had
+flagged the placement as arguable and the counter-argument is the better one: the
+panel's other host sections are **decisions** — someone is waiting, someone is
+blocked — and a setting among them reads as one more thing to answer.
+
+The menu item **names the action and changes with it** — "Turn on waiting room" /
+"Turn off waiting room" — which is `CLAUDE.md`'s rule for state toggles and also
+why it is a plain `menuitem` with no `aria-pressed`: "carrying both an action name
+and a pressed state announces the same fact twice, in a confusing order." That
+rule was written for mic and camera and the reasoning transfers exactly.
+
+**The menu holds no state of its own**, and that is a deliberate difference from
+pre-join. The host is already polling the queue every couple of seconds and that
+poll carries the door's real value, so an optimistic copy in the menu would be a
+second source of truth for one fact, disagreeing for a beat after every change.
+The write moved to `lib/meetings/write-door.ts`; `useDoor` keeps the local state
+and the revert for pre-join, which has no poll to correct it.
+
+The spec asserts the door is reachable from the menu, **absent from People** —
+so the move is pinned rather than merely performed — and offered to no guest.

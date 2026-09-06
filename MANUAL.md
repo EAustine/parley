@@ -431,22 +431,26 @@ Kept so the list does not lose the record of what was once open.
   points at the current production deployment after a domain change. The
   handler, the signature, and the write-through no longer need a human.
 
-- **The participant row under a degraded connection** — needs a human, or a
-  throttled network.
-  v1.4 B1 makes connection an inline chip so the row stays one line at every
-  width, replacing a wrapped second line that collided with the device icons.
-  `e2e/participant-row.spec.ts` measures the one-line claim for the identity and
-  actions zones and **cannot measure it for the chip**: the chip renders only
-  when quality is not good, and a local test against a healthy SFU never sees
-  that. `check:connection` pins which treatment maps to which quality; nothing
-  pins the chip's geometry beside a long name.
+- **The participant row under a degraded connection — the geometry is now
+  verified; one mapping remains.**
+  `quality` was lifted to a prop, so the row no longer fetches the verdict it
+  renders. `e2e/row-geometry.spec.ts` measures the chip's geometry directly
+  against `app/(dev)/dev/rows`, at 375px and at the 360px desktop rail, and the
+  one-line claim is proven by deletion — putting the chip back below the name
+  gives a 70px row and fails the case.
 
-  One check, about a minute: join from two browsers, open People, and throttle
-  one side (DevTools → Network → Slow 3G, or Conditions → offline briefly) until
-  the row shows "Unstable connection". Confirm the row stays one line, the name
-  is still readable, and the chip does not run into the mic and camera icons.
-  Worth doing at 375px as well as on a desktop panel, since that is where the
-  original collision was reported.
+  **It found a real defect, recorded as `test.fixme`.** With the chip up,
+  identity is 32px on the desktop rail and 47px on a phone — two to four
+  characters. The row holds one line by erasing the name, which is the failure
+  v1.4 B1 was reported for in the first place. The fix is a design decision and
+  is open.
+
+  What is left for a person is one link: whether a genuinely poor connection
+  reports `poor` at all. Quality is the server's verdict over the signalling
+  socket, `check:connection` pins every value of the mapping a local process can
+  see, and the chip's contrast is covered by `check:contrast`. One throttled
+  connection, once, confirms the verdict arrives — it no longer has to carry the
+  geometry with it.
 
 - **Deployment Protection, and whether a guest can reach the app** — the setting
   is yours; the verification is not manual any more.

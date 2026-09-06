@@ -122,7 +122,7 @@ export function PeopleBody({
 
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {participants.map((participant) => (
-          <ParticipantRow
+          <ParticipantRowContainer
             key={participant.identity}
             participant={participant}
             isLocalHost={isLocalHost}
@@ -135,7 +135,29 @@ export function PeopleBody({
   );
 }
 
-function ParticipantRow({
+/**
+ * The subscribing half — and the reason the split exists.
+ *
+ * Connection quality is the server's verdict, delivered over the signalling
+ * socket. `check:connection` puts it plainly: `ConnectionQuality.Poor` "is not
+ * reachable by any local test… killing the network produces no updates rather
+ * than a bad one." So while the row fetched its own quality, the chip could
+ * never be made to render in a test, and its geometry — the thing that drove
+ * the row to three lines and into the device icons in the first place — was
+ * unpinnable. `participant-row.spec.ts` said so in a comment and left it to
+ * `MANUAL.md`.
+ *
+ * Lifting quality to a prop dissolves that. The container subscribes; the row
+ * receives. It is the same boundary rule 3 already draws for mute — truth is
+ * derived from the source, and the thing that renders it is not the thing that
+ * fetches it — and the payoff is the same: the rendering half becomes something
+ * a test can hold still.
+ *
+ * What stays manual shrinks to one link: whether a genuinely poor connection
+ * produces `poor` at all. That is one mapping, and `check:connection` already
+ * pins every value of it that a local process can see.
+ */
+function ParticipantRowContainer({
   participant,
   isLocalHost,
   onRequestMute,
@@ -146,12 +168,56 @@ function ParticipantRow({
   onRequestMute: (identity: string) => void;
   onRemove: (identity: string) => void;
 }) {
-  const name = displayNameOf(participant);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const { quality } = useConnectionQualityIndicator({ participant });
 
-  // A host's own row gets no actions: removing yourself is Leave with extra
-  // steps, and asking yourself to mute is what the mic button is for.
-  const showActions = isLocalHost && !participant.isLocal;
+  return (
+    <ParticipantRow
+      name={displayNameOf(participant)}
+      identity={participant.identity}
+      isLocal={participant.isLocal}
+      isTheHost={isHost(participant)}
+      micOn={participant.isMicrophoneEnabled}
+      cameraOn={participant.isCameraEnabled}
+      quality={quality as Quality}
+      // A host's own row gets no actions: removing yourself is Leave with extra
+      // steps, and asking yourself to mute is what the mic button is for.
+      showActions={isLocalHost && !participant.isLocal}
+      onRequestMute={onRequestMute}
+      onRemove={onRemove}
+    />
+  );
+}
+
+/**
+ * The row itself, which now knows nothing about LiveKit.
+ *
+ * Exported so a geometry test can render it directly with a long name and a
+ * degraded quality — the case a live room will not produce on demand.
+ */
+export function ParticipantRow({
+  name,
+  identity,
+  isLocal,
+  isTheHost,
+  micOn,
+  cameraOn,
+  quality,
+  showActions,
+  onRequestMute,
+  onRemove,
+}: {
+  name: string;
+  identity: string;
+  isLocal: boolean;
+  isTheHost: boolean;
+  micOn: boolean;
+  cameraOn: boolean;
+  quality: Quality;
+  showActions: boolean;
+  onRequestMute: (identity: string) => void;
+  onRemove: (identity: string) => void;
+}) {
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   return (
     /**
@@ -186,7 +252,7 @@ function ParticipantRow({
           weight as the name. It was inside the name span, so it read as part
           of what someone is called.
         */}
-        {participant.isLocal && (
+        {isLocal && (
           <span className="type-body shrink-0 text-muted-foreground">(you)</span>
         )}
         {/*
@@ -196,7 +262,7 @@ function ParticipantRow({
           boundary rather than a divider and is what the token is for. The
           label itself carries the contrast at `--muted-foreground`.
         */}
-        {isHost(participant) && (
+        {isTheHost && (
           <span className="type-caption shrink-0 rounded-full border border-border px-2 py-0.5 text-muted-foreground">
             Host
           </span>
@@ -205,7 +271,7 @@ function ParticipantRow({
 
       {/* --- status -------------------------------------------------------- */}
       <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
-        <ConnectionChip participant={participant} />
+        <ConnectionChip quality={quality} />
         {/*
           Device state, as **two icons, always** — v1.3 C3: "Two icons, because
           one cannot express 'camera off, mic on'."
@@ -218,18 +284,18 @@ function ParticipantRow({
           Rule 5: no hue. A muted mic is a different icon, not a red one.
         */}
         <HugeiconsIcon
-          icon={ICONS[participant.isMicrophoneEnabled ? "micOn" : "micOff"].icon}
+          icon={ICONS[micOn ? "micOn" : "micOff"].icon}
           size={16}
           strokeWidth={1.5}
           color="currentColor"
-          aria-label={`${name}'s microphone is ${participant.isMicrophoneEnabled ? "on" : "off"}`}
+          aria-label={`${name}'s microphone is ${micOn ? "on" : "off"}`}
         />
         <HugeiconsIcon
-          icon={ICONS[participant.isCameraEnabled ? "cameraOn" : "cameraOff"].icon}
+          icon={ICONS[cameraOn ? "cameraOn" : "cameraOff"].icon}
           size={16}
           strokeWidth={1.5}
           color="currentColor"
-          aria-label={`${name}'s camera is ${participant.isCameraEnabled ? "on" : "off"}`}
+          aria-label={`${name}'s camera is ${cameraOn ? "on" : "off"}`}
         />
       </div>
 
@@ -237,8 +303,8 @@ function ParticipantRow({
       {showActions && (
         <RowActions
           name={name}
-          canAskToMute={participant.isMicrophoneEnabled}
-          onRequestMute={() => onRequestMute(participant.identity)}
+          canAskToMute={micOn}
+          onRequestMute={() => onRequestMute(identity)}
           onRemove={() => setConfirmingRemove(true)}
         />
       )}
@@ -253,13 +319,13 @@ function ParticipantRow({
       */}
       {confirmingRemove && (
         <ConfirmDialog
-          id={`remove-${participant.identity}`}
+          id={`remove-${identity}`}
           title={`Remove ${name} from the meeting?`}
           body="They are disconnected straight away. They can rejoin if they still have the link, so this is not a ban."
           confirmLabel="Remove"
           pending={false}
           onConfirm={() => {
-            onRemove(participant.identity);
+            onRemove(identity);
             setConfirmingRemove(false);
           }}
           onDismiss={() => setConfirmingRemove(false)}
@@ -372,9 +438,8 @@ function RowActions({
  *
  * Silence means fine — §3.11: "Excellent, good → No indicator."
  */
-function ConnectionChip({ participant }: { participant: Participant }) {
-  const { quality } = useConnectionQualityIndicator({ participant });
-  const treatment = treatmentFor(quality as Quality);
+function ConnectionChip({ quality }: { quality: Quality }) {
+  const treatment = treatmentFor(quality);
 
   // This shipped in Phase 7 testing quality negatively — returning null for
   // excellent and good, and treating everything else as a problem. That is

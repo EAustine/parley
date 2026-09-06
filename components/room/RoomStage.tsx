@@ -809,6 +809,18 @@ function RoomSurface({
       <ReactionOverlay reactions={messages.reactions} anchorFor={anchorFor} />
 
       <RoomControls
+        /*
+         * §3.2's door, in the overflow menu — a setting rather than a pending
+         * decision, which is why it is not beside the queue in People.
+         *
+         * Absent for anyone who is not the host, rather than present-and-false:
+         * there is nothing here for a guest to read.
+         */
+        door={
+          localIsHost && queue.waitingRoom !== null
+            ? { code, waitingRoom: queue.waitingRoom }
+            : null
+        }
         waitingCount={queue.waiting.length}
         visible={visible}
         unread={messages.unread}
