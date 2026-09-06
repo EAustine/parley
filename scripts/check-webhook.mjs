@@ -145,11 +145,29 @@ const event = (name, code, participant) =>
  * participant, `guest_<nanoid>` for everyone else. `metadata` is where the
  * token puts the display name and the role, because both are labels.
  */
-const participantOf = (identity, name, role = "participant") => ({
+/**
+ * A participant shaped like the **token's** output, not like the handler's
+ * expectations — and the difference was a live bug.
+ *
+ * This used to send `metadata: { name, role }` and a top-level `name`. The real
+ * `AccessToken` sends neither: it sets `identity` and
+ * `metadata: { displayName, role }`, with no `name` claim at all. So the
+ * fixture agreed with the reader instead of the writer, the handler's
+ * `meta.name` lookup found something that only ever existed in this file, and
+ * every real attendance row was written as "Guest" while this check passed.
+ *
+ * `role` sat directly beside it in the same object and was read correctly,
+ * which is what made it invisible: the metadata parsed, the object was right,
+ * and exactly one of the two fields fell through to its default.
+ *
+ * A fixture must be derived from what the producer actually sends. This one is
+ * now a copy of the token route's metadata object, and the top-level `name` is
+ * gone because the token does not set it.
+ */
+const participantOf = (identity, displayName, role = "participant") => ({
   sid: `PA_${process.hrtime.bigint()}`,
   identity,
-  name,
-  metadata: JSON.stringify({ name, role }),
+  metadata: JSON.stringify({ displayName, role }),
   joinedAt: String(Math.floor(Date.now() / 1000)),
 });
 
@@ -287,6 +305,25 @@ try {
     );
 
     /*
+     * **The name, not just the count.** Counting rows cannot tell a session
+     * from a session labelled wrongly, and the attendance record is entirely
+     * names — a meeting listing "Guest, Guest, Guest" is as useless to a host
+     * as an empty one, and looks like it worked.
+     */
+    const named = await admin(
+      `/rest/v1/meetings?code=eq.${code}&select=meeting_participants(display_name)`,
+    );
+    const [row] = await named.json();
+    const names = (row?.meeting_participants ?? [])
+      .map((r) => r.display_name)
+      .sort();
+    check(
+      names.join(",") === "Ama Serwaa,Kwabena Osei",
+      "participant_joined records the name each person joined under",
+      `got ${names.join(", ") || "(none)"}`,
+    );
+
+    /*
      * The retry. LiveKit re-delivers anything it did not get a 2xx for, so one
      * arrival can produce two events — and a second open row would make the
      * live count read one too many for the rest of the meeting.
@@ -394,10 +431,18 @@ try {
     console.log("  the LiveKit project settings. MANUAL.md carries both.");
   } else {
     console.log();
-    console.log("  started_at has only one writer — the deployed webhook route.");
-    console.log("  LiveKit Cloud cannot reach localhost, so these were written by");
-    console.log("  production accepting a signed delivery: the URL is registered,");
-    console.log("  reachable, and verifying. A2 items 1 and 2 are answered.");
+    console.log("  This used to claim the rows above proved the deployed webhook");
+    console.log("  works: started_at has one writer, LiveKit cannot reach localhost,");
+    console.log("  therefore production accepted a signed delivery. The premise is");
+    console.log("  false — e2e/meeting-admin.ts sets started_at for any fixture");
+    console.log("  created live, and seed-dev.mjs sets it too, so most of these were");
+    console.log("  written by the suite and the conclusion was unearned.");
+    console.log();
+    console.log("  What this run proves is narrower and real: a signed delivery to");
+    console.log("  THIS handler is accepted and writes what it should. Whether");
+    console.log("  LiveKit sends all four events, and whether the registered URL");
+    console.log("  still points at current production, are invisible from here —");
+    console.log("  MANUAL.md carries both as explicit checks.");
   }
 } catch (e) {
   check(false, "harness completed", e.message);

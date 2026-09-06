@@ -420,16 +420,51 @@ Kept so the list does not lose the record of what was once open.
   Mutation-tested: `receive(..., true)` fails the three, and the two would fail
   if verification always threw.
 
-  **Production is answered too, by evidence rather than by a dashboard.**
-  `started_at` has exactly one writer in the codebase — the webhook route — and
-  LiveKit Cloud cannot reach localhost. Four rows carry it. Those can only have
-  been written by the deployed URL accepting a signed delivery, so it is
-  registered, reachable and verifying. Of the meetings that anyone actually
-  joined, **none is missing `started_at`**: no delivery has failed to land.
+  **The paragraph that used to sit here claimed production was answered too, and
+  it was wrong.** It argued: `started_at` has exactly one writer, the webhook
+  route; LiveKit cannot reach localhost; rows carry it; therefore the deployed
+  URL is registered, reachable and verifying. The premise is false.
+  `e2e/meeting-admin.ts` sets `started_at` itself for any fixture created
+  `live`, and `seed-dev.mjs` sets it too — so the rows it pointed at were
+  written by the suite, and the conclusion was unearned.
 
-  What remains genuinely manual is narrow: confirming the registered URL still
-  points at the current production deployment after a domain change. The
-  handler, the signature, and the write-through no longer need a human.
+  It cost a real meeting. A host held a scheduled call, six people came, and the
+  attendance record read "Nobody joined this meeting" — LiveKit had never been
+  configured to send `participant_joined` at all, and this paragraph was the
+  reason nobody checked.
+
+  **Two things about the delivery are invisible from inside this repo, and both
+  are now checks rather than assumptions.**
+
+- **The webhook is subscribed to all four events** — needs a human, ~1 minute.
+  `room_started`, `room_finished`, `participant_joined`, `participant_left`
+  (and `participant_connection_aborted` if offered). The route handles all of
+  them and the attendance record is built entirely from `meeting_participants`,
+  which only `participant_joined` writes.
+
+  **`check:webhook` cannot cover this and never will.** It signs its own events
+  and posts them, which proves the handler works — the failure is in what
+  LiveKit is asked to send, which is a setting in someone else's dashboard.
+  Same for the e2e suite: `addSessions` writes rows directly and says so.
+
+  The symptom is silent and specific: meetings look empty afterwards. An
+  **ungated** meeting has no fallback at all; a gated one now lists the people
+  the host admitted, from the queue, so it degrades to "Admitted with no times"
+  rather than to nothing.
+
+  Check it in LiveKit Cloud → Settings → Webhooks. The end-to-end confirmation
+  is to join a meeting from two browsers and look at the record afterwards: two
+  names, not "Nobody joined", and not "Guest".
+
+- **The registered URL still points at current production** — needs a human,
+  ~1 minute, and after every domain change.
+  A webhook aimed at a stale deployment URL fails exactly like one that was
+  never configured: no error anywhere, and meetings that look empty. Compare the
+  URL in LiveKit Cloud against the production domain, then confirm
+  `npm run check:deploy -- <url>` reports that domain running the current
+  commit.
+
+  Worth doing together with the item above, since one join exercises both.
 
 - **The participant row under a degraded connection — the geometry is now
   verified; one mapping remains.**

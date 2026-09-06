@@ -269,7 +269,26 @@ export async function POST(request: NextRequest) {
     {
       identity,
       ttl: TOKEN_TTL_SECONDS,
-      // Metadata, not the identity string: this is a label, and labels change.
+      /**
+       * **`name` as well as metadata — v1.5 A1 step 1, "one fix, two defects".**
+       *
+       * The token used to set neither `name` nor anything the webhook read, and
+       * `display_name` on every attendance row landed on its last fallback:
+       * "Guest". A host held a meeting with six people and the record could
+       * only ever have said Guest six times, had the participant events been
+       * arriving at all.
+       *
+       * Setting it here fixes it at the source rather than at each reader.
+       * `name` is LiveKit's own field and travels with the participant to
+       * anything that looks — the webhook, the server API, LiveKit's own
+       * tooling — none of which can parse our metadata convention.
+       *
+       * Metadata keeps `displayName` too, and that is not redundancy: it is
+       * what `displayNameOf` reads first for the room's own surfaces, and it
+       * carries `role`, which has no LiveKit field to live in.
+       */
+      name: displayName,
+      // Metadata, not the identity string: these are labels, and labels change.
       metadata: JSON.stringify({
         displayName,
         role: isHost ? "host" : "participant",

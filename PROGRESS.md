@@ -8938,3 +8938,82 @@ case uncovered.
 
 The measured values were confirmed in the browser rather than left as arithmetic:
 98/66 and 70/94, matching the prediction exactly.
+
+---
+
+## A1's three writes, completed — and a bug the webhook brought to life
+
+The updated `BUILD-PLAN-v1.5.md` restates A1 as **three writes and a read, not a
+read**, and checking the build against it found two gaps and one live defect.
+
+**Already done:** the webhook writes `role` from token metadata, and
+`hostIsPresent` already reads `role = 'host'`.
+
+**Gap 1 — the token set no `name`.** A1: "sets `name` on the `AccessToken` in
+the same change… every recent row reads 'Guest' — the last link of the
+resolution chain, reached because the token carries no name at all. One fix, two
+defects." Now set. It fixes it at the source rather than at each reader, and
+`name` is LiveKit's own field, so it travels to the webhook, the server API and
+LiveKit's tooling — none of which can parse our metadata convention. Metadata
+keeps `displayName` because `displayNameOf` reads it first, and carries `role`,
+which has no LiveKit field to live in.
+
+**Gap 2 — `role` was unconstrained text.**
+`20260906230000_role_check.sql` adds the `CHECK`, normalising first because rows
+written before the webhook set `role` would otherwise fail the migration. A1's
+reasoning holds and is worth restating: a typo writes a role nothing matches,
+`hostIsPresent` answers "no host present", and the door stays permanently shut on
+a meeting whose host is sitting in it — with no error anywhere.
+
+### The defect: the permissive answer was the one being trusted
+
+`hostIsPresent` read `if (data) return true; return hostIsInRoomLive(code)` —
+trusting the database's **yes** unchecked and confirming only its **no**. That is
+A1's table inverted. A1 calls the confirm step "not optional" and gives the
+reason: a missed `participant_left` leaves an open row for a host who left hours
+ago, and the database then answers "host present" indefinitely.
+
+**It was dead code until today, which is why nothing caught it.**
+`participant_joined` was never delivered, so the table held no host rows, `data`
+was always null, and every check fell through to LiveKit — correct by accident.
+Configuring the webhook is what brings the branch to life, and it would have
+arrived trusting a row nobody closed.
+
+`e2e/host-presence.spec.ts` writes exactly that row — role host, no `left_at`,
+nobody in the LiveKit room — and asserts the door stays shut. `addSessions`
+gained a `role`, because a fixture that can only write participants cannot
+express the row the check is about.
+
+### Open, and not fixed unilaterally
+
+**`admitted` is checked *after* the presence gate**, so somebody the host
+explicitly allowed is still held at `wait-for-host` if presence says no. That
+makes A1's own mitigation untrue as written — its table forgives the restrictive
+error because "the host sees them in the queue and allows them", and today
+allowing them does not get them in while the gate says no.
+
+It matters more now that the gate no longer falls back to LiveKit on a database
+no: if deliveries stop again, a gated meeting becomes unenterable rather than
+slow.
+
+**Austine's call: `admitted` moves before the gate.** An `admitted` row can only
+be written by a host answering the queue, and the queue is only reachable from
+inside the room — so the row is evidence a host was there, produced by the host,
+about this person. Weighing it against an inference drawn from a session table
+had the order backwards.
+
+The narrow cost, written down rather than discovered: a host who admits somebody
+and then leaves before they connect lets that person into an empty room. Seconds
+wide, deliberate, and the same trade §3.2 already makes for a host who leaves a
+meeting running.
+
+`isSignedIn` stays *after* the gate. §3.2's two gates: everybody waits for the
+first, and signing in skips only the second.
+
+**Proven by deletion**, and the fixture had to be fixed first. `addWaiting` wrote
+the bare user id as `subject`, where `subjectFor` builds `user_<id>` — it
+inserted cleanly and simply never matched, so a test about an admitted person
+would have exercised the not-admitted path and passed for the wrong reason. The
+same shape as `check:webhook`'s participant fixture sending a metadata key the
+token has never written. Twice in one pass, from the same cause: a fixture
+written to look like what the reader wants instead of what the producer sends.

@@ -197,16 +197,34 @@ export async function POST(request: Request) {
       : null;
 
     let role = "participant";
+    /*
+     * **`displayName`, not `name` — and reading the wrong key made every
+     * attendance row say "Guest".**
+     *
+     * The token writes `{ displayName, role }`; this read `meta.name`, which
+     * has never existed in that object. `role` sat directly beside it and was
+     * read correctly, so the metadata parsed, the object was right, and one of
+     * the two fields silently fell through to its default. Nothing failed — the
+     * rows were written, with the wrong name on every one.
+     *
+     * `participant.name` stays as the fallback, and it is empty in practice:
+     * the token sets `identity` and `metadata` and no `name` claim.
+     * `displayNameOf` uses the same precedence for the room's own surfaces and
+     * says why — "ours travels in metadata" — so the webhook now agrees with
+     * the client instead of quietly disagreeing.
+     */
     let name = participant.name?.trim() || "Guest";
     try {
-      // The token puts `{ name, role }` here rather than in the identity,
-      // because both are labels and labels change.
+      // The token puts `{ displayName, role }` here rather than in the
+      // identity, because both are labels and labels change.
       const meta = JSON.parse(participant.metadata || "{}") as {
-        name?: unknown;
+        displayName?: unknown;
         role?: unknown;
       };
       if (meta.role === "host" || meta.role === "participant") role = meta.role;
-      if (typeof meta.name === "string" && meta.name.trim()) name = meta.name.trim();
+      if (typeof meta.displayName === "string" && meta.displayName.trim()) {
+        name = meta.displayName.trim();
+      }
     } catch {
       // Metadata is a string LiveKit hands back untouched. Malformed is a
       // reason to fall back to the participant's name, not to drop the row.

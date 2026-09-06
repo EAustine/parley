@@ -273,7 +273,17 @@ export async function createMeeting(
  */
 export async function addSessions(
   code: string,
-  sessions: { name: string; identity: string; left?: boolean }[],
+  sessions: {
+    name: string;
+    identity: string;
+    left?: boolean;
+    /**
+     * v1.5 A1's presence check reads `role = 'host'`, so a fixture that can only
+     * write participants cannot express the row that check is about — including
+     * the stale open host row A1 says the LiveKit confirm exists to catch.
+     */
+    role?: "host" | "participant";
+  }[],
 ): Promise<void> {
   const found = await rest(
     `/rest/v1/meetings?code=eq.${encodeURIComponent(code)}&select=id`,
@@ -288,7 +298,7 @@ export async function addSessions(
         meeting_id: meeting.id,
         display_name: session.name,
         identity: session.identity,
-        role: "participant",
+        role: session.role ?? "participant",
         left_at: session.left ? new Date().toISOString() : null,
       }),
     });
@@ -324,7 +334,19 @@ export async function addWaiting(
       body: JSON.stringify({
         meeting_id: meeting.id,
         display_name: person.name,
-        subject: person.userId ?? `device-${person.name.toLowerCase()}`,
+        /*
+         * **`user_<id>`, mirroring `subjectFor` — not the raw uuid.**
+         *
+         * The token route matches the queue row on `subject`, and `subjectFor`
+         * builds `user_${userId}` for an account. A fixture writing the bare id
+         * looks right, inserts fine, and simply never matches — so a test about
+         * an admitted person would exercise the not-admitted path and pass for
+         * the wrong reason. The same shape as `check:webhook`'s participant
+         * fixture, which sent a metadata key the token has never written.
+         */
+        subject: person.userId
+          ? `user_${person.userId}`
+          : `device-${person.name.toLowerCase()}`,
         subject_type: person.userId ? "user" : "device",
         user_id: person.userId ?? null,
         status: person.status,

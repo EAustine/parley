@@ -98,7 +98,31 @@ export async function hostIsPresent(
     .limit(1)
     .maybeSingle();
 
-  if (data) return true;
+  /*
+   * **The permissive answer is the one that gets confirmed, and this used to be
+   * the other way round.**
+   *
+   * It read `if (data) return true; return hostIsInRoomLive(code)` — trusting
+   * the database's *yes* unchecked and asking LiveKit only about its *no*.
+   * That is A1's table inverted:
+   *
+   * | The database says | Actually | Cost |
+   * |---|---|---|
+   * | Host present | Absent | **A guest walks into an empty room** — the exact failure this feature exists to prevent |
+   * | Host absent | Present | A guest waits a little longer |
+   *
+   * A1 says the confirm step "is not optional" and names the reason: LiveKit's
+   * webhooks are push-based with no delivery guarantee, so a missed
+   * `participant_left` leaves an open row for a host who went home hours ago,
+   * and the database then answers "host present" indefinitely.
+   *
+   * **This was dead code until today**, which is why nothing caught it.
+   * `participant_joined` was never delivered, so `meeting_participants` held no
+   * host rows at all, `data` was always null, and every check fell through to
+   * LiveKit — correct by accident. Configuring the webhook is what brings this
+   * branch to life, and it would have arrived trusting a row nobody closed.
+   */
+  if (!data) return false;
   return hostIsInRoomLive(code);
 }
 
@@ -145,10 +169,43 @@ export async function decide({
 
   if (isHost || !waitingRoom) return { kind: "admit" };
 
+  /*
+   * **Admission outranks the presence check, and it used to sit below it.**
+   *
+   * An `admitted` row can only be written by a host answering the queue, and
+   * the queue is only reachable from inside the room — so the row is itself
+   * evidence that a host was there, produced by the host, about this person.
+   * Weighing it against an inference drawn from a session table got the order
+   * backwards.
+   *
+   * A1's table forgives the restrictive error on the grounds that "a guest
+   * waits a moment longer, and the host sees them in the queue and allows
+   * them". That sentence was not true while this check ran second: allowing
+   * somebody did not get them in if presence still said no, so the mitigation
+   * the design leans on did not exist.
+   *
+   * It matters more since `hostIsPresent` stopped falling back to LiveKit on a
+   * database *no*. That change is right — the permissive answer is the one that
+   * must be confirmed — but it means a missed `participant_joined` now holds
+   * the door shut rather than merely slowing it, and without this an outage
+   * would make a gated meeting unenterable by anyone, including the people the
+   * host had already let in.
+   *
+   * The narrow cost, stated rather than discovered: a host who admits somebody
+   * and then leaves before they connect lets that person into an empty room.
+   * That is a few seconds wide, it took a deliberate act by the host, and it is
+   * the same trade §3.2 already makes for a host who leaves a meeting running.
+   */
+  if (admitted) return { kind: "admit" };
+
   if (!(await hostIsPresent(db, meetingId, code))) {
     return { kind: "wait-for-host" };
   }
 
-  if (isSignedIn || admitted) return { kind: "admit" };
+  /*
+   * Signing in still waits for the host. §3.2's two gates: everybody waits for
+   * the first, and signing in skips only the second.
+   */
+  if (isSignedIn) return { kind: "admit" };
   return { kind: "wait-for-admission" };
 }
