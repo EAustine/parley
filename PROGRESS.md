@@ -8667,3 +8667,44 @@ meeting would report phantom attendees.
 
 It is numbered `3.10b` and sits after `3.10a`, which keeps its letter because
 three entries in this file already cite it.
+
+---
+
+## Manual checks — `prefers-reduced-motion` converted
+
+`MANUAL.md` listed this as **needs a human**, and justified it with System
+Settings. That was the wrong half to hang it on. Playwright emulates the query
+directly, and `reactions.spec.ts` had been doing exactly that since v1.3 — so
+one item on the manual list was blocked on a step that was never required.
+
+`e2e/reduced-motion.spec.ts` now verifies the strongest claim in that item, the
+one `CLAUDE.md` states for the grid: *"Under `prefers-reduced-motion`, skip the
+whole cycle and snap."*
+
+**The instrument is animation calls, not positions**, and the choice is the whole
+point. FLIP inverts a transform and animates *back* to identity, so a tile's box
+read a moment late is the settled position either way — it would pass whether or
+not anything travelled, which is precisely the defect D2's first clearance
+assertion had. Read early instead and it races the compositor. `useGridFlip`'s
+guard wraps the entire block, so under `reduce` `el.animate()` is simply never
+called, and counting calls has no timing window at all.
+
+| Case | Calls |
+|---|---|
+| motion reduced | 0 |
+| motion allowed (**positive control**) | > 0 |
+| guard forced open (mutation) | 1 — case fails |
+
+**The control is the part worth keeping.** It runs every time and proves the
+counter sees animations when they exist, so a green first case means "the guard
+held" rather than "the instrument was blind". A mutation run once by hand proves
+the same thing once; a control proves it on every run.
+
+`joinAs` gained a `reducedMotion` option. The counter is patched after load
+rather than in an init script — the reflow under test is triggered by the *next*
+participant arriving, so there is nothing to race, and the patch stays out of the
+shared helper where it would run for the whole suite.
+
+The item is not closed. It is downgraded: the grid is verified, and what remains
+is a judgement a person makes with Reduce Motion on — that no surface is left
+mid-fade — rather than a measurement.

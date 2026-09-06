@@ -99,6 +99,14 @@ export async function joinAs(
      * that cannot use it.
      */
     asHost?: string;
+    /**
+     * Emulate `prefers-reduced-motion`, which `MANUAL.md` recorded as needing a
+     * human with System Settings open. Playwright emulates the query directly,
+     * and the claim it gates — "travel is removed" — is observable rather than
+     * felt: `useGridFlip` skips `el.animate()` entirely, so the reflow either
+     * creates animations or it does not.
+     */
+    reducedMotion?: "reduce" | "no-preference";
   },
 ): Promise<Participant> {
   const context = await browser.newContext({
@@ -110,6 +118,7 @@ export async function joinAs(
     // resized afterwards, so the first paint is the one being measured — the
     // control bar's overflow was a first-paint problem.
     ...(options.viewport ? { viewport: options.viewport } : {}),
+    ...(options.reducedMotion ? { reducedMotion: options.reducedMotion } : {}),
   });
 
   // Joining with camera and microphone off is a thing people do, and it is what

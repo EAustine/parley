@@ -180,10 +180,34 @@ Two things to watch while working the rows:
   cannot be automated at all — this is the one item on the list with no
   automated component whatsoever.
 
-- **`prefers-reduced-motion` against the new dialogs** — needs a human.
-  Recorded as untested at the end of Phase 9 alongside the mobile layouts. Turn
-  on Reduce Motion in System Settings and open every dialog, panel and sheet,
-  confirming travel is removed and opacity is kept.
+- **`prefers-reduced-motion` — the grid is now verified; the surfaces are
+  shape verified, browser unconfirmed.**
+  This was listed as needing a human, and the reason given was System Settings.
+  That was the wrong half to hang it on: Playwright emulates the query directly,
+  and `reactions.spec.ts` had been doing so since v1.3.
+
+  **Verified** (`e2e/reduced-motion.spec.ts`): the grid reflow skips entirely.
+  `CLAUDE.md`'s claim is "skip the whole cycle and snap", and `useGridFlip`
+  makes that exactly observable — the guard wraps the whole block, so under
+  `reduce` `el.animate()` is never called. The spec counts the calls: 0 with
+  motion reduced, and a **positive control** asserts the same join animates when
+  it is not, so a green result means the guard held rather than the instrument
+  being blind. Proven by deletion: forcing the branch open makes the count 1 and
+  fails the case.
+
+  Counting calls rather than sampling positions is deliberate. FLIP inverts a
+  transform and animates *back* to identity, so a box read a moment late reads
+  the settled position and passes whether or not anything travelled — the same
+  defect D2's first clearance assertion had.
+
+  What remains for a person is narrower than the original item and is a
+  judgement rather than a measurement: dialogs, panels and sheets are governed
+  by one blanket rule that collapses every duration to 0.01ms, so asserting each
+  surface individually would mostly re-test that media queries work. Open them
+  with Reduce Motion on and confirm nothing is left mid-fade or visibly stuck —
+  in particular the reaction press class, which is cleared on `animationend` and
+  would stick forever if that animation were ever suppressed rather than
+  shortened.
 
 ---
 
