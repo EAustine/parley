@@ -7,7 +7,7 @@ import { normaliseMeetingCode } from "@/lib/meetings/code";
 import { JoinCodeForm } from "@/components/meetings/JoinCodeForm";
 import { PreJoin } from "@/components/prejoin/PreJoin";
 import { createClient } from "@/lib/supabase/server";
-import { Lockup } from "@/components/brand/Lockup";
+import { Mark } from "@/components/brand/Mark";
 import { Button } from "@/components/ui/button";
 import type { PublicMeeting } from "@/lib/supabase/types";
 
@@ -134,7 +134,23 @@ function MeetingCancelled({ meeting }: { meeting: PublicMeeting }) {
   return (
     <Centred>
       <div className="flex flex-col items-center gap-6 text-center">
-        <Lockup variant="stacked" markSize={40} />
+        {/*
+          The mark alone, without the wordmark.
+
+          These are full-screen status pages whose whole job is one sentence —
+          "Waiting for the host to let you in", "The host removed you from the
+          meeting" — and a display-size product name above that sentence
+          competes with it for the first thing you read. The mark identifies the
+          product; the heading is what you came for. The same argument §3.10a
+          already makes for the landing page, where the tagline takes the
+          display size and the name does not.
+
+          `title` keeps the name for a screen reader: dropping the wordmark is a
+          decision about visual weight, not a decision that the page should stop
+          saying what it is — and an unlabelled logo is a worse outcome than a
+          quiet one.
+        */}
+        <Mark size={40} title="Parley" />
         <div className="space-y-2">
           <h1 className="type-h1">This meeting was cancelled</h1>
           {/* Not "you missed it". The meeting never happened, and the person
@@ -160,7 +176,7 @@ function MeetingEnded({ meeting }: { meeting: PublicMeeting }) {
   return (
     <Centred>
       <div className="flex flex-col items-center gap-6 text-center">
-        <Lockup variant="stacked" markSize={40} />
+        <Mark size={40} title="Parley" />
         <div className="space-y-2">
           <h1 className="type-h1">This meeting has ended</h1>
           <p className="type-body text-muted-foreground">
@@ -191,7 +207,7 @@ function MeetingNotFound({ code }: { code: string }) {
   return (
     <Centred>
       <div className="flex flex-col items-center gap-6 text-center">
-        <Lockup variant="stacked" markSize={40} />
+        <Mark size={40} title="Parley" />
         <div className="space-y-2">
           <h1 className="type-h1">That meeting isn&rsquo;t here</h1>
           <p className="type-body text-muted-foreground">

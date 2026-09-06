@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Lockup } from "@/components/brand/Lockup";
+import { Mark } from "@/components/brand/Mark";
 import { recallJoin } from "@/lib/prejoin-handoff";
 import { MAX_JOIN_ATTEMPTS, retryAfterSeconds } from "@/lib/join-backoff";
 
@@ -259,7 +259,8 @@ export function RoomEntry({ code }: { code: string }) {
     return (
       <Centred>
         <div className="flex flex-col items-center gap-6 text-center">
-          <Lockup variant="stacked" markSize={40} />
+          {/* The mark alone — same family as the waiting screen's endings. */}
+          <Mark size={40} title="Parley" />
           <div className="space-y-2">
             <h1 className="type-h1">{outcome.title}</h1>
             <p className="type-body text-balance text-muted-foreground">
