@@ -310,7 +310,22 @@ This is a deliberate scope decision: persistence means a table, realtime subscri
 
 Six emoji, fixed: 👍 ❤️ 😂 🎉 👏 😮
 
-Sent over the data channel. Animate upward from the sender's tile and fade over 2400ms. Multiple simultaneous reactions stagger horizontally so they don't overlap.
+Sent over the data channel. Animate upward from the sender's **origin** and fade over 2400ms. Multiple simultaneous reactions stagger horizontally so they don't overlap.
+
+**"From the sender's tile" was this section's wording and stopped being true in v1.3** — C1 lifted the local participant out of the grid and drew them as a corner PiP, and this sentence was not updated. The same shift moved §3.4's layout table from counting heads to counting tiles and went unnoticed for the same reason: a change to *where somebody is* reads as a layout decision, and nothing else that referred to their tile was re-read.
+
+So the origin depends on how many people are in the room, which is the thing the old sentence could not express:
+
+| Room | Your reaction rises from |
+|---|---|
+| Alone | Your tile — §3.4 keeps a lone participant full-size with no PiP |
+| Anyone else present | Your PiP, which is where you now are |
+
+Everybody else's rises from their tile, or from the overflow indicator when they are not currently shown — which §3.6 already required and which is unchanged.
+
+**Both cases clear the control bar's band rather than passing behind it.** The overlay is `absolute inset-0` on a root padded for the bar, and an absolutely positioned box resolves against the **padding box** — so the overlay covers the bar's strip and nothing about the layout prevents a reaction being drawn under it. This is the same property that produced the letterboxed tile and the mute prompt's offset, and it has to be asserted by measurement rather than assumed from the padding.
+
+**Reactions sit above the self-view and below the chrome** — `CLAUDE.md`'s layer scale, and both halves are load-bearing. Above, because a reaction hidden behind your own face is the defect v1.5 D1 was reported for. Below, because a reaction occluding a control is worse than one occluding a face, which is this section's existing rule — "reactions never occlude the name label or mic indicator" — one layer up.
 
 **Rate limit: one reaction per participant per 1000ms, enforced client-side on send and server-agnostic on receive.** Without this, one person can flood the channel.
 
@@ -318,6 +333,8 @@ Under `prefers-reduced-motion`, reactions appear and fade in place with no trave
 
 **Acceptance**
 - Reaction from a participant not currently visible in the grid still surfaces, anchored to the overflow indicator
+- Your own reaction rises from your PiP when others are present, and from your tile when you are alone — measured, not inferred from the anchor's input
+- No reaction is drawn inside the control bar's band
 - Reactions never occlude the name label or mic indicator
 - Rapid clicking does not queue; extra presses are dropped, not buffered
 
@@ -412,6 +429,8 @@ A scheduled meeting between its start and end, that nobody has joined, belongs t
 
 Empty state is an invitation, not an apology: "No meetings yet. Start one now, or schedule for later."
 
+A row links to the meeting's detail page, `/schedule/[code]`, which is where a meeting is edited before it happens and read after it has.
+
 ---
 
 ### 3.10a Landing page
@@ -440,6 +459,26 @@ Naming the account matters: someone with two Google accounts should know which o
 **Do not redirect a signed-in visitor to `/dashboard`.** They typed the domain or followed a bookmark; a redirect they did not ask for is worse than a page that does the two things they came for. This decision is what makes the signed-in state worth building — without it, `/` is unreachable for signed-in users and the state is dead code.
 
 Both states are specified in `design/01-signin-prejoin.html`.
+
+---
+
+### 3.10b Who was here
+
+An ended meeting's detail page carries an attendance record: the name each person entered, when they joined and left, who was removed, and who was denied entry. Host only, enforced by RLS like every other meeting row.
+
+**Verified and typed names are visibly different, and that is the load-bearing part of this section.** Signing in buys **accountability, not authorisation** — anyone can sign in with any Google account, so a signed-in person is identifiable rather than invited. That is the same line §3.2's guest-only door rests on, and it has a consequence here: a guest can type your name and appear in this record looking like you. A list that says "Austine Eluro" without saying which implies an attestation the product cannot make. Each row carries "Signed in" or "Name entered", in the record and in the room's roster both.
+
+A denied person's name is a string typed by somebody who never got in. It runs through the display-name sanitiser before it is persisted — length cap, email-shape rejection — and renders as text. §3.2's rule holds for them as much as for anyone: no route puts an email address in front of anyone.
+
+**The record reads two tables, and the reason is a count rather than a schema preference.** A denied person never joined, so no `participant_joined` ever fired and they have no session row. Giving them one looks obvious and is wrong twice: it writes a join that never happened, and `mp_open_session_idx` is partial on `left_at is null` — which is exactly the set the dashboard's live figure counts. A denied person inserted without a `left_at` is indistinguishable from somebody currently in the meeting, so every gated meeting would report phantom attendees on the surface people trust most. They already have a row in `meeting_waiting` carrying the name and the refusal, so the record merges the two for display. No migration, and no way to corrupt a count.
+
+**An empty record is a fact, not a gap.** A meeting that ended with nobody in it is an ordinary outcome — a link nobody opened, a call that never started — and "Nobody joined this meeting" beats an absent section, which reads as data lost.
+
+**Acceptance**
+- A removed participant reads "Removed", not "Left" — the removal writes its reason, and without that the two are indistinguishable
+- A denied person appears in the record and **not** in the meeting's live participant count
+- A guest and a signed-in participant who entered the same name are distinguishable in the record
+- A non-host requesting the record gets nothing, at the row level
 
 ---
 

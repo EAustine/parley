@@ -891,8 +891,10 @@ function RoomSurface({
 
       <RoomPanel
         waiting={queue.waiting}
+        blocked={queue.blocked}
         onDecide={queue.decide}
         deciding={queue.deciding}
+        onLetBackIn={queue.letBackIn}
         tab={panel}
         log={messages.log}
         cooldown={messages.chatCooldown}

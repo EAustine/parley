@@ -192,3 +192,10 @@ function required(name: string): string {
  */
 export const endedCode = () => required("PARLEY_E2E_ENDED_CODE");
 export const scheduledCode = () => required("PARLEY_E2E_SCHEDULED_CODE");
+/**
+ * A meeting with the door on and no host — v1.5.
+ *
+ * Nobody can enter it, which is what makes it shareable: the first gate holds
+ * every visitor, so there is no room to contend for.
+ */
+export const gatedCode = () => required("PARLEY_E2E_GATED_CODE");

@@ -106,6 +106,12 @@ export type Database = {
           reason: "denied" | "removed";
           created_at: string;
           expires_at: string;
+          /** v1.5 B2. Who it is, so "let them back in" has a them. */
+          display_name: string | null;
+          /** Bumped by the door each time they are refused. */
+          attempted_at: string | null;
+          /** When the host was told. `attempted_at > notified_at` is the whole rule. */
+          notified_at: string | null;
         };
         Insert: {
           id?: string;
@@ -115,8 +121,33 @@ export type Database = {
           reason: "denied" | "removed";
           created_at?: string;
           expires_at: string;
+          display_name?: string | null;
+          attempted_at?: string | null;
+          notified_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["meeting_blocks"]["Insert"]>;
+        Relationships: [];
+      };
+      /**
+       * v1.5 B1: the identity a token was minted for, and the durable subject
+       * behind it. Server-only — RLS is on with no policies, deliberately.
+       */
+      meeting_identities: {
+        Row: {
+          meeting_id: string;
+          identity: string;
+          subject: string;
+          subject_type: "user" | "device";
+          created_at: string;
+        };
+        Insert: {
+          meeting_id: string;
+          identity: string;
+          subject: string;
+          subject_type: "user" | "device";
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["meeting_identities"]["Insert"]>;
         Relationships: [];
       };
       meeting_participants: {

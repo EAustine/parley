@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { blockExpiry } from "@/lib/meetings/waiting";
 
 import { createClient } from "@/lib/supabase/server";
 import { normaliseMeetingCode } from "@/lib/meetings/code";
@@ -88,12 +89,78 @@ export async function DELETE(
    * what the host did and what they experienced.
    */
   const admin = createAdminClient();
+  const removedAt = new Date().toISOString();
+
+  const { data: session } = await admin
+    .from("meeting_participants")
+    .select("display_name, user_id")
+    .eq("meeting_id", meeting.id)
+    .eq("identity", identity)
+    .is("left_at", null)
+    .maybeSingle();
+
   await admin
     .from("meeting_participants")
-    .update({ removed_at: new Date().toISOString() })
+    .update({ removed_at: removedAt })
     .eq("meeting_id", meeting.id)
     .eq("identity", identity)
     .is("left_at", null);
+
+  /**
+   * And the block — v1.5 B1, which this route was missing.
+   *
+   * B1 says "denied and removed people stay out for ten minutes", and only the
+   * deny path was writing one. So a removed person could rejoin instantly with
+   * the link they still had, and A3's "The host removed you from the meeting"
+   * screen was unreachable, because nothing ever wrote that reason.
+   *
+   * The subject is derived from the identity rather than from a cookie: this
+   * request is the *host's*, so there is no device cookie for the person being
+   * removed. `user_<uuid>` identities block the account; a guest identity is
+   * `guest_<nanoid>`, which is per-connection and not a device — so a removed
+   * guest is blocked for this session and can return in a new one, which is a
+   * weaker guarantee than the denied path's and is recorded rather than
+   * implied. Closing it would mean the room carrying every participant's device
+   * id, which is a real cost for a case B2 can already undo.
+   */
+  /**
+   * The durable subject behind this identity — v1.5 B1.
+   *
+   * `meeting_identities` is written by the token endpoint, the only place that
+   * sees both the identity it mints and the device cookie behind it. Without
+   * this lookup the block was written against `guest_<nanoid>`, which is minted
+   * per connection and never presented twice, so removing a guest kept nobody
+   * out.
+   *
+   * The fallback is the identity itself, which is right for two cases: a
+   * signed-in participant, whose identity *is* `user_<uuid>` and durable; and a
+   * session that predates this table, where blocking the identity is no worse
+   * than the nothing it replaces.
+   */
+  const { data: known } = await admin
+    .from("meeting_identities")
+    .select("subject, subject_type")
+    .eq("meeting_id", meeting.id)
+    .eq("identity", identity)
+    .maybeSingle();
+
+  const subject = known
+    ? { subject: known.subject, subjectType: known.subject_type }
+    : identity.startsWith("user_")
+      ? { subject: identity, subjectType: "user" as const }
+      : { subject: identity, subjectType: "device" as const };
+
+  await admin.from("meeting_blocks").upsert(
+    {
+      meeting_id: meeting.id,
+      subject: subject.subject,
+      subject_type: subject.subjectType,
+      reason: "removed",
+      expires_at: blockExpiry(),
+      display_name: session?.display_name ?? null,
+    },
+    { onConflict: "meeting_id,subject_type,subject" },
+  );
 
   try {
     await service.removeParticipant(code, identity);

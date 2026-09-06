@@ -68,7 +68,7 @@ export async function POST(
   const admin = createAdminClient();
   const { data: row } = await admin
     .from("meeting_waiting")
-    .select("id, meeting_id, subject, subject_type, status")
+    .select("id, meeting_id, subject, subject_type, status, display_name")
     .eq("id", id)
     .eq("meeting_id", owned.id)
     .maybeSingle();
@@ -110,6 +110,8 @@ export async function POST(
         subject_type: row.subject_type,
         reason: "denied",
         expires_at: blockExpiry(),
+        // The name they were known by — B2's undo needs somebody to offer back.
+        display_name: row.display_name,
       },
       { onConflict: "meeting_id,subject_type,subject" },
     );

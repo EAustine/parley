@@ -49,8 +49,10 @@ export function RoomPanel({
   code,
   isLocalHost,
   waiting,
+  blocked,
   onDecide,
   deciding,
+  onLetBackIn,
   onTab,
   onClose,
   onSend,
@@ -65,8 +67,10 @@ export function RoomPanel({
   isLocalHost: boolean;
   /** v1.5 A2's queue, owned by the room — see `useWaitingQueue`. */
   waiting: import("@/lib/hooks/useWaitingQueue").WaitingRequest[];
+  blocked: import("@/lib/hooks/useWaitingQueue").BlockedPerson[];
   onDecide: (id: string, decision: "admit" | "deny") => void;
   deciding: string | null;
+  onLetBackIn: (id: string) => void;
   onTab: (next: PanelTab) => void;
   onClose: () => void;
   onSend: (body: string) => void;
@@ -227,8 +231,10 @@ export function RoomPanel({
           code={code}
           isLocalHost={isLocalHost}
           waiting={waiting}
+          blocked={blocked}
           onDecide={onDecide}
           deciding={deciding}
+          onLetBackIn={onLetBackIn}
           onRequestMute={onRequestMute}
           onRemove={onRemove}
         />

@@ -288,6 +288,34 @@ export async function POST(request: NextRequest) {
     canPublishData: true,
   });
 
+  /**
+   * Record who this identity actually is — v1.5 B1.
+   *
+   * The only place that knows both. A guest's identity is minted fresh for every
+   * connection, so without this a removal has nothing durable to block and a
+   * removed guest simply reconnects — which is what it did.
+   *
+   * Written after the grants and before the response, and its failure is not
+   * allowed to fail a join: somebody who cannot be blocked later is a worse
+   * outcome than a join refused now, but only just, and refusing the join
+   * helps nobody who is already in the room.
+   */
+  await admin
+    .from("meeting_identities")
+    .upsert(
+      {
+        meeting_id: gate.id,
+        identity,
+        subject: who.subject,
+        subject_type: who.subjectType,
+      },
+      { onConflict: "meeting_id,identity" },
+    )
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+
   const minted = NextResponse.json({
     token: await token.toJwt(),
     url: publicEnv.NEXT_PUBLIC_LIVEKIT_URL,

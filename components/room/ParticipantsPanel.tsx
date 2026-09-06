@@ -16,8 +16,8 @@ import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { MenuItem, PopupMenu } from "@/components/shared/PopupMenu";
-import { WaitingQueue } from "@/components/room/WaitingQueue";
-import type { WaitingRequest } from "@/lib/hooks/useWaitingQueue";
+import { BlockedList, WaitingQueue } from "@/components/room/WaitingQueue";
+import type { BlockedPerson, WaitingRequest } from "@/lib/hooks/useWaitingQueue";
 
 /**
  * §3.8. Everyone present, what their devices are doing, and — for a host — the
@@ -38,8 +38,10 @@ export function PeopleBody({
   isLocalHost,
   code,
   waiting,
+  blocked,
   onDecide,
   deciding,
+  onLetBackIn,
   onRequestMute,
   onRemove,
 }: {
@@ -49,8 +51,11 @@ export function PeopleBody({
   code: string;
   /** v1.5 A2's queue, polled in the room so the badge and toast work with this closed. */
   waiting: WaitingRequest[];
+  /** v1.5 B2: who is shut out, and the way back. */
+  blocked: BlockedPerson[];
   onDecide: (id: string, decision: "admit" | "deny") => void;
   deciding: string | null;
+  onLetBackIn: (id: string) => void;
   onRequestMute: (identity: string) => void;
   onRemove: (identity: string) => void;
 }) {
@@ -109,7 +114,10 @@ export function PeopleBody({
 
       {/* v1.5 A2: above the roster, because a pending decision outranks a list. */}
       {isLocalHost && (
-        <WaitingQueue waiting={waiting} onDecide={onDecide} deciding={deciding} />
+        <>
+          <WaitingQueue waiting={waiting} onDecide={onDecide} deciding={deciding} />
+          <BlockedList blocked={blocked} onLetBackIn={onLetBackIn} />
+        </>
       )}
 
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 py-2">

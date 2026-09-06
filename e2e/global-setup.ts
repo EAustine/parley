@@ -66,6 +66,27 @@ export default async function globalSetup() {
       scheduledEnd: days(3),
       timezone: "Europe/Berlin",
     });
+
+    /**
+     * A gated meeting nobody hosts — v1.5, for the state list.
+     *
+     * The waiting screen was reachable by no check at all: `targets.spec` and
+     * `a11y.spec` walk a fixed list of states, and none of them had a queue or a
+     * door in it, so the Leave on the waiting screen had never been measured
+     * against the 44px floor and axe had never seen the surface.
+     *
+     * Shared across workers like the other two, and safe for the same reason
+     * with a stronger guarantee: **nobody can enter it.** With `waiting_room`
+     * on and no host ever joining, every visitor is held at the first gate, so
+     * there is no room to contend for and no composition to assert. Visitors
+     * leave `meeting_waiting` rows behind, which cascade away with the host in
+     * teardown.
+     */
+    process.env.PARLEY_E2E_GATED_CODE = await createMeeting({
+      status: "live",
+      title: "Product planning",
+      waitingRoom: true,
+    });
   } catch (error) {
     // A half-built fixture set is worse than none: the run would fail later,
     // somewhere unrelated, with a stray user left behind.

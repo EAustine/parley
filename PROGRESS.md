@@ -8502,3 +8502,168 @@ attendance record.** D2 and C1 are not built, and a specification describing
 behaviour the build does not have is the same defect as one describing behaviour
 it no longer has — this file has recorded the second kind three times, and the
 first is worse, because nothing contradicts it until somebody trusts it.
+
+## v1.5 B2 — the undo, and a gap it found in B1
+
+### Removal was writing no block at all
+
+B1 says "denied and removed people stay out for ten minutes" and only the deny
+path did it. So a removed person could rejoin instantly with the link they still
+had, and **A3's "The host removed you from the meeting" screen was unreachable**,
+because nothing ever wrote that reason. Found while building the undo, because
+an undo needs something to undo.
+
+**And the removal block is weaker than the denial block, which is recorded
+rather than implied.** Denial blocks a guest by their device cookie, which
+survives new tabs and other profiles. Removal cannot: the request is the
+*host's*, so there is no device cookie for the person being removed — only their
+LiveKit identity, and a guest identity is per-connection. A removed guest is
+therefore blocked for that session and can return in a new one. Closing it would
+mean the room carrying every participant's device id, which is a real cost for a
+case B2 can already undo by hand.
+
+### Once, not once per attempt — decided server-side
+
+`attempted_at > notified_at` is the whole rule. The door bumps the first, the
+host's poll surfaces it, the client marks the second.
+
+The obvious alternative is the client remembering what it has announced, and it
+fails in a way that only shows up in use: a host with two tabs, or one who
+reloads, announces again — so somebody hammering reload still produces a stream,
+which is the exact thing B2 forbids. Server-side survives both.
+
+**Two toast shapes, deliberately different.** The queue gets one toast however
+many people arrive, because ten waiting is one fact with a number in it. A
+returning blocked person gets their own id, because two different people coming
+back are two different facts.
+
+### Tests written, not run
+
+`e2e/block-undo.spec.ts` covers the removal block by its *reason* — denied and
+removed carry the same refusal, so a case asserting only that the door said no
+would pass with the wrong one written and A3 showing the wrong screen — plus the
+undo end to end from the panel, and the once-only notice counted with a
+`MutationObserver` for the same reason A2's is: a self-dismissing toast makes a
+snapshot pass against ten that each came and went.
+
+**They cannot run until `20260906170000_removal_reason.sql` and
+`20260906190000_block_undo.sql` are applied.** Verified against the live schema:
+`removed_at`, `display_name`, `attempted_at` and `notified_at` are all absent, so
+every case would fail on a missing column rather than on anything it is about.
+Saying so beats running them and reporting a red suite as if it meant something.
+
+### The guest-removal hole, closed
+
+Reported one turn earlier as "weaker than the denial block". That was too
+generous, and the sharper statement is the one that got it fixed: **for guests,
+removal's block did nothing at all.**
+
+Removal blocks by LiveKit identity, because the host's request is the only thing
+the route has and a host's browser holds no cookie belonging to the person being
+removed. A signed-in participant's identity is `user_<uuid>` and durable. A
+guest's is `guest_<nanoid>`, minted fresh for every connection — so the block was
+written against a string that would never be presented again. B1 says "denied and
+removed people stay out for ten minutes"; for the population it is most about,
+they did not.
+
+`meeting_identities` closes it. The token endpoint is the only place that ever
+sees both the identity it is minting and the device cookie behind it, so it
+records the pair and removal reads it.
+
+**Both alternatives are worse in ways that are not obvious.**
+
+*A column on `meeting_participants`* — that row is created by the webhook on
+`participant_joined`, which has never seen a cookie. Having the token endpoint
+pre-create it means writing a session row before anybody joined, with `left_at`
+null, which is exactly what the dashboard's live count reads. Every meeting would
+report people who had only asked for a token.
+
+*Token metadata* — broadcast to every participant. It would hand everybody in the
+room a stable identifier for everybody else, a far worse disclosure than the one
+the block manages.
+
+**RLS on, with no policy at all, and that is deliberate.** The table links a
+guest's device to the identity they appeared under, which is the one piece of
+data here that could correlate a person across sessions. The host needs the
+*effect* of a block and never its subject. Proven rather than assumed: with a row
+present, the service role reads `deadbeefcafe` and `anon` reads `[]`.
+
+**The `test.fixme` is now a real test**, and it asks from the guest's *own*
+browser context — the device cookie has to ride along, and a fresh request
+context carries a different one and would prove nothing. §8's limit is unchanged:
+a private window still defeats it.
+
+---
+
+## v1.5 D2 — where a reaction comes from
+
+**Half of D2 was already built, and the reported half was not the broken one.**
+`SelfViewPiP` has carried `data-participant` since C1, with a comment saying it
+is there so the local user's reaction has an origin — so `anchorFor` already
+resolved to the PiP rather than falling through to its `{ left: 50, bottom: 30 }`
+fallback. D2's premise, "a reaction anchored to a tile that no longer exists",
+was fixed in the change that created the problem.
+
+What was genuinely unverified is D2's other sentence: *"Both cases must clear the
+control bar's band rather than passing behind it."* There is a real reason to
+doubt it. The overlay is `absolute inset-0` on a stage with
+`pb-[var(--parley-controls-h)]`, and an absolutely positioned box resolves
+against the **padding box** — so the overlay covers the bar's strip and nothing
+in the layout stops a reaction being drawn under it. `MuteRequestPrompt` already
+carries a comment about this exact property; it is the third time this project
+has been caught by it.
+
+Both cases pass. **Two tests, because either alone passes against the bug.**
+
+### The clearance assertion was wrong first, in the way this project keeps finding
+
+It compared `getBoundingClientRect().top` against the bar's top. The reaction
+rises on `transform`, so that rect says where it *is* by the time it is read, and
+the claim is about where it *starts* — the lowest point of its path. A rect read
+a moment later clears the bar whatever the origin was. It measured something
+adjacent to its claim and would have passed vacuously.
+
+Now it reads the untransformed origin — `overlay.clientHeight - (offsetTop +
+offsetHeight)` — against the band. And the band is the stage's **computed**
+`padding-bottom` rather than `--parley-controls-h` parsed: the token is `6rem`
+until `RoomControls` publishes a measured height over it, and `parseFloat("6rem")`
+is 6. The measurement bore that out — the band resolves to **88px**, not the
+token default's 96.
+
+### Both guards proven by deletion
+
+| Mutation | Result |
+|---|---|
+| `data-participant` removed from the PiP | origin lands **511px** from the PiP's centre — fails |
+| reaction origin forced to `bottom: 0%` | starts **0px** above the floor, inside an 88px band — both cases fail |
+
+The first mutation is the more interesting one: with the anchor gone, **the
+clearance assertion still passed.** A reaction rising from the middle of the room
+clears the bar too, so clearance alone cannot tell the fixed fallback from a real
+anchor. That is why the proximity check exists, and it is now demonstrated rather
+than argued.
+
+---
+
+## v1.5 documents — §3.6 and §3.10b
+
+The two sections held back until their code was verified.
+
+**§3.6** said a reaction rises "from the sender's tile". That stopped being true
+in v1.3, when C1 lifted the local participant out of the grid into a corner PiP
+and nobody re-read the sentence — the same shift moved §3.4's layout table from
+counting heads to counting tiles, and went unnoticed for the same reason: a
+change to *where somebody is* reads as a layout decision. The origin is now
+stated as a table over room size, with the clearance rule and the layer position
+(above `--layer-self`, below `--layer-chrome`) written down.
+
+**§3.10b** is new — the PRD had no section for `/schedule/[code]` at all, so the
+attendance record had no home to be added to. It carries the two-source design
+and the reason it is a *count* argument rather than a schema preference: a denied
+person given a session row with a null `left_at` is indistinguishable from
+somebody currently in the meeting, because `mp_open_session_idx` is partial on
+exactly that, and the dashboard's live figure counts those rows. Every gated
+meeting would report phantom attendees.
+
+It is numbered `3.10b` and sits after `3.10a`, which keeps its letter because
+three entries in this file already cite it.

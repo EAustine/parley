@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures";
 import { signIn } from "./auth";
 import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
 import { EMPTY_DASHBOARD, PUBLIC_STATES, SIGNED_IN_STATES } from "./states";
 import { assertFloor } from "./targets";
 
@@ -260,6 +261,79 @@ test.describe("touch targets, in the room", () => {
       });
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+  });
+
+  /**
+   * The queue's two answers — v1.5 A2, and the other half of the state-list gap.
+   *
+   * The waiting screen went into the state list, because it is one page and one
+   * person. This cannot: a queue exists only when a host is in a gated meeting
+   * *and* somebody is waiting, which is two browsers and a decision. A list of
+   * states reached by navigation has no way to express that, which is precisely
+   * why Allow and Deny had never been measured — the plan's guardrail names
+   * them as room-surface controls on the 44px floor, and nothing was checking.
+   */
+  test("the queue's Allow and Deny clear the 44px floor", async ({
+    browser,
+    request,
+    hostedMeeting,
+  }) => {
+    test.setTimeout(180_000);
+    // The fixture meeting has no door, so this one is made here.
+    const host = await createFixtureHost();
+    const code = await createMeeting({ host: host.id, waitingRoom: true });
+    void hostedMeeting;
+
+    participant = await joinAs(browser, "Abena Poku", {
+      code,
+      withMedia: false,
+      asHost: host.email,
+    });
+    const { page } = participant;
+
+    try {
+      // Asserted, so a queue that never formed says so here rather than
+      // twenty seconds later as "region not found".
+      const queued = await request.post(`/api/meetings/${code}/waiting`, {
+        data: { displayName: "Kwabena Osei" },
+      });
+      expect(
+        queued.status(),
+        `nobody joined the queue: ${JSON.stringify(await queued.json()).slice(0, 160)}`,
+      ).toBe(200);
+
+      for (const viewport of [DESKTOP, PHONE]) {
+        await page.setViewportSize(viewport);
+        await wakeControls(page);
+
+        /*
+         * Open it only when it is shut. The first version clicked on every
+         * iteration, so the second press *closed* the panel the first had
+         * opened and the region vanished — a test failing on its own second
+         * lap, which reads exactly like the feature being broken.
+         */
+        const panel = page.locator("#room-panel");
+        if (await panel.evaluate((el) => el.hasAttribute("hidden"))) {
+          await page.getByRole("button", { name: /^Participants/ }).click();
+        }
+        await expect(
+          page.getByRole("tab", { name: "People" }),
+          "the People tab is not the selected one, so the queue cannot be on screen",
+        ).toHaveAttribute("aria-selected", "true", { timeout: 20_000 });
+
+        await expect(
+          page.getByRole("region", { name: "Waiting to join" }),
+        ).toBeVisible({ timeout: 20_000 });
+
+        await assertFloor(page, {
+          floor: 44,
+          atLeast: 4,
+          label: `the room, a queue in People, at ${viewport.width}px`,
+        });
+      }
+    } finally {
+      await deleteFixtureHost(host.id);
     }
   });
 

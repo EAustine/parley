@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { initialOf } from "@/lib/room/participant";
-import type { WaitingRequest } from "@/lib/hooks/useWaitingQueue";
+import type { BlockedPerson, WaitingRequest } from "@/lib/hooks/useWaitingQueue";
 
 /**
  * Who is at the door — BUILD-PLAN v1.5 A2.
@@ -108,6 +108,71 @@ export function WaitingQueue({
       </ul>
 
       {/* The queue is a different kind of list from the roster below it. */}
+      <hr className="mt-4 border-t border-border" />
+    </section>
+  );
+}
+
+
+/**
+ * Who is shut out, and the way back — BUILD-PLAN v1.5 B2.
+ *
+ * > "'Let them back in' clears the row. Removing the wrong person and being
+ * > unable to fix it for ten minutes is a worse outcome than the one the block
+ * > exists to prevent, and it is the more likely of the two."
+ *
+ * That asymmetry is why this is a visible list rather than a thing that expires
+ * quietly. A host who mis-tapped Remove has no other way to know they did, and
+ * ten minutes is a long time to be locked out of a meeting you were invited to.
+ *
+ * Below the queue and above the roster: a decision already made outranks a list
+ * of people and is outranked by decisions still pending.
+ */
+export function BlockedList({
+  blocked,
+  onLetBackIn,
+}: {
+  blocked: BlockedPerson[];
+  onLetBackIn: (id: string) => void;
+}) {
+  if (blocked.length === 0) return null;
+
+  return (
+    <section aria-label="Blocked" className="mb-4">
+      <div className="mb-2.5 flex items-baseline gap-2 px-2">
+        <h3 className="type-small font-semibold">Blocked</h3>
+        <span className="type-caption tabular-nums text-muted-foreground">
+          {blocked.length}
+        </span>
+      </div>
+
+      <ul>
+        {blocked.map((person) => (
+          <li key={person.id} className="flex items-center gap-3 rounded-lg px-2 py-2">
+            <div className="min-w-0 flex-1">
+              <span className="type-body block truncate">{person.name}</span>
+              <span className="type-caption block truncate text-muted-foreground">
+                {/*
+                  Denied and removed are different things that happened, and the
+                  host is the one person who should be told which — the same
+                  distinction A3 draws for the person on the other side of it.
+                */}
+                {person.reason === "removed" ? "Removed" : "Denied entry"}
+                {person.returned ? " · tried to rejoin" : ""}
+              </span>
+            </div>
+            <Button
+              size="touch"
+              variant="outline"
+              onClick={() => onLetBackIn(person.id)}
+              aria-label={`Let ${person.name} back in`}
+            >
+              Let back in
+            </Button>
+          </li>
+        ))}
+      </ul>
+
       <hr className="mt-4 border-t border-border" />
     </section>
   );

@@ -25,6 +25,16 @@ import { POLL_MS } from "@/lib/meetings/waiting";
  * renders what it finds.
  */
 
+/** Somebody the host shut out, and whether they have tried to come back. */
+export type BlockedPerson = {
+  id: string;
+  name: string;
+  reason: "denied" | "removed";
+  expiresAt: string;
+  /** `attempted_at > notified_at` — they came back and the host has not been told. */
+  returned: boolean;
+};
+
 export type WaitingRequest = {
   id: string;
   name: string;
@@ -49,16 +59,31 @@ export function useWaitingQueue({
   isHost: boolean;
 }) {
   const [waiting, setWaiting] = useState<WaitingRequest[]>([]);
+  const [blocked, setBlocked] = useState<BlockedPerson[]>([]);
   const [deciding, setDeciding] = useState<string | null>(null);
   /** What the last toast said, so an unchanged queue does not re-announce. */
   const announced = useRef(0);
+  /**
+   * Blocks this session has already announced.
+   *
+   * The server rule (`notified_at is null`) is the durable one and survives a
+   * reload; this only closes the window between raising the toast and the
+   * `POST` that marks it, during which another poll can still see `returned`.
+   * Belt to that brace — and deliberately not the whole mechanism, because a
+   * client-side memory alone re-announces on every reload.
+   */
+  const toldAbout = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
     try {
       const response = await fetch(`/api/meetings/${code}/waiting`);
       if (!response.ok) return;
-      const body = (await response.json()) as { waiting: WaitingRequest[] };
+      const body = (await response.json()) as {
+        waiting: WaitingRequest[];
+        blocked: BlockedPerson[];
+      };
       setWaiting(body.waiting ?? []);
+      setBlocked(body.blocked ?? []);
     } catch {
       // A blip is not an empty queue. Leaving the last known list up is the
       // safer wrong answer: it shows a request that may already be gone, rather
@@ -103,6 +128,41 @@ export function useWaitingQueue({
     );
   }, [waiting, isHost]);
 
+  /**
+   * Somebody came back — announced once, then marked seen — v1.5 B2.
+   *
+   * The server decides *whether* to announce (`attempted_at > notified_at`) and
+   * this closes the loop by marking it. Doing it the other way round — the
+   * client remembering what it has said — re-announces on every reload, so a
+   * host with two tabs still gets a stream, which is the thing B2 forbids.
+   *
+   * Its own toast id per person, because two different people returning are two
+   * different facts. The queue's single toast is the opposite case: ten people
+   * waiting is one fact with a number in it.
+   */
+  useEffect(() => {
+    if (!isHost) return;
+    for (const person of blocked) {
+      if (!person.returned || toldAbout.current.has(person.id)) continue;
+      toldAbout.current.add(person.id);
+      toast(`${person.name} tried to rejoin`, {
+        id: `parley-blocked-${person.id}`,
+        description: "They're blocked for a few more minutes. Open People to let them back in.",
+      });
+      void fetch(`/api/meetings/${code}/blocks/${person.id}`, { method: "POST" });
+    }
+  }, [blocked, code, isHost]);
+
+  /** B2's undo. Clearing the row is all it takes — the door re-reads it. */
+  const letBackIn = useCallback(
+    async (id: string) => {
+      setBlocked((current) => current.filter((b) => b.id !== id));
+      await fetch(`/api/meetings/${code}/blocks/${id}`, { method: "DELETE" });
+      void refresh();
+    },
+    [code, refresh],
+  );
+
   const decide = useCallback(
     async (id: string, decision: "admit" | "deny") => {
       setDeciding(id);
@@ -124,5 +184,5 @@ export function useWaitingQueue({
     [code, refresh],
   );
 
-  return { waiting, decide, deciding };
+  return { waiting, blocked, decide, deciding, letBackIn };
 }

@@ -41,13 +41,31 @@ export async function blockFor(
 ): Promise<{ reason: "denied" | "removed"; retryAfter: number } | null> {
   const { data } = await db
     .from("meeting_blocks")
-    .select("reason, expires_at")
+    .select("id, reason, expires_at")
     .eq("meeting_id", meetingId)
     .eq("subject_type", who.subjectType)
     .eq("subject", who.subject)
     .maybeSingle();
 
   if (!data || !blockIsLive(data.expires_at, now)) return null;
+
+  /**
+   * They came back — v1.5 B2, recorded here because this is the only place that
+   * knows.
+   *
+   * Not awaited on the caller's critical path in spirit, but awaited in fact:
+   * the refusal is already going to be returned, and a fire-and-forget write in
+   * a serverless function is a write that may not happen. One row, one column.
+   *
+   * `notified_at` is deliberately untouched. The pair `attempted_at >
+   * notified_at` is what makes the host's notice fire **once rather than once
+   * per attempt**, and the host's own poll is what closes it — a person
+   * hammering reload bumps this every time and is announced exactly once.
+   */
+  await db
+    .from("meeting_blocks")
+    .update({ attempted_at: new Date(now).toISOString() })
+    .eq("id", data.id);
   return {
     reason: data.reason as "denied" | "removed",
     retryAfter: blockRetryAfter(data.expires_at, now),

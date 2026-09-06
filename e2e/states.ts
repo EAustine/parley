@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-import { endedCode, scheduledCode } from "./fixtures";
+import { endedCode, gatedCode, scheduledCode } from "./fixtures";
 import { generateMeetingCode } from "@/lib/meetings/code";
 
 /**
@@ -102,6 +102,39 @@ export const PUBLIC_STATES: State<string>[] = [
   { name: "a meeting not yet started", floor: 44, atLeast: 3, themes: FORCED_DARK, reach: (page) => at(`/j/${scheduledCode()}`)(page) },
   { name: "an unknown code", floor: 44, atLeast: 2, themes: FORCED_DARK, reach: (page) => at(`/j/${UNKNOWN_CODE}`)(page) },
   { name: "sign-in", floor: 24, atLeast: 5, themes: RESPONSIVE, reach: at("/sign-in") },
+  /**
+   * Held at the door — v1.5 A3, and the gap this entry closes.
+   *
+   * Neither check had ever seen this screen. `targets.spec` and `a11y.spec`
+   * walk this list, and no state in it had a door or a queue, so the waiting
+   * screen's Leave had never been measured against the 44px floor and axe had
+   * never scanned the surface — while the plan's guardrail names it explicitly
+   * as a room-surface control that must clear the floor.
+   *
+   * **`reach` drives pre-join rather than navigating**, because there is no URL
+   * for this state: it is what `/j/[code]` becomes after Join, on a meeting
+   * whose door is shut. Every other entry here is a `goto`, and that is exactly
+   * why this one was missing — a list of URLs cannot hold a state you have to
+   * arrive at.
+   *
+   * The gated meeting has no host and never will, so this is stable across
+   * workers: the first gate holds everybody, which is also what makes it safe
+   * to share.
+   */
+  {
+    name: "held at the door",
+    floor: 44,
+    atLeast: 1,
+    themes: FORCED_DARK,
+    reach: async (page) => {
+      await page.goto(`/j/${gatedCode()}`);
+      await page.getByLabel("Your name").fill("Ama Serwaa");
+      await page.getByRole("button", { name: /^Join/ }).click();
+      await page
+        .getByRole("heading", { name: /Waiting for the host|host hasn/ })
+        .waitFor({ timeout: 30_000 });
+    },
+  },
 ];
 
 /**

@@ -235,7 +235,47 @@ export async function GET(
     .eq("status", "waiting")
     .order("requested_at", { ascending: true });
 
+  /**
+   * The blocks, alongside the queue — v1.5 B2.
+   *
+   * On the same response because they are one question for the host: who is at
+   * the door, and who has been shut out of it. Two polls for one panel would
+   * double the traffic §7 counts, for no gain.
+   *
+   * `returned` is `attempted_at > notified_at`, which is what makes the notice
+   * fire once rather than once per attempt. The client marks them notified, so
+   * somebody hammering reload bumps `attempted_at` every time and is announced
+   * exactly once.
+   */
+  const nowIso = new Date().toISOString();
+  const { data: blocks } = await admin
+    .from("meeting_blocks")
+    .select("id, display_name, reason, expires_at, attempted_at, notified_at")
+    .eq("meeting_id", meeting.id)
+    .gt("expires_at", nowIso)
+    .order("attempted_at", { ascending: false, nullsFirst: false });
+
   return NextResponse.json({
+    blocked: (blocks ?? []).map((b) => ({
+      id: b.id,
+      name: b.display_name ?? "Someone",
+      reason: b.reason,
+      expiresAt: b.expires_at,
+      /*
+       * Once per block, not once per attempt-since-telling.
+       *
+       * This was `attempted_at > notified_at`, which becomes true again the
+       * moment they knock a *fourth* time — so telling the host reset the rule
+       * instead of ending it, and five attempts produced three notices. That is
+       * literally the behaviour B2 forbids, written as if it prevented it.
+       *
+       * `notified_at is null` is the rule: the host is told the first time
+       * somebody comes back and never again for that block. Clearing the block
+       * removes the row, so a person let back in and blocked again is a new row
+       * and a new notice, which is right — that is a new fact.
+       */
+      returned: Boolean(b.attempted_at) && !b.notified_at,
+    })),
     waiting: (waiting ?? []).map((w) => ({
       id: w.id,
       name: w.display_name,
