@@ -2,7 +2,7 @@ import { expect, test } from "./fixtures";
 
 import { signIn } from "./auth";
 import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
-import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { joinAs, leave, wakeControls, type Participant, GATED_JOIN_TIMEOUT } from "./room.helpers";
 
 /**
  * The block, and the way out of it — BUILD-PLAN v1.5 B1 and B2.
@@ -56,7 +56,7 @@ test.describe("blocked, and let back in", () => {
     browser,
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     // Not gated: this is about removal, and a door in the way would mean the
     // participant never got in to be removed from.
     const { code, host, participant } = await hostInside(browser, false);
@@ -129,7 +129,7 @@ test.describe("blocked, and let back in", () => {
   test("removing a guest keeps them out, by device rather than identity", async ({
     browser,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser, false);
     const guest = await joinAs(browser, "Kwabena Osei", { code, withMedia: false });
     open.push(guest);
@@ -180,7 +180,7 @@ test.describe("blocked, and let back in", () => {
     browser,
     request,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     try {
       await request.post(`/api/meetings/${code}/waiting`, {
@@ -245,7 +245,7 @@ test.describe("blocked, and let back in", () => {
     browser,
     request,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     try {
       await request.post(`/api/meetings/${code}/waiting`, {

@@ -1,7 +1,7 @@
 import { expect, test } from "./fixtures";
 
 import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
-import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
+import { joinAs, leave, wakeControls, type Participant, GATED_JOIN_TIMEOUT } from "./room.helpers";
 import { POLL_MS } from "../lib/meetings/waiting";
 
 /** Two poll cycles plus slack: every arrival has been seen and announced by now. */
@@ -61,7 +61,7 @@ test.describe("the queue in People", () => {
     browser,
     request,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     try {
       const badge = participant.page.getByRole("button", { name: /^Participants/ });
@@ -104,7 +104,7 @@ test.describe("the queue in People", () => {
    * toasts rather than checking that a toast appeared.
    */
   test("three arrivals produce one toast, not three", async ({ browser, request }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     try {
       await wakeControls(participant.page);
@@ -186,7 +186,7 @@ test.describe("the queue in People", () => {
     browser,
     request,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     try {
       await queue(request, code, "Kwabena Osei");
@@ -231,7 +231,7 @@ test.describe("the queue in People", () => {
    * is wired to it, which is the half a route test cannot see.
    */
   test("Deny turns them away and blocks them", async ({ browser, request }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     try {
       await queue(request, code, "Kwabena Osei");
@@ -267,7 +267,7 @@ test.describe("the queue in People", () => {
     browser,
     request,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host, participant } = await hostInside(browser);
     /*
      * Signed in, and not the host — which is the only kind of non-host who can

@@ -66,6 +66,33 @@ export async function settleAnimations(page: Page) {
   );
 }
 
+/**
+ * The budget for a test that drives a **browser** through a gated join.
+ *
+ * 180s was set when the waiting room's presence check could not reach LiveKit
+ * in practice: `participant_joined` was never delivered, so
+ * `meeting_participants` held no host rows, and `hostIsPresent` always took its
+ * cheap branch and returned from the database alone.
+ *
+ * Two changes landed together and made that false. The webhook is configured,
+ * so host rows now exist; and v1.5 A1's rule that **the permissive answer is the
+ * one that gets confirmed** means a host row present costs a LiveKit
+ * `listParticipants` round trip on every gated join. That is the intended
+ * design — A1 calls the confirm step "not optional" because a missed
+ * `participant_left` otherwise holds the door open forever — and it is not free.
+ *
+ * The symptom was a test whose assertions all passed, timing out in `afterEach`
+ * at 3.3 minutes, and passing in 58 seconds when run alone. A budget that fits
+ * only an unloaded machine reports load as failure, and a suite that cries wolf
+ * gets its real failures ignored.
+ *
+ * **Raising it is not the same as accepting the latency.** The cost is one
+ * external call per gated join and it is worth watching; "never cache the yes"
+ * rules out the obvious mitigation, deliberately, because a cached permissive
+ * answer is the stale-row bug with extra steps.
+ */
+export const GATED_JOIN_TIMEOUT = 300_000;
+
 export async function joinAs(
   browser: Browser,
   name: string,

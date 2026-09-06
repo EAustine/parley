@@ -1,7 +1,7 @@
 import { expect, test } from "./fixtures";
 
 import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
-import { joinAs, leave, type Participant } from "./room.helpers";
+import { joinAs, leave, type Participant, GATED_JOIN_TIMEOUT } from "./room.helpers";
 
 /**
  * The waiting screen — BUILD-PLAN v1.5 A3.
@@ -146,7 +146,7 @@ test.describe("waiting at the door", () => {
    * token, so admission has to route back through it.
    */
   test("goes into the meeting when the host allows", async ({ browser, page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host } = await gated();
     try {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
@@ -190,7 +190,7 @@ test.describe("waiting at the door", () => {
     browser,
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(GATED_JOIN_TIMEOUT);
     const { code, host } = await gated();
     try {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
