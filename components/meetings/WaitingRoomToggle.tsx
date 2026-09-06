@@ -40,6 +40,8 @@ export function WaitingRoomToggle({
       onChange={door.set}
       disabled={door.saving}
       describedBy={`${id}-help`}
+      // Pre-join is a touch-primary surface: 44px, not 28.
+      touch
     />
   );
 }

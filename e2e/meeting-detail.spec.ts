@@ -211,14 +211,27 @@ test.describe("the schedule form", () => {
    * a screen reader's outline is how someone skips between them, and a styled
    * `<p>` would look identical and be absent from it.
    */
-  test("is three sections, and they are real headings", async ({ page }) => {
+  /**
+   * **Four sections now, where v1.3 D3 specified three.**
+   *
+   * v1.5 A1 added "Who gets in" — the waiting room, which had been specified in
+   * §3.2 since the start of v1.5 and had no control anywhere until then. The
+   * alternatives were worse: "Check it" is a preview of what was entered and a
+   * live control does not belong inside it, and the door is not a fact about
+   * *when* the meeting is.
+   *
+   * The list is still asserted exactly rather than loosened to a length or a
+   * subset. This test exists to pin the structure D3 argued for, and a fifth
+   * section arriving unannounced should still fail it.
+   */
+  test("is four sections, and they are real headings", async ({ page }) => {
     const host = await createFixtureHost();
     try {
       await signIn(page, host.email, "/schedule");
       await expect(page.getByLabel("Title")).toBeVisible();
       expect(
         await page.getByRole("heading", { level: 2 }).allTextContents(),
-      ).toEqual(["What it is", "When it is", "Check it"]);
+      ).toEqual(["What it is", "When it is", "Who gets in", "Check it"]);
     } finally {
       await deleteFixtureHost(host.id);
     }

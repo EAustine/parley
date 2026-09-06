@@ -32,35 +32,42 @@ export function DoorField({
   onChange,
   disabled = false,
   describedBy,
+  touch = false,
 }: {
   id: string;
   checked: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
   describedBy?: string;
+  /**
+   * Pre-join and room surfaces take the 44px floor; dashboard and scheduling
+   * screens take 24. **The floor applies to the input, not to a wrapper around
+   * it** — `e2e/targets.ts` measures every `input`'s own box, which is the
+   * whole point of measuring geometry rather than resolving classes.
+   *
+   * A first version padded a 44px `<label>` around a 16px checkbox and read as
+   * correct while rendering a 16px target. That is precisely the failure
+   * `CLAUDE.md` describes: "a class-resolving check reads `h-11 w-11` and
+   * reports 44px while a parent constraint delivers something smaller."
+   */
+  touch?: boolean;
 }) {
   return (
     <div className="flex items-start gap-3">
       {/*
-        44px of hit area on a 16px box — the room and pre-join floor. The input
-        is centred in a padded label rather than scaled up, so the glyph stays
-        crisp and the target is honest rather than declared.
+        The input *is* the target. 28px on document surfaces rather than exactly
+        24 — the same reasoning the back-link on the meeting page carries, that
+        "a control that passes a floor by 0.00px passes on rounding".
       */}
-      <label
-        htmlFor={id}
-        className="-m-3 flex size-11 shrink-0 cursor-pointer items-center justify-center p-3"
-      >
-        <input
-          id={id}
-          type="checkbox"
-          checked={checked}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
-          aria-describedby={describedBy}
-          className="size-4 accent-[var(--foreground)] disabled:opacity-50"
-        />
-        <span className="sr-only">Waiting room</span>
-      </label>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-describedby={describedBy}
+        className={`${touch ? "size-11" : "size-7"} shrink-0 cursor-pointer accent-[var(--foreground)] disabled:opacity-50`}
+      />
       <div className="min-w-0">
         <label htmlFor={id} className="type-body block cursor-pointer">
           Waiting room
