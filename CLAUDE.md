@@ -497,6 +497,10 @@ Earned the hard way; each one comes from a check that passed while exercising th
 - Route handlers return typed JSON with a stable `error` string, never a raw exception
 - Meeting code alphabet: `abcdefghjkmnpqrstuvwxyz23456789` — no `i`, `l`, `o`, `0`, `1`. Format `xxx-xxxx-xxx`.
 - **Test fixtures derive from the same constants as the code under test.** Hand-written codes containing `0` or `1` are rejected as malformed before any lookup, so a miss-tier test using them silently exercises the wrong layer and passes for the wrong reason. Generate them from the exported alphabet; never type them.
+
+  **The sharper form: a fixture is shaped like what the *producer* sends, never like what the *reader* expects.** Two in one pass were built the wrong way round and both passed while proving nothing. `check:webhook` sent `metadata: { name }`, a key the token has never written — the handler's `meta.name` lookup found something that existed only in the fixture, so every real attendance row was written "Guest" while the check ran green. `addWaiting` wrote a bare user id as `subject` where `subjectFor` builds `user_<id>`; it inserted cleanly, matched nothing, and a test about an admitted person would have exercised the not-admitted path.
+
+  Both are invisible in the ordinary way: the row appears, the assertion passes, and the field that was never read simply holds its default. When a fixture stands in for a producer, copy the producer's own construction rather than writing what the consumer wants to find — and assert the *value* that travelled, not just that a row exists. Counting rows cannot tell a session from a session labelled wrongly.
 - Generate-and-insert with retry on unique violation. Never check-then-insert.
 - One component per file. Colocate under `components/room/`, `components/schedule/`, `components/ui/`.
 

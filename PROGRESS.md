@@ -9017,3 +9017,51 @@ would have exercised the not-admitted path and passed for the wrong reason. The
 same shape as `check:webhook`'s participant fixture sending a metadata key the
 token has never written. Twice in one pass, from the same cause: a fixture
 written to look like what the reader wants instead of what the producer sends.
+
+---
+
+## Documents, after the attendance failure
+
+Four gaps, and the first two are the ones that would have prevented it.
+
+**§3.2 gained the presence check**, which it had never described — only the two
+gates it produces. The asymmetry is the point: the *permissive* answer is the one
+that gets confirmed, because a database saying "host present" when they are
+absent means somebody walks into an empty room, and a database saying "absent"
+when they are present costs seconds. The confirm step is not optional, and the
+reason is written down: a missed `participant_left` leaves an open row for a host
+who went home hours ago.
+
+It also records why the inverted version was invisible. `participant_joined` was
+never delivered, the table held no host rows, and the branch that trusts a row
+was never taken. **A correctness property that cannot be reached is not a
+correctness property**, and no suite could have said so while the table stayed
+empty.
+
+And the rule order, with its cost: admission outranks presence, because an
+`admitted` row is written by a host from inside the room and is therefore
+evidence of presence rather than a competing inference — at the price of a host
+who admits somebody and leaves before they connect.
+
+**§3.10b gained the admitted fallback**, framed as resilience rather than
+display: a session is the better record and was briefly the only one, which made
+the section depend on a single delivery path. It says plainly that this does not
+make the webhook optional, because an ungated meeting has no queue to fall back
+on.
+
+**§7 gained the webhook's four events**, stated as a *configuration* fact with
+the note that nothing in this repo can check it — `check:webhook` signs its own
+events, the fixtures write rows directly, and the half that failed is a setting
+in someone else's dashboard. Plus `PATCH` carrying the door, why an instant
+meeting accepts that one field, why it does not touch the calendar `SEQUENCE`,
+and why the door's value rides on the queue poll rather than a second endpoint.
+
+**`CLAUDE.md` gained the sharper form of the fixture rule.** The existing line
+said fixtures derive from the same constants as the code under test. The version
+that would have caught both of this pass's failures is: **a fixture is shaped
+like what the *producer* sends, never like what the *reader* expects.**
+`check:webhook` sent a metadata key the token has never written; `addWaiting`
+wrote a bare user id where `subjectFor` builds `user_<id>`. Both inserted
+cleanly, matched nothing, and passed. With the corollary: assert the value that
+travelled, not just that a row exists — counting rows cannot tell a session from
+a session labelled wrongly.

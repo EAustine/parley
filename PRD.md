@@ -119,6 +119,25 @@ The host is never held. There is no co-host, so a door that stops them is a meet
 
 Host presence means **joined, not sitting in pre-join**. A host choosing a camera has not arrived, so a queue can form while they pick a microphone — which is the feature working, not a fault.
 
+**How presence is decided, and why the two errors are not symmetric.** The database is read first and LiveKit confirms — but only in one direction.
+
+| The database says | Actually | Cost |
+|---|---|---|
+| Host present | Absent | **Somebody walks into an empty room.** The exact failure this feature exists to prevent |
+| Host absent | Present | Somebody waits a moment longer |
+
+So the *permissive* answer is the one that gets confirmed: a row saying a host is here is checked against LiveKit's participant list before the door opens, and a row saying nobody is here is trusted, because being wrong about it costs seconds. **The confirm step is not optional.** LiveKit's webhooks are push-based with no delivery guarantee, so a missed `participant_left` leaves an open row for a host who went home hours ago, and without the confirm the database would answer "host present" indefinitely.
+
+The reverse — trusting the yes and confirming the no — shipped and was invisible, because `participant_joined` was not being delivered at all: the table held no host rows, every check fell through to LiveKit, and the branch that trusts a row was never taken. Configuring the webhook is what brought it to life. **A correctness property that cannot be reached is not a correctness property**, and nothing in the suite could have said so while the table stayed empty.
+
+If LiveKit is unreachable, hold. Failing open turns the feature off silently during an incident, which is the worst moment for it to be off. Never cache the yes: a cached permissive answer is the stale row with extra steps.
+
+**Admission outranks presence, and the order is load-bearing.** An `admitted` row can only be written by a host answering the queue, and the queue is reachable only from inside the room — so the row is evidence a host was there, produced by the host, about this person. Weighing it against an inference drawn from a session table has it backwards. The mitigation this section already relies on — "somebody waits a moment longer, and the host lets them in" — is only true if letting them in actually works while presence says no.
+
+It matters more because the presence check does not fall back to LiveKit on a database *no*: without this ordering, a spell of missed deliveries would make a gated meeting unenterable rather than slow, including for the people the host had already admitted. The narrow cost, stated rather than discovered: a host who admits somebody and then leaves before they connect lets that person into an empty room. That is seconds wide, it took a deliberate act, and it is the same trade this section already makes for a host who leaves a meeting running.
+
+**Signing in does not skip the first gate.** Everybody waits for a host; signing in skips only the individual admission.
+
 **Acceptance**
 - Code is displayed in mono with letter-spacing, and is selectable as a unit
 - Copy link puts the full URL on the clipboard and confirms with a toast that says "Link copied"
@@ -488,6 +507,16 @@ A denied person's name is a string typed by somebody who never got in. It runs t
 
 **The record reads two tables, and the reason is a count rather than a schema preference.** A denied person never joined, so no `participant_joined` ever fired and they have no session row. Giving them one looks obvious and is wrong twice: it writes a join that never happened, and `mp_open_session_idx` is partial on `left_at is null` — which is exactly the set the dashboard's live figure counts. A denied person inserted without a `left_at` is indistinguishable from somebody currently in the meeting, so every gated meeting would report phantom attendees on the surface people trust most. They already have a row in `meeting_waiting` carrying the name and the refusal, so the record merges the two for display. No migration, and no way to corrupt a count.
 
+**It reads the *admitted* rows too, and that is a resilience rule rather than a display one.** A session row is written by the `participant_joined` webhook and is the better record — it carries arrival and departure — but for a while it was the only record, and that made the whole section depend on one delivery path. A host held a scheduled meeting, six people came, and this page said **"Nobody joined this meeting"**: every one of them had been admitted through the queue, and not a single `participant_joined` had ever arrived, because LiveKit had never been configured to send it.
+
+The queue already knew. For a gated meeting the host personally allowed each of those people, and that decision is durable, first-party, and written by us rather than delivered to us. So the record surfaces it.
+
+**They read "Admitted", never "Joined".** The host opened the door; without a session the server never saw them arrive, and saying "joined" claims more than is known — the same distinction this section already draws between a name that was attested and one that was typed. The timestamp shown is when they were let in.
+
+**Sessions win where both exist**, matched on the account first and the entered name second. Once the participant events are configured every admitted person has both rows, and reading both unmatched would replace "nobody was here" with "everybody twice" — a new wrong answer in place of the old one.
+
+This does not make the webhook optional. An **ungated** meeting has no queue to fall back on, so it still has no record at all if the events stop arriving; that is a configuration check, and it lives in `MANUAL.md` rather than being assumed.
+
 **An empty record is a fact, not a gap.** A meeting that ended with nobody in it is an ordinary outcome — a link nobody opened, a call that never started — and "Nobody joined this meeting" beats an absent section, which reads as data lost.
 
 **Acceptance**
@@ -802,13 +831,23 @@ Ended meetings resolve for 30 days so the join page can show "This meeting has e
 |---|---|---|---|
 | `/api/livekit/token` | POST | optional | Mint a room token |
 | `/api/meetings` | POST | required | Create meeting |
-| `/api/meetings/[code]` | PATCH | host | Update scheduled meeting |
+| `/api/meetings/[code]` | PATCH | host | Update scheduled meeting, or set the waiting room |
 | `/api/meetings/[code]` | DELETE | host | Cancel |
 | `/api/meetings/[code]/ics` | GET | public | Calendar file |
-| `/api/livekit/webhook` | POST | signature | Room lifecycle → update status |
+| `/api/livekit/webhook` | POST | signature | Room lifecycle and attendance — **four events** |
 | `/api/meetings/[code]/waiting` | POST | optional | Join the queue, or ask where you stand |
-| `/api/meetings/[code]/waiting` | GET | host | Who is waiting |
+| `/api/meetings/[code]/waiting` | GET | host | Who is waiting, who is blocked, and the door's current state |
 | `/api/meetings/[code]/waiting/[id]` | POST | host | Allow or deny; denying writes the block |
+
+**The webhook needs all four events, and this is a configuration fact rather than a code fact.** `room_started` and `room_finished` write the meeting's lifecycle; `participant_joined` and `participant_left` write `meeting_participants`, which §3.10b's record is built from and which nothing else writes. Subscribing to only the first pair leaves the attendance record silently empty — that is not hypothetical, it is what shipped, because the handler's own docblock said two events were wanted and the subscription followed the sentence.
+
+No check in this repo can see it. `check:webhook` signs its own events and posts them, which proves the handler; the e2e fixtures write session rows directly and say so. Both exercise our half, and the half that failed is a setting in someone else's dashboard. `MANUAL.md` carries it as a check.
+
+**`PATCH` carries the door, and it is the only field an *instant* meeting accepts.** The guard that refuses a meeting with no `scheduled_start` is right for title, times and timezone — an instant meeting has none of them — and wrong for the one field every meeting has. Instant meetings are the case that most needs it, because §3.2 creates them with the door open.
+
+**Setting the door does not increment the calendar `SEQUENCE`.** §3.9 bumps it when a scheduled meeting is edited so clients re-read the event; nothing about the waiting room reaches the `.ics`, so bumping it would announce a revision of an unchanged event and re-notify every attendee about a setting they cannot observe.
+
+**The waiting `GET` carries the door's current value** rather than offering a second endpoint for it. The host is already polling this route every couple of seconds for the queue, so the room's control reads the same answer the queue does and cannot drift from it — one fact with one source, refreshed on a cadence that already exists.
 
 ### Token endpoint contract
 
