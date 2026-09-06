@@ -67,9 +67,9 @@ export default async function ScheduledMeetingPage({
         .order("joined_at", { ascending: true }),
       supabase
         .from("meeting_waiting")
-        .select("id, display_name, user_id, subject_type, decided_at")
+        .select("id, display_name, user_id, subject_type, status, decided_at")
         .eq("meeting_id", meeting.id)
-        .eq("status", "denied")
+        .in("status", ["denied", "admitted"])
         .order("decided_at", { ascending: true }),
     ]);
 
@@ -85,14 +85,49 @@ export default async function ScheduledMeetingPage({
         outcome: row.removed_at ? "removed" : "joined",
       });
     }
+    /*
+     * **Admitted people, from the queue rather than from a session.**
+     *
+     * A session row is written by the `participant_joined` webhook and is the
+     * better record — it carries arrival and departure. But it is the *only*
+     * record, and that made the whole section depend on one delivery path:
+     * a meeting where six people were let in and every webhook was missed read
+     * "Nobody joined this meeting", which is a factual error about the thing
+     * the host came to check.
+     *
+     * The queue already knows. For a gated meeting the host personally allowed
+     * each of these people, and that decision is durable, first-party, and
+     * written by us rather than delivered to us.
+     *
+     * **Sessions win where both exist**, matched on the account first and the
+     * entered name second. Once the participant events are configured, an
+     * admitted person has both rows, and listing them twice would be a new
+     * wrong answer in place of the old one.
+     */
+    const seen = new Set(
+      (sessions ?? []).flatMap((row) =>
+        [row.user_id, row.display_name].filter(Boolean).map(String),
+      ),
+    );
+
     for (const row of refused ?? []) {
+      const denied = row.status === "denied";
+      if (!denied && (seen.has(String(row.user_id)) || seen.has(row.display_name))) {
+        continue;
+      }
       attendance.push({
         id: row.id,
         name: row.display_name,
         verified: row.subject_type === "user" && Boolean(row.user_id),
-        joinedAt: null,
+        /*
+         * For an admitted row this is when the host let them in, not when they
+         * connected — which is the honest most we know without the session.
+         * The outcome column says "Admitted" rather than "Joined" for exactly
+         * that reason: we know the door opened, not that they walked through.
+         */
+        joinedAt: denied ? null : row.decided_at,
         leftAt: null,
-        outcome: "denied",
+        outcome: denied ? "denied" : "admitted",
       });
     }
   }

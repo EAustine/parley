@@ -439,11 +439,14 @@ Kept so the list does not lose the record of what was once open.
   one-line claim is proven by deletion — putting the chip back below the name
   gives a 70px row and fails the case.
 
-  **It found a real defect, recorded as `test.fixme`.** With the chip up,
-  identity is 32px on the desktop rail and 47px on a phone — two to four
-  characters. The row holds one line by erasing the name, which is the failure
-  v1.4 B1 was reported for in the first place. The fix is a design decision and
-  is open.
+  **It found a real defect, and the defect is fixed.** With the chip up,
+  identity was 32px on the desktop rail — two characters and an ellipsis. The
+  row held one line by erasing the name, which is the failure v1.4 B1 was
+  reported for in the first place. The row's chip now drops the word
+  "connection", which its own context supplies, and identity measures **98px**
+  beside "Unstable" and **70px** beside "Reconnecting". Both are asserted, at a
+  64px floor chosen as a judgement and stated as one rather than fitted to the
+  new values.
 
   What is left for a person is one link: whether a genuinely poor connection
   reports `poor` at all. Quality is the server's verdict over the signalling

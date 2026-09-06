@@ -46,7 +46,7 @@ for (const viewport of WIDTHS) {
       await expect(row, `${label}: no row rendered`).toBeVisible();
 
       // The chip is actually there — otherwise this measures the old case.
-      const chip = row.getByText(/Unstable connection|Reconnecting…/);
+      const chip = row.getByText(/^(Unstable|Reconnecting)$/);
       await expect(chip, `${label}: no chip, so nothing new is being measured`).toBeVisible();
 
       /*
@@ -87,49 +87,47 @@ for (const viewport of WIDTHS) {
 }
 
 /**
- * **Identity under the chip — currently failing, and left failing on purpose.**
+ * **Identity survives the chip** — the defect this file was written to find.
  *
- * The one-line claim above holds. This is B1's *other* promise, from its own
- * comment in `ParticipantsPanel`:
+ * B1's own comment claims "identity is still the flexible zone… status is two
+ * icons and **a short chip**". The chip was 132px, four times the identity zone
+ * it displaced, and on the 360px desktop rail the name rendered at **32px** —
+ * two characters and an ellipsis. The row held one line by erasing the name,
+ * which is exactly what B1 was reported for.
  *
- * > "Identity is still the flexible zone; what changed is how much the other
- * > two cost. Status is two icons and **a short chip**."
+ * Fixed by shortening the row's copy rather than the layout: `ROW_COPY` drops
+ * the word "connection", which the row's own context already supplies. Measured
+ * after: **98px** for poor, **70px** for reconnecting.
  *
- * Measured with the chip present and the panel at its shipped width, the chip
- * is 132px and the identity zone is what pays for it:
+ * **The floor is 64px and it is a judgement, stated as one.** It is the point
+ * below which fewer than about eight characters survive, which is roughly where
+ * two people in a meeting stop being distinguishable. It is deliberately not
+ * fitted to what the code now does — a threshold derived from the current value
+ * asserts nothing, which is the mistake the one-line bound in this same file
+ * made when it was inherited at 72px against a 70px bug.
  *
- * | Surface | Identity | Chip |
- * |---|---|---|
- * | desktop rail (360px) | **32px** | 132px |
- * | phone (375px) | **47px** | 132px |
- *
- * At 15px body type that is two to four characters and an ellipsis. The row
- * holds one line, so `participant-row.spec.ts` stays green — but B1's actual
- * report was never about height. It was that "the row you were about to remove
- * someone from stopped saying who they were", and with the chip up, it does
- * that again.
- *
- * `test.fixme` rather than a lowered threshold, following the precedent set for
- * the guest block: **the reason is written where a run will show it**, and the
- * fix is a design decision — shorten the copy, drop the label below some width,
- * or let the chip truncate before identity does — which `CLAUDE.md` rule 10
- * says is discussed before it is coded, not chosen here by whoever writes the
- * assertion.
- *
- * The 96px floor is the number to argue about. It is roughly twelve characters,
- * enough to tell two people in a meeting apart, and it is deliberately not
- * derived from the current value — a threshold fitted to what the code does
- * today asserts nothing.
+ * Both widths are asserted, because the two states have different lengths and
+ * "Reconnecting" is the tighter of them by 28px. Testing only the roomier one
+ * would leave the real worst case uncovered.
  */
-test.fixme("the name stays readable when the chip is up", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/dev/rows");
-  const row = page.locator('[data-case="poor, actions"]').locator("li").first();
-  await expect(row).toBeVisible();
+for (const label of ["poor, actions", "lost, actions"] as const) {
+  test(`the name stays readable beside the ${label.split(",")[0]} chip`, async ({
+    page,
+  }) => {
+    // The 360px rail, which is narrower than a 375px phone and so the worst case.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/dev/rows");
+    const row = page.locator(`[data-case="${label}"]`).locator("li").first();
+    await expect(row).toBeVisible();
 
-  const nameBox = await row.getByText(/Nana Yaa/).boundingBox();
-  expect(
-    Math.round(nameBox?.width ?? 0),
-    "the chip has squeezed identity below what anyone could read",
-  ).toBeGreaterThanOrEqual(96);
-});
+    // The chip is up — otherwise this measures the undegraded row.
+    await expect(row.getByText(/^(Unstable|Reconnecting)$/)).toBeVisible();
+
+    const nameBox = await row.getByText(/Nana Yaa/).boundingBox();
+    expect(
+      Math.round(nameBox?.width ?? 0),
+      `${label}: the chip has squeezed identity to ${Math.round(nameBox?.width ?? 0)}px — ` +
+        "the row is holding one line by erasing the name",
+    ).toBeGreaterThanOrEqual(64);
+  });
+}

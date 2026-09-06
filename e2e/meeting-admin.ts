@@ -298,6 +298,45 @@ export async function addSessions(
   }
 }
 
+/**
+ * Rows in `meeting_waiting` — the queue's own record, v1.5 A1.
+ *
+ * Written directly for the same reason `addSessions` is: what the attendance
+ * tests are about is which rows the record surfaces, not how they got there.
+ *
+ * `admitted` is the one that matters here. Those people were let in by a host
+ * and, until the participant webhooks are enabled, they are the **only**
+ * evidence the meeting had anybody in it.
+ */
+export async function addWaiting(
+  code: string,
+  people: { name: string; status: "admitted" | "denied"; userId?: string }[],
+): Promise<void> {
+  const found = await rest(
+    `/rest/v1/meetings?code=eq.${encodeURIComponent(code)}&select=id`,
+  );
+  const [meeting] = (await found.json()) as { id: string }[];
+  if (!meeting) throw new Error(`no meeting ${code}`);
+
+  for (const person of people) {
+    const response = await rest("/rest/v1/meeting_waiting", {
+      method: "POST",
+      body: JSON.stringify({
+        meeting_id: meeting.id,
+        display_name: person.name,
+        subject: person.userId ?? `device-${person.name.toLowerCase()}`,
+        subject_type: person.userId ? "user" : "device",
+        user_id: person.userId ?? null,
+        status: person.status,
+        decided_at: new Date().toISOString(),
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`addWaiting ${person.name}: ${response.status} ${await response.text()}`);
+    }
+  }
+}
+
 export async function deleteMeeting(code: string): Promise<void> {
   await rest(`/rest/v1/meetings?code=eq.${encodeURIComponent(code)}`, {
     method: "DELETE",

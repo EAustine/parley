@@ -193,6 +193,39 @@ export const TILE_COPY: Record<Exclude<TileTreatment, "none">, string> = {
 };
 
 /**
+ * The same states, said shorter, for the participant row's chip.
+ *
+ * **Not a style preference — a measurement.** The row is avatar, identity,
+ * status and the host's actions, and identity is the only flexible zone. On the
+ * 360px desktop rail identity gets `164 − chip` pixels, so "Unstable
+ * connection" at 132px left it **32px**: two characters and an ellipsis. The
+ * row held one line by erasing the name, which is the failure v1.4 B1 was
+ * reported for in the first place.
+ *
+ * | Chip | Width | Identity |
+ * |---|---|---|
+ * | "Unstable connection" | 132px | 32px |
+ * | "Unstable" | 66px | 98px |
+ * | "Reconnecting" | 94px | 70px |
+ *
+ * The word "connection" is what goes. It is doing no work here: the row names
+ * the person and the column is already about their connection, so the sentence
+ * repeats its own context. A tile has none of that — it is a video frame with a
+ * pill on it — which is why `TILE_COPY` keeps the full phrase and is unchanged.
+ *
+ * **Two strings, one treatment.** `treatmentFor` stays shared, so the two
+ * surfaces cannot disagree about *which* state a quality is; they differ only
+ * in how much room they have to say it. That is the drift worth preventing, and
+ * this is not it.
+ *
+ * §3.8's rule holds: named, never a coloured dot on its own.
+ */
+export const ROW_COPY: Record<Exclude<TileTreatment, "none">, string> = {
+  poor: "Unstable",
+  lost: "Reconnecting",
+};
+
+/**
  * The delays LiveKit's `DefaultReconnectPolicy` actually uses, vendored so a
  * check can notice them changing under us.
  *

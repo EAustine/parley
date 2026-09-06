@@ -22,10 +22,33 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * shuts a laptop, and `beforeunload` is not reliable enough to substitute. The
  * server is the only party that knows when a room really emptied.
  *
- * **Two events, deliberately.** `participant_joined` and `participant_left`
- * arrive far more often and would tell us nothing `room_started` and
- * `room_finished` do not — LiveKit closes a room once the last participant
- * leaves, which is exactly the transition being recorded.
+ * **Four events, and this paragraph used to say two.**
+ *
+ * It read: "Two events, deliberately. `participant_joined` and
+ * `participant_left` arrive far more often and would tell us nothing
+ * `room_started` and `room_finished` do not." That was true when the meeting's
+ * lifecycle was all this recorded, and it stopped being true when v1.5 C1 added
+ * the attendance record, which is built entirely from `meeting_participants` —
+ * a table only `participant_joined` writes.
+ *
+ * **The sentence outlived the design and the configuration followed the
+ * sentence.** The handlers below were added; the events were never enabled in
+ * LiveKit Cloud, because the paragraph at the top of the file said they were
+ * not wanted. A host held a meeting with six people in it and the record read
+ * "Nobody joined this meeting": every one of them was admitted through the
+ * queue, and not one `participant_joined` ever arrived. The only rows this
+ * table has ever held came from `seed-dev`.
+ *
+ * **This file cannot enforce that.** `check:webhook` signs synthetic events and
+ * posts them here, which proves the handlers work and can say nothing about
+ * what LiveKit is configured to send — the failure was in the half we do not
+ * control, and both checks only ever looked at ours. `MANUAL.md` carries the
+ * one-line check that does cover it.
+ *
+ * The four events this route handles are `room_started`, `room_finished`,
+ * `participant_joined`, and `participant_left` (with
+ * `participant_connection_aborted` alongside the last). **All four must be
+ * enabled on the webhook**, or the attendance record is silently empty.
  *
  * Rule 8d: `server-only` at the top. This module holds a service-role client
  * and the API secret, and importing it from a client component should be a

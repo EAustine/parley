@@ -42,7 +42,15 @@ export type AttendanceRow = {
   verified: boolean;
   joinedAt: string | null;
   leftAt: string | null;
-  outcome: "joined" | "removed" | "denied";
+  /**
+   * `admitted` is "the host let them in, and no session was ever recorded".
+   *
+   * Distinct from `joined` on purpose. A session row means the server saw them
+   * arrive; an admitted queue row means the host opened the door. They are
+   * usually the same people, and when the two disagree the honest thing is to
+   * say which one we actually know.
+   */
+  outcome: "joined" | "removed" | "denied" | "admitted";
 };
 
 export function AttendanceRecord({ rows }: { rows: AttendanceRow[] }) {
@@ -98,9 +106,11 @@ export function AttendanceRecord({ rows }: { rows: AttendanceRow[] }) {
                 ? "Denied entry"
                 : row.outcome === "removed"
                   ? "Removed"
-                  : row.leftAt
-                    ? `Left ${formatClock(row.leftAt)}`
-                    : "Joined"}
+                  : row.outcome === "admitted"
+                    ? "Admitted"
+                    : row.leftAt
+                      ? `Left ${formatClock(row.leftAt)}`
+                      : "Joined"}
             </span>
           </li>
         ))}

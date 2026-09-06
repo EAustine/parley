@@ -10,7 +10,7 @@ import { type Participant } from "livekit-client";
 
 import { siteUrl } from "@/lib/site";
 import { CopyLinkButton } from "@/components/meetings/CopyLinkButton";
-import { TILE_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
+import { ROW_COPY, treatmentFor, type Quality } from "@/lib/room/connection";
 
 import { ICONS } from "@/lib/icons";
 import { displayNameOf, initialOf, isHost } from "@/lib/room/participant";
@@ -480,7 +480,7 @@ function ConnectionChip({ quality }: { quality: Quality }) {
             : "var(--state-warning)",
       }}
     >
-      {TILE_COPY[treatment]}
+      {ROW_COPY[treatment]}
     </span>
   );
 }

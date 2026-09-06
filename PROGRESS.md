@@ -8897,3 +8897,44 @@ and the revert for pre-join, which has no poll to correct it.
 
 The spec asserts the door is reachable from the menu, **absent from People** —
 so the move is pinned rather than merely performed — and offered to no guest.
+
+
+---
+
+## The chip that erased the name
+
+The `test.fixme` from the row-geometry pass is a passing assertion now.
+
+**Fixed in the copy, not the layout.** The row is avatar, identity, status and
+the host's actions; identity is the only flexible zone, so on the 360px rail it
+gets `164 - chip` pixels. Measured candidates:
+
+| Chip | Width | Identity |
+|---|---|---|
+| "Unstable connection" | 132px | **32px** |
+| "Unstable" | 66px | **98px** |
+| "Reconnecting..." | 102px | 62px |
+| "Reconnecting" | 94px | **70px** |
+
+The word "connection" was doing no work in the row: the row names the person and
+the column is already about their connection, so the phrase repeated its own
+context. A tile has none of that - it is a video frame with a pill on it - so
+`TILE_COPY` is unchanged and `ROW_COPY` is new.
+
+**Two strings, one treatment.** `treatmentFor` stays shared, so the surfaces
+cannot disagree about *which* state a quality is; they differ only in how much
+room they have to say it. Section 3.8's rule is untouched: named, never a
+coloured dot.
+
+Rejected: dropping the device icons while degraded (v1.3 C3 requires both,
+because "one cannot express camera off, mic on"), and letting the chip truncate
+(a status reading "Unstable conn..." is worse than a shorter true one).
+
+**The floor is 64px and is stated as a judgement**, not derived from the result -
+the mistake the one-line bound in this same file made when it was inherited at
+72px against a 70px bug. Both states are asserted, because "Reconnecting" is 28px
+wider than "Unstable" and testing only the roomier one would leave the real worst
+case uncovered.
+
+The measured values were confirmed in the browser rather than left as arithmetic:
+98/66 and 70/94, matching the prediction exactly.

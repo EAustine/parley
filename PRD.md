@@ -506,6 +506,8 @@ LiveKit reports `excellent | good | poor | lost`.
 |---|---|
 | Excellent, good | No indicator. Silence means fine. |
 | Poor | Amber pill on the affected tile: "Unstable connection." Local user also sees a bar: "Your connection is unstable." |
+
+**The participant row says it shorter, and that is a measurement rather than a preference.** The row is avatar, identity, status and the host's actions, and identity is the only flexible zone — so on the 360px panel the full phrase left the name **32px**, two characters and an ellipsis. The row held one line by erasing who it was about, which is the fault v1.4 B1 was reported for. The row chip drops the word "connection", which its own context already supplies: "Unstable", "Reconnecting". Identity becomes 98px and 70px. The tile keeps the full phrase — it is a video frame with a pill on it and has no such context — and both surfaces still share one treatment mapping, so they cannot disagree about *which* state a quality is.
 | Lost (remote) | Tile dims to 40%, last frame frozen, label "Reconnecting…" |
 | Quality lost locally, before retry begins | The gap between `ConnectionQuality.Lost` and reconnection actually starting. Amber bar, same language as Poor — do not jump to critical for a state that may resolve without a retry. |
 | Signal reconnecting | **Media keeps flowing while the signalling connection is down.** Video and audio look perfect; some subset of the room stops working silently. Amber bar naming exactly what is unavailable. |
