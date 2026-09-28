@@ -1,7 +1,6 @@
 import { expect, test } from "./fixtures";
 
-import { signIn } from "./auth";
-import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
+import { createMeeting } from "./meeting-admin";
 import { joinAs, leave, wakeControls, type Participant } from "./room.helpers";
 
 /**
@@ -26,13 +25,12 @@ test.describe("the waiting-room switch", () => {
    * case that needs it: they are created with the door *open*.
    */
   test("an instant meeting's door can be closed and opened again", async ({
-    page,
+    signedInPage: page,
   }) => {
-    const host = await createFixtureHost();
     // No `scheduledStart` — an instant meeting, the shape PATCH used to refuse.
-    const code = await createMeeting({ host: host.id, waitingRoom: false });
+    const code = await createMeeting({ waitingRoom: false });
     try {
-      await signIn(page, host.email, "/dashboard");
+      await page.goto("/dashboard");
 
       const close = await page.request.patch(`/api/meetings/${code}`, {
         data: { waitingRoom: true },
@@ -52,7 +50,6 @@ test.describe("the waiting-room switch", () => {
         "§3.2 promises reversible in both directions",
       ).toBe(false);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -64,16 +61,14 @@ test.describe("the waiting-room switch", () => {
    * bumping it here would announce a revision of an event that did not change
    * and re-notify every attendee about a setting they cannot see.
    */
-  test("the door is not a calendar revision", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("the door is not a calendar revision", async ({ signedInPage: page }) => {
     const start = new Date(Date.now() + 86_400_000);
     const code = await createMeeting({
-      host: host.id,
       scheduledStart: start,
       scheduledEnd: new Date(start.getTime() + 1_800_000),
     });
     try {
-      await signIn(page, host.email, "/dashboard");
+      await page.goto("/dashboard");
 
       const first = await page.request.patch(`/api/meetings/${code}`, {
         data: { waitingRoom: true },
@@ -97,7 +92,6 @@ test.describe("the waiting-room switch", () => {
         "a genuine edit stopped incrementing, so the assertion above proves nothing",
       ).toBeGreaterThan(before);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -111,13 +105,12 @@ test.describe("the waiting-room switch", () => {
    * caller learns nothing about who owns a meeting.
    */
   test("pre-join shows the door to the host and not to a guest", async ({
-    page,
+    signedInPage: page,
     browser,
   }) => {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: false });
+    const code = await createMeeting({ waitingRoom: false });
     try {
-      await signIn(page, host.email, `/j/${code}`);
+      await page.goto(`/j/${code}`);
       await expect(
         page.getByLabel("Waiting room", { exact: true }),
         "the host cannot reach their own door from the screen before the room",
@@ -139,7 +132,6 @@ test.describe("the waiting-room switch", () => {
         await guestContext.close();
       }
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -151,8 +143,7 @@ test.describe("the waiting-room switch", () => {
   test("a guest cannot set the door by asking directly", async ({
     request,
   }) => {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: false });
+    const code = await createMeeting({ waitingRoom: false });
     try {
       const response = await request.patch(`/api/meetings/${code}`, {
         data: { waitingRoom: true },
@@ -162,7 +153,6 @@ test.describe("the waiting-room switch", () => {
         "an unauthenticated caller changed a meeting's door",
       ).not.toBe(200);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -179,16 +169,16 @@ test.describe("the waiting-room switch", () => {
    */
   test("the room's door lives in the overflow menu, for the host only", async ({
     browser,
+    sharedHostState,
   }) => {
     test.setTimeout(180_000);
     const open: Participant[] = [];
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: false });
+    const code = await createMeeting({ waitingRoom: false });
     try {
       const asHost = await joinAs(browser, "Abena Poku", {
         code,
         withMedia: false,
-        asHost: host.email,
+        hostState: sharedHostState,
       });
       open.push(asHost);
 
@@ -226,7 +216,6 @@ test.describe("the waiting-room switch", () => {
         await leave(p).catch(() => {});
         await p.context.close().catch(() => {});
       }
-      await deleteFixtureHost(host.id);
     }
   });
 });

@@ -2,6 +2,8 @@ import { type Browser, type Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
 
+import { signIn } from "./auth";
+
 /**
  * §3.9's timezone acceptance, in real browsers set to real timezones.
  *
@@ -44,6 +46,46 @@ const LOS_ANGELES = "America/Los_Angeles";
  * A zone label that stopped being printed fails this exactly as it did before;
  * what changed is where the test looks, not how much it demands.
  */
+/**
+ * A date that is always in the future, in a chosen month — and its weekday.
+ *
+ * **These were typed: `2026-09-15` and `2026-12-15`.** Both were comfortably
+ * ahead when they were written and the September pair expired twelve days
+ * before this run, which is a slow-motion version of the failure `CLAUDE.md`
+ * describes for hand-written meeting codes: a fixture that looks like the real
+ * thing and silently stops being it. v1.3 D3 refuses a past time on the server
+ * *and* disables the submit button, so the symptom was a form that never
+ * enabled and a three-minute timeout on a click — nothing about timezones,
+ * which is what these tests are for.
+ *
+ * **The month is not arbitrary and must survive.** September puts Berlin in
+ * CEST (+2) and December puts it in CET (+1); that contrast is the whole point
+ * of having both tests, and "now plus a week" would land wherever the calendar
+ * happens to be and assert nothing. So the month and day are kept and only the
+ * year rolls forward.
+ *
+ * **The weekday is derived rather than typed**, because 15 September is a
+ * Tuesday in 2026 and a Wednesday in 2027. It comes from `Intl`, which is a
+ * different implementation from the `date-fns-tz` path the app renders with —
+ * an independent oracle rather than a copy of our own arithmetic.
+ */
+function nextOccurrence(month: number, day: number, zone: string) {
+  const at = (year: number) => new Date(Date.UTC(year, month - 1, day, 14, 30));
+  const thisYear = new Date().getUTCFullYear();
+  const when = at(thisYear).getTime() > Date.now() ? at(thisYear) : at(thisYear + 1);
+  return {
+    date: `${when.getUTCFullYear()}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    weekday: new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: zone }).format(when),
+  };
+}
+
+/** September: Berlin is on CEST, +2. */
+const SUMMER = nextOccurrence(9, 15, ACCRA);
+/** `20270915`, from the same date the form is filled with — never typed twice. */
+const SUMMER_STAMP = SUMMER.date.replace(/-/g, "");
+/** December: Berlin is on CET, +1 — the contrast the winter test exists for. */
+const WINTER = nextOccurrence(12, 15, ACCRA);
+
 const ZONE_ONLY = /^(GMT|UTC)([+-]\d{1,2}(:\d{2})?)?$|^[A-Z]{2,5}$/;
 
 /**
@@ -61,27 +103,23 @@ async function signedInPage(
   const context = await browser.newContext({ timezoneId });
   const page = await context.newPage();
 
-  const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabase || !service) {
-    throw new Error("Run via `npm run check:media`, which loads .env.local.");
-  }
-
-  const response = await fetch(`${supabase}/auth/v1/admin/generate_link`, {
-    method: "POST",
-    headers: {
-      apikey: service,
-      Authorization: `Bearer ${service}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ type: "magiclink", email, redirect_to: "/" }),
-  });
-  const link = await response.json();
-  if (!link.hashed_token) throw new Error(`generate_link: HTTP ${response.status}`);
-
-  await page.goto(
-    `/auth/callback?token_hash=${link.hashed_token}&type=${link.verification_type}&next=%2Fdashboard`,
-  );
+  /*
+   * **`signIn`, not a second copy of it.**
+   *
+   * This minted its own magic link and consumed it directly, which duplicated
+   * `e2e/auth.ts` and diverged from it in the two ways that matter. It had no
+   * diagnosis — a failure here reported "heading not found" for a dashboard
+   * that was never going to render, which is the exact defect `signIn`'s
+   * assertions were written to end. And it had no retry, so the transient
+   * refusal `signIn` now recovers from failed these tests outright.
+   *
+   * It also minted a fresh link **three times per test** for one address, once
+   * per timezone, and Supabase invalidates the previous link each time. Each
+   * page consumed its own link immediately so it usually held, but the margin
+   * was one slow navigation wide — and `schedule.spec` is one of the specs that
+   * has failed this way.
+   */
+  await signIn(page, email, "/dashboard");
   await expect(page.getByRole("heading", { name: "Meetings" })).toBeVisible();
   return page;
 }
@@ -135,7 +173,7 @@ test.describe("across timezones", () => {
     // 15 September, 14:30 in Accra — which is 14:30 UTC, since Accra is +0.
     const code = await schedule(accra, {
       title: "Quarterly planning",
-      date: "2026-09-15",
+      date: SUMMER.date,
       time: "14:30",
       timezone: ACCRA,
     });
@@ -154,7 +192,7 @@ test.describe("across timezones", () => {
      * day spelled out — design/03's "Friday 11 September, 10:00 – 10:30 GMT".
      */
     await expect(
-      accra.getByText(/Tuesday 15 September, 14:30 – 15:00 GMT/),
+      accra.getByText(new RegExp(`${SUMMER.weekday} 15 September, 14:30 – 15:00 GMT`)),
     ).toBeVisible();
 
     // Berlin, in September: +2. The same instant is 16:30 there — and now it is
@@ -163,7 +201,7 @@ test.describe("across timezones", () => {
     await berlin.goto(`/schedule/${code}`);
     // §3.9: "always print the zone label" — the number alone is not checkable.
     await expect(
-      berlin.getByText(/Tuesday 15 September, 14:30 – 15:00 GMT/),
+      berlin.getByText(new RegExp(`${SUMMER.weekday} 15 September, 14:30 – 15:00 GMT`)),
     ).toBeVisible();
     await expect(berlin.getByText(/16:30 – 17:00 GMT\+2 where you are/)).toBeVisible();
 
@@ -178,7 +216,7 @@ test.describe("across timezones", () => {
     // everyone — that is what makes an invite mean one moment.
     const fromBerlin = await (await berlin.request.get(`/api/meetings/${code}/ics`)).text();
     const fromLa = await (await la.request.get(`/api/meetings/${code}/ics`)).text();
-    expect(fromBerlin.match(/DTSTART:[^\r\n]+/)?.[0]).toBe("DTSTART:20260915T143000Z");
+    expect(fromBerlin.match(/DTSTART:[^\r\n]+/)?.[0]).toBe(`DTSTART:${SUMMER_STAMP}T143000Z`);
     expect(fromBerlin.match(/DTSTART:[^\r\n]+/)?.[0]).toBe(
       fromLa.match(/DTSTART:[^\r\n]+/)?.[0],
     );
@@ -206,7 +244,7 @@ test.describe("across timezones", () => {
     const accra = await signedInPage(browser, ACCRA, hostEmail);
     const code = await schedule(accra, {
       title: "Scheduled from Accra, in Berlin time",
-      date: "2026-09-15",
+      date: SUMMER.date,
       time: "14:30",
       timezone: BERLIN,
     });
@@ -215,13 +253,13 @@ test.describe("across timezones", () => {
     expect(
       ics.match(/DTSTART:[^\r\n]+/)?.[0],
       "the stored instant is Accra's 14:30, so the timezone select did nothing",
-    ).toBe("DTSTART:20260915T123000Z");
+    ).toBe(`DTSTART:${SUMMER_STAMP}T123000Z`);
 
     // And the page says which 14:30 was meant, from a viewer who is not there.
     await accra.goto(`/schedule/${code}`);
     // The meeting's own zone leads; Accra's is the line beneath it.
     await expect(
-      accra.getByText(/Tuesday 15 September, 14:30 – 15:00 GMT\+2/),
+      accra.getByText(new RegExp(`${SUMMER.weekday} 15 September, 14:30 – 15:00 GMT\\+2`)),
     ).toBeVisible();
 
     await accra.context().close();
@@ -236,7 +274,7 @@ test.describe("across timezones", () => {
     // the same number in both seasons, and be an hour wrong for half the year.
     const code = await schedule(accra, {
       title: "Winter planning",
-      date: "2026-12-15",
+      date: WINTER.date,
       time: "14:30",
       timezone: ACCRA,
     });
@@ -250,7 +288,7 @@ test.describe("across timezones", () => {
      * the same number in both seasons and be an hour wrong for half the year.
      */
     await expect(
-      berlin.getByText(/Tuesday 15 December, 14:30 – 15:00 GMT/),
+      berlin.getByText(new RegExp(`${WINTER.weekday} 15 December, 14:30 – 15:00 GMT`)),
     ).toBeVisible();
     await expect(
       berlin.getByText(/15:30 – 16:00 GMT\+1 where you are/),
@@ -277,13 +315,13 @@ test.describe("across timezones", () => {
      */
     await schedule(berlin, {
       title: "Zone label, first row",
-      date: "2026-12-15",
+      date: WINTER.date,
       time: "15:30",
       timezone: "Europe/Berlin",
     });
     await schedule(berlin, {
       title: "Zone label, second row",
-      date: "2026-12-16",
+      date: nextOccurrence(12, 16, ACCRA).date,
       time: "09:00",
       timezone: "Europe/Berlin",
     });

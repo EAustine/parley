@@ -41,11 +41,16 @@ test.describe("the waiting room", () => {
     }
   });
 
-  /** A gated meeting, and the account that owns it. */
+  /**
+   * A gated meeting, owned by the run's shared host.
+   *
+   * The meeting is still this test's own — nobody else can reach the code — and
+   * that is what the isolation rule is about. The account holding it is shared,
+   * which costs nothing here because nothing in this file enumerates what a
+   * host owns.
+   */
   async function gated() {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: true });
-    return { code, host };
+    return { code: await createMeeting({ waitingRoom: true }) };
   }
 
   /**
@@ -58,7 +63,7 @@ test.describe("the waiting room", () => {
    * arrivals is open exactly when the risk is highest.
    */
   test("holds a guest when no host has joined", async ({ page }) => {
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       const response = await page.request.post("/api/livekit/token", {
         data: { code, displayName: "Ama Serwaa" },
@@ -66,7 +71,6 @@ test.describe("the waiting room", () => {
       expect(response.status(), "a guest reached a meeting with no host in it").toBe(403);
       expect((await response.json()).error).toBe("waiting_for_host");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -75,7 +79,7 @@ test.describe("the waiting room", () => {
    * contradiction and is not.
    */
   test("holds a signed-in participant when no host has joined", async ({ page }) => {
-    const { code, host } = await gated();
+    const { code } = await gated();
     const guest = await createFixtureHost();
     try {
       await signIn(page, guest.email, "/dashboard");
@@ -96,7 +100,6 @@ test.describe("the waiting room", () => {
       expect((await response.json()).error).toBe("waiting_for_host");
     } finally {
       await deleteFixtureHost(guest.id);
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -104,10 +107,9 @@ test.describe("the waiting room", () => {
    * The host is never held. A door that stops the host is a meeting that never
    * starts, and with no co-host there is nobody else who can open it.
    */
-  test("never holds the host", async ({ page }) => {
-    const { code, host } = await gated();
+  test("never holds the host", async ({ signedInPage: page }) => {
+    const { code } = await gated();
     try {
-      await signIn(page, host.email, "/dashboard");
       const response = await page.request.post("/api/livekit/token", {
         data: { code, displayName: "Abena Poku" },
       });
@@ -116,7 +118,6 @@ test.describe("the waiting room", () => {
         "the host was held out of their own meeting, which nobody can undo",
       ).toBe(200);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -130,10 +131,11 @@ test.describe("the waiting room", () => {
    */
   test("with a host present, signed-in walks in and a guest queues", async ({
     browser,
+    sharedHostState,
     page,
   }) => {
     test.setTimeout(180_000);
-    const { code, host } = await gated();
+    const { code } = await gated();
     const other = await createFixtureHost();
     try {
       // A real host, actually joined — A1: "host presence means joined, not
@@ -141,7 +143,7 @@ test.describe("the waiting room", () => {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
         code,
         withMedia: false,
-        asHost: host.email,
+        hostState: sharedHostState,
       });
       open.push(hostParticipant);
 
@@ -161,7 +163,6 @@ test.describe("the waiting room", () => {
       ).toBe(200);
     } finally {
       await deleteFixtureHost(other.id);
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -173,15 +174,16 @@ test.describe("the waiting room", () => {
    */
   test("a host can admit a waiting guest, who then gets a token", async ({
     browser,
+    sharedHostState,
     page,
   }) => {
     test.setTimeout(180_000);
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
         code,
         withMedia: false,
-        asHost: host.email,
+        hostState: sharedHostState,
       });
       open.push(hostParticipant);
 
@@ -216,7 +218,6 @@ test.describe("the waiting room", () => {
       });
       expect(admitted.status(), "an admitted guest was still refused a token").toBe(200);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -229,15 +230,16 @@ test.describe("the waiting room", () => {
    */
   test("denying blocks, and the block outlives the refusal", async ({
     browser,
+    sharedHostState,
     page,
   }) => {
     test.setTimeout(180_000);
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
         code,
         withMedia: false,
-        asHost: host.email,
+        hostState: sharedHostState,
       });
       open.push(hostParticipant);
 
@@ -278,7 +280,6 @@ test.describe("the waiting room", () => {
       ).json();
       expect(again.waiting, "the host was asked the same question twice").toHaveLength(0);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -291,8 +292,7 @@ test.describe("the waiting room", () => {
    * everybody for some unrelated reason.
    */
   test("with the waiting room off, a guest walks in", async ({ page }) => {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: false });
+    const code = await createMeeting({ waitingRoom: false });
     try {
       const response = await page.request.post("/api/livekit/token", {
         data: { code, displayName: "Ama Serwaa" },
@@ -302,7 +302,6 @@ test.describe("the waiting room", () => {
         "the door refused with the waiting room off, so the tests above prove nothing",
       ).toBe(200);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 });

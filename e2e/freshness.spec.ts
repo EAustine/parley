@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
 
-import { expect, test } from "./fixtures";
+import { expect, test, sharedHostEmail } from "./fixtures";
 import { signIn } from "./auth";
-import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
+import { createMeeting } from "./meeting-admin";
 // The real number, not a copy of it — see `lib/meetings/freshness.ts`.
 import { REFRESH_GAP_MS } from "../lib/meetings/freshness";
 
@@ -107,16 +107,14 @@ async function leaveAndReturn(page: Page, { alsoFocus = true } = {}) {
 }
 
 async function dashboardWith(title: string) {
-  const host = await createFixtureHost();
   const start = new Date(Date.now() + 7 * 86_400_000);
   await createMeeting({
-    host: host.id,
     status: "scheduled",
     title,
     scheduledStart: start,
     scheduledEnd: new Date(start.getTime() + 30 * 60_000),
   });
-  return host;
+  return;
 }
 
 /**
@@ -171,19 +169,18 @@ test.describe("dashboard freshness", () => {
   test("coming back to the tab makes it current, without a reload", async ({
     browser,
   }) => {
-    const host = await dashboardWith("Already there");
+    await dashboardWith("Already there");
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
-      await arrive(page, host.email, "Already there");
+      await arrive(page, sharedHostEmail(), "Already there");
 
       const mark = await page.evaluate(MARK);
       expect(mark).toBeGreaterThan(0);
 
       // Something happens while they are away.
       await createMeeting({
-        host: host.id,
-        status: "scheduled",
+            status: "scheduled",
         title: "Arrived while away",
         scheduledStart: new Date(Date.now() + 8 * 86_400_000),
         scheduledEnd: new Date(Date.now() + 8 * 86_400_000 + 30 * 60_000),
@@ -204,7 +201,6 @@ test.describe("dashboard freshness", () => {
       ).toBe(mark);
     } finally {
       await context.close();
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -212,16 +208,15 @@ test.describe("dashboard freshness", () => {
    * D5 is "not a timer", and the absence has to be asserted rather than
    * assumed: a polling interval would make the test above pass on its own.
    */
-  test("nothing polls while the tab is simply left open", async ({ browser }) => {
-    const host = await dashboardWith("Sitting there");
+  test("nothing polls while the tab is simply left open", async ({ browser, }) => {
+    await dashboardWith("Sitting there");
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
-      const refreshes = await arrive(page, host.email, "Sitting there");
+      const refreshes = await arrive(page, sharedHostEmail(), "Sitting there");
 
       await createMeeting({
-        host: host.id,
-        status: "scheduled",
+            status: "scheduled",
         title: "Never asked for",
         scheduledStart: new Date(Date.now() + 9 * 86_400_000),
         scheduledEnd: new Date(Date.now() + 9 * 86_400_000 + 30 * 60_000),
@@ -245,7 +240,6 @@ test.describe("dashboard freshness", () => {
       await expect(page.getByText("Never asked for")).toHaveCount(0);
     } finally {
       await context.close();
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -260,11 +254,11 @@ test.describe("dashboard freshness", () => {
   test("returning twice in quick succession asks the server once", async ({
     browser,
   }) => {
-    const host = await dashboardWith("Counting");
+    await dashboardWith("Counting");
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
-      const refreshes = await arrive(page, host.email, "Counting");
+      const refreshes = await arrive(page, sharedHostEmail(), "Counting");
 
       await pastTheGap(page);
       for (let i = 0; i < 3; i++) {
@@ -280,7 +274,6 @@ test.describe("dashboard freshness", () => {
       ).toBe(1);
     } finally {
       await context.close();
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -291,12 +284,12 @@ test.describe("dashboard freshness", () => {
    * *leaves* spends a request on a page nobody is looking at — and lands its
    * result during whatever they left to do.
    */
-  test("leaving does not refresh; only coming back does", async ({ browser }) => {
-    const host = await dashboardWith("Guarded");
+  test("leaving does not refresh; only coming back does", async ({ browser, }) => {
+    await dashboardWith("Guarded");
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
-      const refreshes = await arrive(page, host.email, "Guarded");
+      const refreshes = await arrive(page, sharedHostEmail(), "Guarded");
 
       await pastTheGap(page);
       await page.evaluate(() => {
@@ -319,7 +312,6 @@ test.describe("dashboard freshness", () => {
       await expect.poll(() => refreshes.count, { timeout: 10_000 }).toBe(1);
     } finally {
       await context.close();
-      await deleteFixtureHost(host.id);
     }
   });
 });

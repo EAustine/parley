@@ -1,6 +1,5 @@
-import { expect, test } from "./fixtures";
+import { expect, test, sharedHostEmail } from "./fixtures";
 
-import { signIn } from "./auth";
 import { generateMeetingCode } from "@/lib/meetings/code";
 
 /**
@@ -128,14 +127,20 @@ test.describe("the landing page", () => {
     }
   });
 
+  /*
+   * **The shared session, not an account of its own.** This test only looks at
+   * a signed-in `/` — it creates nothing and owns nothing — so by the rule
+   * `global-setup.ts` already states for read-only meetings it can share. Bound
+   * to `page` so the body below is unchanged: what varies is where the cookies
+   * came from, not what is being asserted.
+   */
   test("signed in: the hierarchy inverts, and there is no redirect", async ({
-    page,
-    hostEmail,
+    signedInPage: page,
   }) => {
     test.setTimeout(120_000);
 
     // Land on `/` itself, which is the whole point of the state.
-    await signIn(page, hostEmail, "/");
+    await page.goto("/");
 
     /**
      * E3: "Do not redirect a signed-in visitor to `/dashboard`. They typed the
@@ -164,7 +169,7 @@ test.describe("the landing page", () => {
      * The account is named. E3: "someone with two Google accounts should know
      * which one they are in *before* they create a meeting under it."
      */
-    await expect(page.getByText(hostEmail)).toBeVisible();
+    await expect(page.getByText(sharedHostEmail())).toBeVisible();
 
     // And the quiet way through to what they scheduled.
     await expect(page.getByRole("link", { name: /Your meetings/ })).toBeVisible();
@@ -179,12 +184,14 @@ test.describe("the landing page", () => {
    */
   test("the primary fill moves from Join to Start a meeting", async ({
     page,
-    hostEmail,
+    signedInPage,
   }) => {
     test.setTimeout(120_000);
 
-    const filled = () =>
-      page.evaluate(() => {
+    // Takes its page, because this test is about the *difference* between two
+    // of them: the anonymous `page` and the shared signed-in one.
+    const filled = (on: typeof page) =>
+      on.evaluate(() => {
         const probe = document.createElement("span");
         probe.style.color = getComputedStyle(document.documentElement)
           .getPropertyValue("--primary")
@@ -199,13 +206,13 @@ test.describe("the landing page", () => {
       });
 
     await page.goto("/");
-    expect(await filled(), "signed out, Join is not the filled button").toEqual([
+    expect(await filled(page), "signed out, Join is not the filled button").toEqual([
       "Join meeting",
     ]);
 
-    await signIn(page, hostEmail, "/");
+    await signedInPage.goto("/");
     expect(
-      await filled(),
+      await filled(signedInPage),
       "signed in, Start a meeting is not the only filled button",
     ).toEqual(["Start a meeting"]);
   });

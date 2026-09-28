@@ -25,17 +25,35 @@ test.describe("the queue in People", () => {
     }
   });
 
-  /** A gated meeting with the host already inside, which is the only state with a queue. */
-  async function hostInside(browser: Parameters<typeof joinAs>[0]) {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: true });
+  /**
+   * A gated meeting with the host already inside, which is the only state with
+   * a queue.
+   *
+   * **The meeting belongs to the run's shared host, and the host joins on the
+   * worker's existing session.** It used to mint an account and a magic link
+   * per test — five here, and the suite as a whole performs around a hundred
+   * and eighty sign-ins, which is more than a calendar day's budget allows for
+   * two runs.
+   *
+   * The *meeting* is still this test's own, which is what the isolation rule is
+   * actually about: nobody else can reach this code, and its queue, blocks and
+   * participants are untouched by anything running beside it. What is shared is
+   * the identity holding it, and the only tests that cannot share that are the
+   * ones which enumerate what a host owns — `dashboard.spec` asserts an exact
+   * row count and keeps its own account for precisely that reason.
+   */
+  async function hostInside(
+    browser: Parameters<typeof joinAs>[0],
+    hostState: Parameters<typeof joinAs>[2]["hostState"],
+  ) {
+    const code = await createMeeting({ waitingRoom: true });
     const participant = await joinAs(browser, "Abena Poku", {
       code,
       withMedia: false,
-      asHost: host.email,
+      hostState,
     });
     open.push(participant);
-    return { code, host, participant };
+    return { code, participant };
   }
 
   /** Somebody queues, without a browser — the request is what matters here. */
@@ -59,10 +77,11 @@ test.describe("the queue in People", () => {
    */
   test("the badge takes the waiting count and hands it back", async ({
     browser,
+    sharedHostState,
     request,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     try {
       const badge = participant.page.getByRole("button", { name: /^Participants/ });
       await wakeControls(participant.page);
@@ -92,7 +111,6 @@ test.describe("the queue in People", () => {
         "the badge summed the roster and the queue — three present and two waiting is not five",
       ).toBe("1");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -103,9 +121,9 @@ test.describe("the queue in People", () => {
    * toasts." A rule about the host's attention, so the assertion counts the
    * toasts rather than checking that a toast appeared.
    */
-  test("three arrivals produce one toast, not three", async ({ browser, request }) => {
+  test("three arrivals produce one toast, not three", async ({ browser, sharedHostState, request }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     try {
       await wakeControls(participant.page);
 
@@ -171,7 +189,6 @@ test.describe("the queue in People", () => {
         "the one toast did not say how many were waiting",
       ).toContain("waiting to join");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -184,10 +201,11 @@ test.describe("the queue in People", () => {
    */
   test("shows who is waiting, marked as typed, and Allow lets them in", async ({
     browser,
+    sharedHostState,
     request,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     try {
       await queue(request, code, "Kwabena Osei");
 
@@ -220,7 +238,6 @@ test.describe("the queue in People", () => {
       });
       expect(admitted.status(), "Allow did not actually admit anybody").toBe(200);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -230,9 +247,9 @@ test.describe("the queue in People", () => {
    * The endpoint case in `door.spec` proves the block; this proves the button
    * is wired to it, which is the half a route test cannot see.
    */
-  test("Deny turns them away and blocks them", async ({ browser, request }) => {
+  test("Deny turns them away and blocks them", async ({ browser, sharedHostState, request }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     try {
       await queue(request, code, "Kwabena Osei");
 
@@ -252,7 +269,6 @@ test.describe("the queue in People", () => {
         "Deny did not write the block, so the person simply re-queues",
       ).toBe("denied");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -265,10 +281,11 @@ test.describe("the queue in People", () => {
    */
   test("a participant who is not the host sees no queue section", async ({
     browser,
+    sharedHostState,
     request,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     /*
      * Signed in, and not the host — which is the only kind of non-host who can
      * *be* in a gated meeting without being admitted first.
@@ -297,7 +314,6 @@ test.describe("the queue in People", () => {
       ).toHaveCount(0);
     } finally {
       await deleteFixtureHost(member.id);
-      await deleteFixtureHost(host.id);
     }
   });
 });

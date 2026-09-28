@@ -9065,3 +9065,307 @@ wrote a bare user id where `subjectFor` builds `user_<id>`. Both inserted
 cleanly, matched nothing, and passed. With the corollary: assert the value that
 travelled, not just that a row exists — counting rows cannot tell a session from
 a session labelled wrongly.
+
+---
+
+## The checkbox, three times — and the mark without the wordmark
+
+Austine: *"why is the check box looking so big?"* It was 44px, and so was the
+tick.
+
+**Three attempts at one control, and the first two are the two halves of the
+same rule.**
+
+| Attempt | Target | Glyph | Wrong because |
+|---|---|---|---|
+| 44px `<label>` around a 16px input | **16px** | 16px | `e2e/targets.ts` measures the *input*; the padding was declared, not delivered |
+| a 44px native checkbox | 44px | **44px** | a native control paints its glyph at whatever size it is given |
+| transparent 44px input over a drawn box | 44px | 20px | — |
+
+The first is the failure `CLAUDE.md` names — "a class-resolving check reads
+`h-11 w-11` and reports 44px while a parent constraint delivers something
+smaller" — and I wrote a comment calling it "honest rather than declared" while
+doing exactly the declared thing. The second was honest and absurd.
+
+**It is still a native checkbox.** Role, checked state, keyboard behaviour and
+the label association are all the browser's, which was the whole argument for
+choosing one over a Radix switch. Only the painting is ours, and painting is the
+one part with no assistive-technology consequence.
+
+**A bug caught by looking rather than reading.** The tick was first nested
+*inside* the box. `peer-checked:` compiles to a sibling combinator, so it would
+have rendered permanently instead of toggling. Measured in the browser: 28px
+input over a 20px box on the form, 44px over 20px on pre-join, tick opacity 1
+checked and 0 unchecked — so the tick tracks the input's real state rather than
+React's copy of it, which is rule 3's reasoning one surface further out.
+
+**Six status screens lost the wordmark** — the waiting screen and its endings,
+the unknown-code, ended and cancelled join pages, and the room-entry failure.
+Their whole job is one sentence, and a display-size product name above it
+competes for the first thing you read; §3.10a already makes that argument for
+the landing page. They share markup and a flow, so changing only the two that
+were screenshotted would have shown one person two treatments. `title="Parley"`
+stays: dropping the wordmark is a decision about visual weight, not a decision
+that the page stops saying what it is. `not-found.tsx` keeps its lockup — it is
+outside the meeting flow and the one place somebody may not know where they
+landed.
+
+---
+
+## The night the product went down, and testing did it
+
+A full suite run came back with **95 failures**, every one `joinAs` never
+reaching the room. LiveKit's REST API answered fine — `listRooms` succeeded — so
+the first instinct was a code fault. Probing the join path directly settled it:
+
+```
+HTTP 429
+connection minutes limit exceeded. please contact the project owner.
+```
+
+**This was not a test failure. Parley could not host meetings.** Anyone opening a
+link got the same refusal: the app up, sign-in working, the waiting room
+working, and nobody able to connect. The page they reached was the room's
+"The connection dropped" state, which is the right screen for the wrong reason.
+
+**The cause was me.** Roughly a dozen full suites in one night, each joining real
+LiveKit rooms with several participants. The media project is expensive by
+design and nothing in the workflow ever looked at the meter. A resource the
+project does not own was spent as though it were free, and the product was the
+thing that ran out.
+
+Three weeks later the same probe returned `200 success` and meetings worked
+again. Nothing in the code changed; nothing in the code could have.
+
+**What this costs going forward.** One full run per idle period is the real
+budget, and the suite's own design is the thing to revisit — fewer participants
+in the media project, or its own LiveKit project, so that testing cannot take the
+product down a second time. Recorded here rather than fixed, because it is a
+decision about how much the suite is allowed to consume.
+
+---
+
+## Dates that expired, and the form that refused them
+
+The first cold run after the outage failed two timezone tests, and the symptom
+named the wrong thing: a three-minute timeout on a click, because
+`Schedule meeting` was disabled and never enabled.
+
+`date: "2026-09-15"`, typed when it was comfortably ahead, had passed twelve days
+earlier. v1.3 D3 refuses a past time on the server *and* disables the submit
+button, so a fixture that looked like the real thing had quietly stopped being
+one — the slow-motion version of what `CLAUDE.md` already says about
+hand-written meeting codes.
+
+**The month could not simply move.** September puts Berlin on CEST (+2) and
+December on CET (+1), and that contrast is the entire reason both tests exist;
+"now plus a week" lands wherever the calendar happens to be and asserts nothing.
+So the month and day stay and only the year rolls forward.
+
+**The weekday had to stop being typed.** 15 September is a Tuesday in 2026 and a
+Wednesday in 2027, and it appears in four rendered assertions. It is now derived
+through `Intl` — a different implementation from the `date-fns-tz` path the app
+renders with, so an independent oracle rather than a copy of our own arithmetic.
+
+A third copy of the same date was hiding in the `.ics` assertion
+(`DTSTART:20260915T143000Z`), now derived from the same constant so the two
+cannot drift.
+
+---
+
+## The auth retry: added on evidence, removed on better evidence
+
+`signIn` gained a bounded retry, then lost it, and both decisions were right when
+they were made.
+
+**Why it went in.** `diagnose()` — armed passes earlier for exactly this — caught
+the flake in the act. `callback requests: 1` killed the standing hypothesis that
+the navigation consumed the link twice; the link was refused within ~350ms and a
+fresh one verified immediately. On that evidence, one retry on that one refusal
+looked like recovery rather than papering over.
+
+**Why it came out.** Two full runs, forty minutes apart:
+
+| Run | Retries fired | Failures |
+|---|---|---|
+| after three weeks idle | **1** | 2, both the expired dates |
+| after three more runs within the hour | **26** | 25, all auth |
+
+Same code, same freshly created accounts. The one variable was how much the auth
+endpoint had been asked for in the preceding hour. And of those 26 retries,
+**50 attempts failed twice** — the second fresh link refused as readily as the
+first. The retry recovered almost nothing while doubling requests against the
+endpoint already refusing them: **it made its own trigger more likely.**
+
+So the original paragraph was right and is restored, with the numbers beside it
+so nobody re-adds the retry on the reasoning I used. `diagnose()` stays, because
+those numbers only exist because it was there, and the `attempt()` extraction
+stays, because it is what let a failure be inspected instead of thrown blind.
+
+**The honest shape of the mistake.** I proved the retry worked by *forcing* the
+error — minting a second link to invalidate the first — rather than watching a
+real one recover. A forced invalidation and a throttled endpoint produce an
+identical message and behave nothing alike. The demonstration was real and it
+demonstrated the wrong thing.
+
+**And the rule underneath it is not about auth.** The refusal is a rate signal.
+The fix is to ask less often, not to ask twice as hard — which is the same
+lesson as the LiveKit quota, arriving twice in one session through two different
+services before it was applied.
+
+---
+
+## Three wrong explanations, then a measurement
+
+The magic-link refusal that has failed runs all week finally has a cause, and
+getting there took three theories that each fitted the data until the next run
+arrived.
+
+| Theory | What killed it |
+|---|---|
+| The navigation consumes the link twice | `diagnose()` reported `callback requests: 1` |
+| The endpoint needs idle time to recover | fourteen hours idle produced 22 refusals, where three weeks produced 1 |
+| A daily budget, crossed once near the end | failures began at index **104**, not 178, in bursts rather than one cliff |
+
+The third is the one worth dwelling on. It predicted failures would start later
+once the suite made fewer sign-ins; they started **74 tests earlier**. A budget
+crossed once gives one cliff and nothing after it. What actually appeared was
+`104 105 106 · 124 125 126 · 140 142 143 · 168–178 · 190–195` — bursts,
+separated by gaps, with the suite running **four workers in parallel**. That is
+a rolling window filling, refusing a cluster of concurrent sign-ins, sliding,
+and filling again.
+
+**So the constraint is sign-ins per unit time, not per run and not per day.**
+Which is why removing thirteen of them bought nothing: it lowered the total and
+left the rate alone.
+
+### The fix, and the one run that proves it
+
+A worker-scoped `sharedHostState` signs in once per worker; `signedInPage` hands
+each test a fresh context carrying those cookies. Ten specs moved onto it, and
+their meetings are created under the run's shared host rather than an account of
+their own.
+
+| | Before | After |
+|---|---|---|
+| auth refusals | **42** | **0** |
+| failures | 21 | 4 |
+
+Zero, on the *fourth* run of a day where every earlier run had failed on auth.
+
+The four remaining failures were mine: the mechanical edit replaced
+`signIn(page, …)` with `page.goto(…)` and left the fixture as the plain
+**anonymous** `page`, so those tests stopped signing in at all. The suite located
+it precisely — four failures, all in specs just touched, none in the other 185.
+
+### It does not contradict "a test owns its fixtures"
+
+`global-setup.ts` already drew this line for meetings: "Read-only fixtures are
+safe to share across parallel workers… The live rooms are the ones that need
+owning." A session is read-only in the same sense — a test that only *looks* at
+signed-in screens cannot disturb another by looking.
+
+**The meeting is still the test's own**, which is what the rule is actually
+about: nobody else can reach that code, and its queue, blocks and participants
+are untouched. What is shared is the identity holding it. The tests that cannot
+share it are the ones which *enumerate* what a host owns — `dashboard.spec`
+asserts an exact row count — and the ones needing an account with no meetings at
+all, which is why `a11y`'s empty-dashboard cases keep theirs. Second accounts
+stay too: a removed member and a signed-in non-host are genuinely different
+people.
+
+### And it concentrated the blast radius
+
+The next run brought 22 refusals back, and **ten of the eleven failures were the
+`sharedHostState` fixture itself**. One refusal used to fail one test; it now
+fails every test in that worker, which is why `select` lost five and
+`waiting-queue` three with nothing wrong in either.
+
+That is the honest shape of this change: it removes most of the exposure and
+makes what remains expensive. The blanket retry removed earlier was wrong
+because it doubled load on every test; a retry on the *worker fixture* is the
+opposite trade — a handful per run, and its failure is now catastrophic rather
+than local. That is the one place the arithmetic favours it, and it is not built
+yet.
+
+**What would end the guessing** is Supabase's own auth log. The callback
+flattens every `verifyOtp` rejection into one sentence, so the real limit and
+its window have been inferred from failure patterns for three days when the
+dashboard would name them.
+
+---
+
+## The teardown that failed tests which had passed
+
+`waiting-queue` reported "Test timeout of 300000ms exceeded while running
+afterEach" on a test whose assertions had all passed, with the page snapshot
+showing the room intact.
+
+`playwright.config.ts` sets `expect: { timeout: 20_000 }` and **no
+`actionTimeout`**, and that asymmetry is the whole bug. An assertion in teardown
+fails after twenty seconds and the `.catch(() => {})` every `afterEach` wraps
+`leave()` in swallows it, exactly as designed. A `click()` has no bound at all:
+it waits for an actionable element until the *test's* budget is gone. So a
+control bar that never woke consumed five minutes and failed a passing test,
+while the `.catch()` never ran because nothing ever rejected.
+
+Bounded at ten seconds. **Proven both directions on the same forced fault** — a
+Leave button that never appears, which is what a bar that never woke looks like
+from here:
+
+| Bound | Teardown took | Test |
+|---|---|---|
+| `click({ timeout: 10_000 })` | 10s | **passed** |
+| `click()` | 120s | **failed**, "exceeded while running afterEach" |
+
+The second row reproduces the original failure exactly, which is what makes the
+diagnosis a finding rather than a story.
+
+**Not another budget raise.** This had already gone 180s → 300s once and then
+blew 300s. Cleanup cannot be allowed to fail a test that passed, and it cannot
+borrow the test's time to stay quiet in.
+
+---
+
+## `check:livekit`, and a counter that could not see
+
+The suite's summary carried a `livekit refusals` count that read `0` through an
+outage. It grepped the suite log for `connection minutes limit` — a string that
+only ever appears in a **server-side** probe. When LiveKit's quota is spent the
+browser simply cannot connect and the room renders "The connection dropped", so
+ninety-odd tests fail against `joinAs` and the log says nothing about why.
+
+A check that cannot observe the thing it is named for is worse than no check: it
+reported "fine" through an outage and was believed. That is this file's oldest
+recurring defect, written by me, one day after recording the same lesson about
+somebody else's code.
+
+`scripts/check-livekit.mjs` asks LiveKit directly, and `check:media` runs it
+before and after. Before, so an exhausted quota is one line instead of
+twenty-nine minutes of timeouts; after, so a run that drains the meter says so
+rather than leaving the next person to discover it. It costs no connection
+minutes — `/rtc/validate` checks the token and the project's standing and
+returns — and it asks with the **same grants a real join uses**, because a
+narrower token could be accepted where a real one is refused.
+
+It earned its place on its first run: both probes accepting is what ruled LiveKit
+out of the auth investigation in one line.
+
+---
+
+## Rule 8, broken by a dev page
+
+`/dev/rows` renders one participant row, and imported it from
+`ParticipantsPanel` — which imports `@livekit/components-react` for the
+container's quality subscription. An import is all-or-nothing, so `check:bundle`
+reported `livekit-client` in a second route's first load and **split across two
+chunks**, where rule 8 says the room route and nowhere else.
+
+The fix was a file, not a redesign: `ParticipantRow` was already taking
+primitives rather than a `Participant` — that happened when the connection
+chip's geometry needed measuring — so the boundary was already right and only
+the file had to catch up. `/dev/rows` fell from 350 kB to 170 kB and the check
+returned 11/11.
+
+I introduced this when I built the gallery and never ran `check:bundle`
+afterwards. The check existed, worked the moment it was asked, and was not asked.

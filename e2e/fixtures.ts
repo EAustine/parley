@@ -1,5 +1,15 @@
 import { test as base } from "@playwright/test";
 
+import { signIn } from "./auth";
+
+/**
+ * Long enough for the auth rate limit's window to move, short enough that a
+ * genuinely broken sign-in still fails the run promptly. Five seconds is a
+ * guess at the shape of a limit Supabase does not publish to us — the callback
+ * flattens every rejection into one sentence — and is the number to revisit
+ * once the dashboard's auth log has been read.
+ */
+const RETRY_PAUSE_MS = 5_000;
 import { emptyRoom } from "./livekit-admin";
 import {
   createFixtureHost,
@@ -26,13 +36,120 @@ import {
  * name can no longer collide with anything, leaving them to accumulate across
  * runs is untidy in an account we also watch for spend.
  */
-export const test = base.extend<{
+export const test = base.extend<
+  {
   meetingCode: string;
   hostEmail: string;
+  /**
+   * A page already signed in as the run's shared fixture host.
+   *
+   * **One sign-in per worker instead of one per test**, and the reason is a
+   * measured limit rather than tidiness. A full suite performs on the order of
+   * a hundred and eighty magic-link sign-ins; the second full run of a calendar
+   * day fails its last eighteen tests with "That link has expired or has
+   * already been used", every one carrying `account: present`,
+   * `callback requests: 1` and a fresh link that verifies on the spot. The
+   * failures are positional — indices 178 to 194 of 195, nothing before — which
+   * is a budget being crossed, not a flake.
+   *
+   * **It does not contradict "a test owns its fixtures".** `global-setup.ts`
+   * already draws the line this follows: "Read-only fixtures are safe to share
+   * across parallel workers… The live rooms are the ones that need owning." A
+   * session is read-only in exactly that sense — a test that only *looks* at
+   * signed-in screens cannot disturb another by looking. A test that creates
+   * meetings, blocks somebody, or enumerates what this host owns still takes
+   * its own account, because those are writes and the rule is about writes.
+   *
+   * Worker-scoped rather than global, deliberately. Playwright's `globalSetup`
+   * is not guaranteed to run after `webServer`, and a sign-in needs a server to
+   * sign in to; a worker fixture cannot race it.
+   */
+  signedInPage: import("@playwright/test").Page;
   hostedMeeting: { code: string; email: string };
   hostedSchedule: { code: string; email: string };
-  namedHost: { code: string; email: string; name: string };
-}>({
+    namedHost: { code: string; email: string; name: string };
+  },
+  {
+    /**
+     * The signed-in cookies, minted once per worker and handed to every
+     * `signedInPage` in it. Worker-scoped is the whole saving: Playwright forks
+     * a handful of workers and reuses each across many tests.
+     */
+    sharedHostState: Awaited<ReturnType<import("@playwright/test").BrowserContext["storageState"]>>;
+  }
+>({
+  sharedHostState: [
+    async ({ browser }, use) => {
+      /**
+       * **Retried, and `e2e/auth.ts` deliberately is not — the arithmetic is
+       * opposite here.**
+       *
+       * A blanket retry inside `signIn` was tried and removed: it fired on
+       * every test, so a refusal rate doubled the requests against the very
+       * endpoint refusing them, and of 26 retries **50 attempts failed twice**.
+       * It made its own trigger more likely and recovered almost nothing.
+       *
+       * This one runs **once per worker** — four times in a full run, against
+       * roughly a hundred and eighty before the migration — so a second attempt
+       * is a rounding error in the request rate rather than a doubling of it.
+       *
+       * And its failure is now catastrophic where a test's is local. Ten of the
+       * eleven failures in the run after the migration were *this fixture*: one
+       * refusal no longer fails one test, it fails every test in the worker,
+       * which is how `select` lost five and `waiting-queue` three with nothing
+       * wrong in either. Concentrating the sign-ins is what made the suite
+       * survivable; it is also what makes this the one place worth defending.
+       *
+       * **Spaced, not immediate.** The refusals arrive in bursts as a rolling
+       * window fills, so retrying instantly retries into the same full window.
+       * A few seconds is the difference between a second attempt and the same
+       * attempt twice.
+       *
+       * Bounded at two tries. If a fresh link fails after a wait, that is not
+       * the transient refusal and the run should say so rather than grinding.
+       */
+      const attempt = async () => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        try {
+          // The run's own fixture host, created by global setup and published
+          // for exactly this kind of reuse.
+          await signIn(page, required("PARLEY_E2E_HOST_EMAIL"), "/dashboard");
+          return await context.storageState();
+        } finally {
+          await context.close();
+        }
+      };
+
+      let state;
+      try {
+        state = await attempt();
+      } catch (first) {
+        console.warn(
+          `sharedHostState: sign-in refused, waiting ${RETRY_PAUSE_MS / 1000}s ` +
+            `for the window to slide — ${(first as Error).message.split("\n")[0]}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, RETRY_PAUSE_MS));
+        state = await attempt();
+      }
+
+      await use(state);
+    },
+    { scope: "worker" },
+  ],
+
+  signedInPage: async ({ browser, sharedHostState }, use) => {
+    /*
+     * A fresh context per test carrying the same cookies. The context is the
+     * thing that must not be shared — two tests driving one page is a race —
+     * and cookies are just data.
+     */
+    const context = await browser.newContext({ storageState: sharedHostState });
+    const page = await context.newPage();
+    await use(page);
+    await context.close();
+  },
+
   meetingCode: async ({}, use) => {
     const code = await createMeeting();
     await use(code);
@@ -199,3 +316,19 @@ export const scheduledCode = () => required("PARLEY_E2E_SCHEDULED_CODE");
  * every visitor, so there is no room to contend for.
  */
 export const gatedCode = () => required("PARLEY_E2E_GATED_CODE");
+
+/**
+ * The run's shared fixture host, for tests that assert *which* account is
+ * signed in — the landing page names it, and a page claiming the wrong address
+ * would be a real defect.
+ *
+ * Published by `global-setup.ts`, the same way the read-only meeting codes are.
+ */
+export const sharedHostEmail = () => required("PARLEY_E2E_HOST_EMAIL");
+
+/**
+ * The shared fixture host's id, for tests that need to write a row *about* that
+ * host — a session with `identity: user_<id>`, say. Published by global setup
+ * alongside the email.
+ */
+export const sharedHostId = () => required("PARLEY_E2E_HOST_ID");

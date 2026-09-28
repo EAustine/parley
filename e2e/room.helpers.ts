@@ -127,6 +127,24 @@ export async function joinAs(
      */
     asHost?: string;
     /**
+     * Cookies for an already-signed-in host, instead of minting a magic link.
+     *
+     * `asHost` signs in, and a sign-in is the suite's scarcest resource: a full
+     * run performs around a hundred and eighty of them, and the second run of a
+     * calendar day fails its last eighteen tests on "That link has expired or
+     * has already been used" — positional, indices 178 to 194 of 195, with a
+     * fresh link verifying on the spot each time. That is a budget, not a flake.
+     *
+     * Pass the worker's shared state and this joins as that host without
+     * spending one. The context is still new per participant, because two
+     * participants sharing a context is not two participants.
+     */
+    hostState?: Parameters<Browser["newContext"]>[0] extends infer O
+      ? O extends { storageState?: infer S }
+        ? S
+        : never
+      : never;
+    /**
      * Emulate `prefers-reduced-motion`, which `MANUAL.md` recorded as needing a
      * human with System Settings open. Playwright emulates the query directly,
      * and the claim it gates — "travel is removed" — is observable rather than
@@ -137,6 +155,7 @@ export async function joinAs(
   },
 ): Promise<Participant> {
   const context = await browser.newContext({
+    ...(options.hostState ? { storageState: options.hostState } : {}),
     // Spread first, so an explicit `viewport` below still wins.
     ...(options.android ? devices["Pixel 5"] : {}),
     permissions: ["camera", "microphone"],
@@ -168,7 +187,10 @@ export async function joinAs(
 
   const page = await context.newPage();
 
-  if (options.asHost) {
+  if (options.hostState) {
+    // Already signed in; the cookies came with the context.
+    await page.goto(`/j/${options.code}`);
+  } else if (options.asHost) {
     await signIn(page, options.asHost, `/j/${options.code}`);
   } else {
     await page.goto(`/j/${options.code}`);
@@ -238,15 +260,45 @@ export async function wakeControls(page: Page) {
   await page.evaluate(() =>
     window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true })),
   );
-  await expect(page.getByRole("button", { name: "Leave" })).toBeEnabled();
+  // Bounded for the same reason `leave` is: this is the first thing teardown
+  // does, and an unbounded wait here is an unbounded wait in teardown.
+  await expect(page.getByRole("button", { name: "Leave" })).toBeEnabled({
+    timeout: 20_000,
+  });
 }
+
+/**
+ * Leave the meeting — **bounded, because this runs in teardown.**
+ *
+ * `playwright.config.ts` sets `expect: { timeout: 20_000 }` and no
+ * `actionTimeout`, so an *assertion* here fails after twenty seconds and the
+ * `.catch(() => {})` every `afterEach` wraps this in swallows it, exactly as
+ * intended. A `click()` does not: with no action timeout, Playwright waits for
+ * an actionable element until the **test's** budget is gone. So a control bar
+ * that never woke consumed three hundred seconds and reported as
+ * "Test timeout exceeded while running afterEach" — on a test whose own
+ * assertions had all passed, with the page snapshot showing the room intact.
+ *
+ * That is the wrong shape of failure twice over: cleanup cannot fail a test
+ * that passed, and a budget raise treats the symptom. This had already been
+ * raised from 180s to 300s once, and then blew 300s.
+ *
+ * Ten seconds is generous for a click on a control that is already on screen,
+ * and a leave that has not happened by then has something worth reporting
+ * rather than waiting for. The failure still reaches `.catch()`, so teardown
+ * stays quiet — what changes is that it stops borrowing the test's time to be
+ * quiet in.
+ */
+const TEARDOWN_MS = 10_000;
 
 export async function leave(participant: Participant) {
   await wakeControls(participant.page);
-  await participant.page.getByRole("button", { name: "Leave" }).click();
+  await participant.page
+    .getByRole("button", { name: "Leave" })
+    .click({ timeout: TEARDOWN_MS });
   await expect(
     participant.page.getByRole("heading", { name: "You left the meeting" }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: TEARDOWN_MS });
 }
 
 /**

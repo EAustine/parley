@@ -1,7 +1,6 @@
 import { expect, test } from "./fixtures";
 
-import { signIn } from "./auth";
-import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
+import { createMeeting } from "./meeting-admin";
 
 /**
  * v1.2 E2: "Toast | 150 in / 100 out".
@@ -17,11 +16,10 @@ import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-a
  * where the toast actually is separates 150 from 400, because at 150ms into a
  * 400ms transition it is nowhere near arrived.
  */
-test("a toast arrives in 150ms, not the dependency's 400", async ({ page }) => {
-  const host = await createFixtureHost();
+test("a toast arrives in 150ms, not the dependency's 400", async ({ signedInPage: page }) => {
   try {
-    await createMeeting({ host: host.id, title: "Toast timing" });
-    await signIn(page, host.email, "/dashboard");
+    await createMeeting({ title: "Toast timing" });
+    await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Meetings" })).toBeVisible();
 
     await page.getByRole("button", { name: /copy link/i }).first().click();
@@ -57,6 +55,5 @@ test("a toast arrives in 150ms, not the dependency's 400", async ({ page }) => {
       `toast opacity at 150ms was ${settled.opacityAt150} (finished already: ${settled.finishedAlready})`,
     ).toBeGreaterThan(0.95);
   } finally {
-    await deleteFixtureHost(host.id);
   }
 });

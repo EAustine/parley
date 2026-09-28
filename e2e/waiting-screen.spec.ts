@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
+import { createMeeting } from "./meeting-admin";
 import { joinAs, leave, type Participant, GATED_JOIN_TIMEOUT } from "./room.helpers";
 
 /**
@@ -30,10 +30,9 @@ test.describe("waiting at the door", () => {
     }
   });
 
+  /** A gated meeting, owned by the run's shared host. */
   async function gated() {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: true });
-    return { code, host };
+    return { code: await createMeeting({ waitingRoom: true }) };
   }
 
   /** Pre-join, named, joined — the flow a guest actually takes. */
@@ -50,7 +49,7 @@ test.describe("waiting at the door", () => {
    * from every ending — that separation is the whole of A3.
    */
   test("says it is waiting for the host, and Leave works immediately", async ({ page }) => {
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       await joinAndBeHeld(page, code);
 
@@ -69,7 +68,6 @@ test.describe("waiting at the door", () => {
       await leaveLink.click();
       await page.waitForURL((url) => new URL(url).pathname === "/");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -84,7 +82,7 @@ test.describe("waiting at the door", () => {
   test("publishes nothing while held, and holds the device choice", async ({
     browser,
   }) => {
-    const { code, host } = await gated();
+    const { code } = await gated();
     const context = await browser.newContext({ permissions: ["camera", "microphone"] });
     await context.addInitScript(() => {
       const w = window as unknown as { __gum?: { calls: string[] } };
@@ -134,7 +132,6 @@ test.describe("waiting at the door", () => {
       ).toBe(0);
     } finally {
       await context.close();
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -145,14 +142,14 @@ test.describe("waiting at the door", () => {
    * the case that proves the poll and the handoff agree — pre-join owns the
    * token, so admission has to route back through it.
    */
-  test("goes into the meeting when the host allows", async ({ browser, page }) => {
+  test("goes into the meeting when the host allows", async ({ browser, sharedHostState, page }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
         code,
         withMedia: false,
-        asHost: host.email,
+        hostState: sharedHostState,
       });
       open.push(hostParticipant);
 
@@ -175,7 +172,6 @@ test.describe("waiting at the door", () => {
         page.getByRole("heading", { name: /Meeting, \d+ participant/ }),
       ).toBeAttached({ timeout: 60_000 });
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -188,15 +184,16 @@ test.describe("waiting at the door", () => {
    */
   test("denied says it was denied, not that it was removed", async ({
     browser,
+    sharedHostState,
     page,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       const hostParticipant = await joinAs(browser, "Abena Poku", {
         code,
         withMedia: false,
-        asHost: host.email,
+        hostState: sharedHostState,
       });
       open.push(hostParticipant);
 
@@ -224,7 +221,6 @@ test.describe("waiting at the door", () => {
       // a ten-minute block, which is a button that exists to fail.
       await expect(page.getByRole("link", { name: "Back to Parley" })).toBeVisible();
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -233,7 +229,7 @@ test.describe("waiting at the door", () => {
    * the only one that is not about them personally.
    */
   test("says the meeting ended when it ends while waiting", async ({ page }) => {
-    const { code, host } = await gated();
+    const { code } = await gated();
     try {
       await joinAndBeHeld(page, code);
       await expect(
@@ -257,7 +253,6 @@ test.describe("waiting at the door", () => {
         page.getByRole("heading", { name: "This meeting has ended" }),
       ).toBeVisible({ timeout: 20_000 });
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 });

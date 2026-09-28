@@ -28,16 +28,19 @@ test.describe("blocked, and let back in", () => {
     }
   });
 
-  async function hostInside(browser: Parameters<typeof joinAs>[0], gated = true) {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: gated });
+  async function hostInside(
+    browser: Parameters<typeof joinAs>[0],
+    sharedHostState: Parameters<typeof joinAs>[2]["hostState"],
+    gated = true,
+  ) {
+    const code = await createMeeting({ waitingRoom: gated });
     const participant = await joinAs(browser, "Abena Poku", {
       code,
       withMedia: false,
-      asHost: host.email,
+      hostState: sharedHostState,
     });
     open.push(participant);
-    return { code, host, participant };
+    return { code, participant };
   }
 
   /**
@@ -54,12 +57,13 @@ test.describe("blocked, and let back in", () => {
    */
   test("removing a signed-in participant blocks them, and says removed", async ({
     browser,
+    sharedHostState,
     page,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
     // Not gated: this is about removal, and a door in the way would mean the
     // participant never got in to be removed from.
-    const { code, host, participant } = await hostInside(browser, false);
+    const { code, participant } = await hostInside(browser, sharedHostState, false);
     const member = await createFixtureHost();
     const guest = await joinAs(browser, "Kwabena Osei", {
       code,
@@ -103,7 +107,6 @@ test.describe("blocked, and let back in", () => {
         .toBe("removed");
     } finally {
       await deleteFixtureHost(member.id);
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -128,9 +131,10 @@ test.describe("blocked, and let back in", () => {
    */
   test("removing a guest keeps them out, by device rather than identity", async ({
     browser,
+    sharedHostState,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser, false);
+    const { code, participant } = await hostInside(browser, sharedHostState, false);
     const guest = await joinAs(browser, "Kwabena Osei", { code, withMedia: false });
     open.push(guest);
 
@@ -165,7 +169,6 @@ test.describe("blocked, and let back in", () => {
         )
         .toBe("removed");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -178,10 +181,11 @@ test.describe("blocked, and let back in", () => {
    */
   test("Let back in clears the block and the door opens again", async ({
     browser,
+    sharedHostState,
     request,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     try {
       await request.post(`/api/meetings/${code}/waiting`, {
         data: { displayName: "Kwabena Osei" },
@@ -228,7 +232,6 @@ test.describe("blocked, and let back in", () => {
         )
         .toBe("waiting_for_admission");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -243,10 +246,11 @@ test.describe("blocked, and let back in", () => {
    */
   test("somebody hammering reload surfaces once, not once per attempt", async ({
     browser,
+    sharedHostState,
     request,
   }) => {
     test.setTimeout(GATED_JOIN_TIMEOUT);
-    const { code, host, participant } = await hostInside(browser);
+    const { code, participant } = await hostInside(browser, sharedHostState);
     try {
       await request.post(`/api/meetings/${code}/waiting`, {
         data: { displayName: "Kwabena Osei" },
@@ -295,7 +299,6 @@ test.describe("blocked, and let back in", () => {
         `five attempts raised ${raised.length} notices — a stream for one person is a denial of the host's attention`,
       ).toBe(1);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 });

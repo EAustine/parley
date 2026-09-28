@@ -1,12 +1,9 @@
 import { expect, test } from "./fixtures";
 
-import { signIn } from "./auth";
 import {
   addSessions,
   addWaiting,
-  createFixtureHost,
   createMeeting,
-  deleteFixtureHost,
 } from "./meeting-admin";
 
 /**
@@ -28,12 +25,10 @@ test.describe("the attendance record", () => {
    * The reported bug, as a test: admitted people, no sessions at all.
    */
   test("shows people the host admitted when no session was recorded", async ({
-    page,
+    signedInPage: page,
   }) => {
-    const host = await createFixtureHost();
     const start = new Date(Date.now() - 7_200_000);
     const code = await createMeeting({
-      host: host.id,
       status: "ended",
       title: "Planning committee",
       scheduledStart: start,
@@ -46,7 +41,7 @@ test.describe("the attendance record", () => {
         { name: "Ruth Olatayo", status: "admitted" },
         { name: "Isaiah Adejumo", status: "denied" },
       ]);
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
 
       const record = page.getByRole("region", { name: "Who was here" });
       await expect(
@@ -76,7 +71,6 @@ test.describe("the attendance record", () => {
       // The denied person is still distinguished, as C1 requires.
       await expect(record).toContainText("Denied entry");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -88,11 +82,9 @@ test.describe("the attendance record", () => {
    * session row, and a record that reads both without matching them replaces
    * "nobody was here" with "everybody was here twice".
    */
-  test("prefers the session when somebody has both records", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("prefers the session when somebody has both records", async ({ signedInPage: page }) => {
     const start = new Date(Date.now() - 7_200_000);
     const code = await createMeeting({
-      host: host.id,
       status: "ended",
       title: "Both records",
       scheduledStart: start,
@@ -104,7 +96,7 @@ test.describe("the attendance record", () => {
       await addSessions(code, [
         { name: "Ruth Olatayo", identity: "guest_ruth", left: true },
       ]);
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
 
       const record = page.getByRole("region", { name: "Who was here" });
       await expect(record).toBeVisible({ timeout: 20_000 });
@@ -120,7 +112,6 @@ test.describe("the attendance record", () => {
         "the queue row won over the session row, losing the arrival and departure times",
       ).toHaveCount(0);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 });

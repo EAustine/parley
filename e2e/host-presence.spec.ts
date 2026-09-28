@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { expect, test, sharedHostId } from "./fixtures";
 
 import { signIn } from "./auth";
 import {
@@ -31,8 +31,7 @@ import {
  */
 test.describe("the door and a host who is not there", () => {
   test("a stale open host row does not open the door", async ({ request }) => {
-    const host = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: true });
+    const code = await createMeeting({ waitingRoom: true });
     try {
       /*
        * The row a missed `participant_left` leaves behind: role host, no
@@ -40,7 +39,7 @@ test.describe("the door and a host who is not there", () => {
        * no browser ever joined it.
        */
       await addSessions(code, [
-        { name: "Abena Poku", identity: `user_${host.id}`, role: "host" },
+        { name: "Abena Poku", identity: `user_${sharedHostId()}`, role: "host" },
       ]);
 
       const response = await request.post("/api/livekit/token", {
@@ -53,7 +52,6 @@ test.describe("the door and a host who is not there", () => {
       ).toBe(403);
       expect((await response.json()).error).toBe("waiting_for_host");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -71,12 +69,11 @@ test.describe("the door and a host who is not there", () => {
   test("a stale row does not let a signed-in participant into an empty room", async ({
     page,
   }) => {
-    const host = await createFixtureHost();
     const member = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: true });
+    const code = await createMeeting({ waitingRoom: true });
     try {
       await addSessions(code, [
-        { name: "Abena Poku", identity: `user_${host.id}`, role: "host" },
+        { name: "Abena Poku", identity: `user_${sharedHostId()}`, role: "host" },
       ]);
       await signIn(page, member.email, "/dashboard");
 
@@ -91,7 +88,6 @@ test.describe("the door and a host who is not there", () => {
       expect((await response.json()).error).toBe("waiting_for_host");
     } finally {
       await deleteFixtureHost(member.id);
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -115,9 +111,8 @@ test.describe("the door and a host who is not there", () => {
   test("a person the host already admitted is not held by the presence check", async ({
     page,
   }) => {
-    const host = await createFixtureHost();
     const member = await createFixtureHost();
-    const code = await createMeeting({ host: host.id, waitingRoom: true });
+    const code = await createMeeting({ waitingRoom: true });
     try {
       // The row a host's "Allow" leaves behind. `subjectFor` builds `user_<id>`
       // for an account, which is what the token route matches on.
@@ -136,7 +131,6 @@ test.describe("the door and a host who is not there", () => {
       ).toBe(200);
     } finally {
       await deleteFixtureHost(member.id);
-      await deleteFixtureHost(host.id);
     }
   });
 });

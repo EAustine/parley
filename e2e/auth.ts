@@ -17,6 +17,36 @@ import { serviceFetch } from "./meeting-admin";
  * the same address, so callers need their own account — the `hostEmail`
  * fixture.
  */
+/**
+ * **No retry — and this time the decision is measured rather than assumed.**
+ *
+ * A bounded retry lived here briefly. It fired on the one refusal
+ * `app/auth/callback/route.ts` reports for every `verifyOtp` failure — "That
+ * link has expired or has already been used" — minted a fresh link and tried
+ * once more. The case for it looked strong: `diagnose()` had shown
+ * `callback requests: 1`, so this navigation was not consuming the link twice,
+ * and a link minted milliseconds later verified fine.
+ *
+ * **Two full runs, forty minutes apart, settled it.**
+ *
+ * | Run | Retries fired | Failures |
+ * |---|---|---|
+ * | after three weeks idle | 1 | 2, both unrelated |
+ * | after three more runs in the hour | 26 | 25, all auth |
+ *
+ * Same code, same freshly created accounts, one variable: how much the auth
+ * endpoint had been asked for in the preceding hour. And of those 26 retries,
+ * **50 attempts failed twice** — the second fresh link was refused as readily
+ * as the first, so the retry recovered almost nothing while doubling the
+ * requests against the endpoint already refusing them. It made its own
+ * trigger more likely.
+ *
+ * So the original paragraph here was right, and is restored: "a suite that is
+ * re-run until green is a suite that teaches you to ignore it." The refusal is
+ * a rate signal, and the fix is to ask less often — one full run per idle
+ * period — not to ask twice as hard. `diagnose()` stays, because the numbers
+ * above only exist because it was there.
+ */
 export async function signIn(page: Page, email: string, next = "/dashboard") {
   const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -24,6 +54,29 @@ export async function signIn(page: Page, email: string, next = "/dashboard") {
     throw new Error("Run via `npm run check:media`, which loads .env.local.");
   }
 
+  const result = await attempt(page, supabase, service, email, next);
+  if (!result.ok) throw result.error!;
+  return finish(page, result, next);
+}
+
+type Attempt = {
+  ok: boolean;
+  reported: string | null;
+  landedOnSignIn: boolean;
+  error?: Error;
+};
+
+/**
+ * Mint a link, consume it, and report whether a session exists — without
+ * throwing, so the caller can decide whether this failure is one to retry.
+ */
+async function attempt(
+  page: Page,
+  supabase: string,
+  service: string,
+  email: string,
+  next: string,
+): Promise<Attempt> {
   // `serviceFetch`, for the same reason the fixtures use it: a connect
   // timeout here fails a test that never reached the page it is about.
   const response = await serviceFetch(`${supabase}/auth/v1/admin/generate_link`, {
@@ -67,56 +120,34 @@ export async function signIn(page: Page, email: string, next = "/dashboard") {
   const consumedAfterMs = Date.now() - mintedAt;
 
   /**
-   * Assert the session actually took — otherwise this function fails silently
-   * and every caller reports the wrong thing.
-   *
-   * `app/auth/callback/route.ts` redirects to `/sign-in?error=…` when the
-   * exchange fails, carrying the reason. Nothing here read it. So a sign-in that
-   * did not take returned normally, the caller carried on to a signed-in page,
-   * the middleware bounced it back to `/sign-in`, and the test died twenty
-   * seconds later on `expect(getByRole("heading", { name: "Meetings" }))` —
-   * reporting "element not found" for a dashboard that was never going to
-   * render, while the actual explanation sat unread in a query parameter.
-   *
-   * That is the same defect as every entry in `CLAUDE.md`'s testing rules: not
-   * a check that fails, a check that stops asking. It cost most of a session's
-   * debugging, because the failures moved between runs and each one named a
-   * different innocent assertion.
-   *
-   * **Two assertions, and the cookie is the load-bearing one.** The URL check
-   * catches the redirect the route actually performs; the cookie check catches
-   * a session that is absent for any reason the route never saw. Landing
-   * somewhere plausible is not the same as holding a session, and only one of
-   * these is a statement about the thing callers depend on.
-   *
-   * **Deliberately no retry.** A bounded retry here would make the suite green
-   * and hide whatever is causing this, which `CLAUDE.md` is explicit about:
-   * "a suite that is re-run until green is a suite that teaches you to ignore
-   * it." If this throws, that is information.
-   */
-  const cookies = await page.context().cookies();
-  const session = cookies.filter((c) => /^sb-.*auth-token/.test(c.name));
-  const landed = new URL(page.url());
-  const reported = landed.searchParams.get("error");
-
-  /**
    * **The cookie is the fact; the URL is an artefact.** Order matters here, and
    * the first version had it backwards.
    *
    * That version threw whenever the page ended on `/sign-in`, and it caught a
    * real case immediately — a WebKit run reporting "That link has expired or has
-   * already been used." But a magic link is single-use, so that message means
-   * the callback was requested **twice**: the first request consumed the token
-   * and set the session, the second was refused and redirected to the error
-   * page. The session existed; only the last navigation was wrong.
+   * already been used." But a magic link is single-use, so that message can also
+   * mean the callback was requested **twice**: the first request consumed the
+   * token and set the session, the second was refused and redirected to the
+   * error page. The session existed; only the last navigation was wrong.
    *
    * Asserting the URL first turns that into a failure. Asserting the session
    * first asks the question callers actually depend on, and it cannot hide a
    * genuine failure: no cookie still throws, carrying the reason the callback
    * reported.
    */
-  if (session.length === 0) {
-    throw new Error(
+  const cookies = await page.context().cookies();
+  const session = cookies.filter((c) => /^sb-.*auth-token/.test(c.name));
+  const landed = new URL(page.url());
+  const reported = landed.searchParams.get("error");
+  const landedOnSignIn = landed.pathname.startsWith("/sign-in");
+
+  if (session.length > 0) return { ok: true, reported, landedOnSignIn };
+
+  return {
+    ok: false,
+    reported,
+    landedOnSignIn,
+    error: new Error(
       `signIn(${email}) established no session. Landed on ${landed.pathname}` +
         (reported ? ` with error: ${reported}` : "") +
         `, expected ${next}. Cookies present: ` +
@@ -125,18 +156,17 @@ export async function signIn(page: Page, email: string, next = "/dashboard") {
           callbackRequests,
           consumedAfterMs,
         })),
-    );
-  }
+    ),
+  };
+}
 
-  /*
-   * Signed in, but sitting on the error page from the duplicate request. The
-   * caller asked to be at `next`, so go there — a navigation, not a retry of
-   * the sign-in, and nothing is being papered over: the session is already
-   * proven above.
-   */
-  if (landed.pathname.startsWith("/sign-in")) {
-    await page.goto(next);
-  }
+/*
+ * Signed in, but possibly sitting on the error page from a duplicate request.
+ * The caller asked to be at `next`, so go there — a navigation, not a retry of
+ * the sign-in, and nothing is being papered over: the session is proven.
+ */
+async function finish(page: Page, result: Attempt, next: string) {
+  if (result.landedOnSignIn) await page.goto(next);
 }
 
 /**

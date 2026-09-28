@@ -1,5 +1,4 @@
 import { expect, test } from "./fixtures";
-import { signIn } from "./auth";
 
 /**
  * The native `<select>`, on three engines.
@@ -30,12 +29,17 @@ import { signIn } from "./auth";
 const CONTROLS = ["Duration", "Timezone"] as const;
 
 test.describe("the native select, closed", () => {
+  /*
+   * **The shared session.** Both cases here open `/schedule` and measure the
+   * closed select — they fill nothing and submit nothing, so by the rule
+   * `global-setup.ts` states for read-only fixtures they can share an account
+   * rather than minting one apiece across three engines.
+   */
   test("is a real select, sized and styled the same on every engine", async ({
-    page,
-    hostEmail,
+    signedInPage: page,
   }) => {
     test.setTimeout(120_000);
-    await signIn(page, hostEmail, "/schedule");
+    await page.goto("/schedule");
     await expect(page.getByLabel("Title")).toBeVisible();
 
     for (const name of CONTROLS) {
@@ -95,9 +99,9 @@ test.describe("the native select, closed", () => {
    * native control drifting back to the platform's own grey. `--input` drew
    * this border until v1.2 and failed SC 1.4.11 at 1.25:1 in light.
    */
-  test("takes the boundary token for its edge", async ({ page, hostEmail }) => {
+  test("takes the boundary token for its edge", async ({ signedInPage: page }) => {
     test.setTimeout(120_000);
-    await signIn(page, hostEmail, "/schedule");
+    await page.goto("/schedule");
     await expect(page.getByLabel("Title")).toBeVisible();
 
     const measured = await page.evaluate(() => {

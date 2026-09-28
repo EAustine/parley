@@ -1,6 +1,6 @@
 "use client";
 
-import { ParticipantRow } from "@/components/room/ParticipantsPanel";
+import { ParticipantRow } from "@/components/room/ParticipantRow";
 import type { Quality } from "@/lib/room/connection";
 
 /**
