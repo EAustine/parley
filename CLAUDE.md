@@ -485,6 +485,31 @@ Earned the hard way; each one comes from a check that passed while exercising th
 
 **Assert room composition, never assume it.** Two tests passed alone and failed in a full run for exactly this reason.
 
+**Sign-ins are rationed: 30 token verifications per 5 minutes.** Confirmed in the
+Supabase dashboard, not inferred. `admin/generate_link` is a service-role call
+and is not what counts; the callback's `verifyOtp` is — one `POST /auth/v1/verify`
+per sign-in, against a rolling five-minute window.
+
+The suite used to sit just under it, which is why this was so hard to read: a run
+starting into an empty window passed with a single refusal, and the same run
+forty minutes later produced twenty-six. It looked like flakiness, then like a
+daily budget, and was neither.
+
+**So a test signs in only if signing in is what it is about.** `e2e/fixtures.ts`
+signs in once per worker and hands out `signedInPage`; a test that merely needs
+to be *somebody* takes that. Its meeting is still its own — the isolation rule is
+about the meeting, not the identity. Own an account only to enumerate what a host
+owns (`dashboard` asserts an exact row count), to need one with no meetings
+(`a11y`'s empty dashboard), or to be a genuinely different person (a removed
+member).
+
+**Never mint a link for the shared host from a test.** Supabase invalidates the
+previous link when a new one is minted for the same address, so one test's
+sign-in can invalidate the link another worker is about to consume. Removing a
+per-test account while leaving its per-test sign-in in place converts an
+independent cost into a shared hazard — `freshness` did exactly that and cost a
+green run.
+
 **A test runner that can reuse a stale build is worse than no runner.** `reuseExistingServer: false`. It failed a fix that worked, and the same defect would have passed a break just as quietly.
 
 ---

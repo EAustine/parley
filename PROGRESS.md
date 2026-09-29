@@ -9369,3 +9369,40 @@ returned 11/11.
 
 I introduced this when I built the gallery and never ran `check:bundle`
 afterwards. The check existed, worked the moment it was asked, and was not asked.
+
+---
+
+## The number, at last: 30 verifications per 5 minutes
+
+Austine read it off the Supabase dashboard, and it ends a week of inference.
+
+**It is the verification that counts, not the link.** `admin/generate_link` is a
+service-role call; the callback's `verifyOtp` is a `POST /auth/v1/verify`, and
+that is what the window meters.
+
+**It also explains the observation that broke the previous model.** The run after
+three weeks idle did the same work as the run forty minutes later, and produced
+**1 refusal against 26**. A daily budget cannot do that, and neither can "the
+endpoint needs rest". A suite sitting *just under* a rolling five-minute ceiling
+can: start into an empty window and it passes; start while the window still
+carries the tail of the previous run and it does not. That is why this read as
+flakiness for days — the same suite, the same code, genuinely different outcomes,
+with the deciding variable outside the repository.
+
+Every wrong theory shared one shape: each explained the runs I had seen and none
+predicted the next. The rate model is the first that did — it said the migrated
+suite would stop refusing, and it did, twice.
+
+### What the number is for
+
+It is now a budget the suite can be designed against rather than a hazard to be
+surprised by, which is the whole reason to write a measured constraint down.
+`CLAUDE.md`'s testing rules carry it, with the rule that falls out of it: a test
+signs in only if signing in is what it is about, and owns an account only to
+enumerate what a host owns, to need one with no meetings, or to be a genuinely
+different person.
+
+And the trap that cost a green run, recorded beside it: **never mint a link for
+the shared host from a test.** Supabase invalidates the previous link when a new
+one is minted for the same address, so removing a per-test account while leaving
+its per-test sign-in turns an independent cost into a shared hazard.
