@@ -1,6 +1,5 @@
 import { expect, test } from "./fixtures";
-import { signIn } from "./auth";
-import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-admin";
+import { createMeeting } from "./meeting-admin";
 
 /**
  * The schedule form and the meeting page — BUILD-PLAN v1.3 D3 and D4.
@@ -20,18 +19,28 @@ import { createFixtureHost, createMeeting, deleteFixtureHost } from "./meeting-a
 
 const WEEK = 7 * 86_400_000;
 
+/**
+ * A scheduled meeting of this test's own, owned by the run's shared host.
+ *
+ * Every case here edits, cancels or reads **one meeting by its code**, and
+ * nothing enumerates what the host owns — so the account can be shared while
+ * the meeting stays private to the test, which is the division
+ * `global-setup.ts` already draws. `dashboard.spec` is the counter-example and
+ * keeps its own account, because it asserts an exact row count and shared
+ * meetings would appear in it.
+ *
+ * Seven sign-ins a run left with this.
+ */
 async function scheduled(title = "Quarterly planning") {
-  const host = await createFixtureHost();
   const start = new Date(Date.now() + WEEK);
   const code = await createMeeting({
-    host: host.id,
     status: "scheduled",
     title,
     scheduledStart: start,
     scheduledEnd: new Date(start.getTime() + 30 * 60_000),
     timezone: "America/New_York",
   });
-  return { host, code };
+  return { code };
 }
 
 test.describe("the meeting page", () => {
@@ -44,10 +53,10 @@ test.describe("the meeting page", () => {
    * "Saving…", permanently, with no way out but a reload. The save had worked.
    * Nothing threw, nothing was logged, and no test looked.
    */
-  test("finishing an edit returns to the meeting, with the change on it", async ({ page }) => {
-    const { host, code } = await scheduled();
+  test("finishing an edit returns to the meeting, with the change on it", async ({ signedInPage: page }) => {
+    const { code } = await scheduled();
     try {
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
       await page.getByRole("button", { name: "Edit" }).click();
 
       const title = page.getByLabel("Title");
@@ -62,15 +71,14 @@ test.describe("the meeting page", () => {
       await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
       await expect(page.getByRole("heading", { name: "Quarterly planning, moved" })).toBeVisible();
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
   /** And leaving without saving gets back too, changing nothing. */
-  test("cancelling an edit returns to the meeting unchanged", async ({ page }) => {
-    const { host, code } = await scheduled();
+  test("cancelling an edit returns to the meeting unchanged", async ({ signedInPage: page }) => {
+    const { code } = await scheduled();
     try {
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
       await page.getByRole("button", { name: "Edit" }).click();
       await page.getByLabel("Title").fill("Not saved");
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -78,7 +86,6 @@ test.describe("the meeting page", () => {
       await expect(page.getByRole("heading", { name: "Meeting link" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Quarterly planning" })).toBeVisible();
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -91,10 +98,10 @@ test.describe("the meeting page", () => {
    * on a screen — the reader has no form to check it against, and the message
    * outlives the page.
    */
-  test("Email an invite is a mailto with no recipient, a subject and a dated body", async ({ page }) => {
-    const { host, code } = await scheduled("Design review");
+  test("Email an invite is a mailto with no recipient, a subject and a dated body", async ({ signedInPage: page }) => {
+    const { code } = await scheduled("Design review");
     try {
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
       const href = await page
         .getByRole("link", { name: "Email an invite" })
         .getAttribute("href");
@@ -114,7 +121,6 @@ test.describe("the meeting page", () => {
       );
       expect(body).toContain("They don't need an account.");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -125,10 +131,10 @@ test.describe("the meeting page", () => {
    * a fetch — asserted as a `download` attribute rather than by clicking it,
    * because a download in a test context proves the harness works.
    */
-  test("the invite section holds four routes, email first", async ({ page }) => {
-    const { host, code } = await scheduled();
+  test("the invite section holds four routes, email first", async ({ signedInPage: page }) => {
+    const { code } = await scheduled();
     try {
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
       const section = page
         .locator("section")
         .filter({ has: page.getByRole("heading", { name: "Invite people" }) });
@@ -144,7 +150,6 @@ test.describe("the meeting page", () => {
         `${code}.ics`,
       );
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -156,10 +161,10 @@ test.describe("the meeting page", () => {
    * *modal*: `showModal()` is what makes the page behind it inert, and a
    * `<dialog>` opened with `show()` looks identical and traps nothing.
    */
-  test("cancelling asks first, and dismissing it changes nothing", async ({ page }) => {
-    const { host, code } = await scheduled();
+  test("cancelling asks first, and dismissing it changes nothing", async ({ signedInPage: page }) => {
+    const { code } = await scheduled();
     try {
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
       await page.getByRole("button", { name: "Cancel meeting" }).click();
 
       const dialog = page.getByRole("dialog");
@@ -180,14 +185,13 @@ test.describe("the meeting page", () => {
       await expect(page.getByText("This meeting was cancelled")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Cancel meeting" })).toBeVisible();
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
-  test("and confirming cancels it", async ({ page }) => {
-    const { host, code } = await scheduled();
+  test("and confirming cancels it", async ({ signedInPage: page }) => {
+    const { code } = await scheduled();
     try {
-      await signIn(page, host.email, `/schedule/${code}`);
+      await page.goto(`/schedule/${code}`);
       await page.getByRole("button", { name: "Cancel meeting" }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Cancel meeting" }).click();
 
@@ -198,7 +202,6 @@ test.describe("the meeting page", () => {
       await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Cancel meeting" })).toHaveCount(0);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 });
@@ -224,16 +227,14 @@ test.describe("the schedule form", () => {
    * subset. This test exists to pin the structure D3 argued for, and a fifth
    * section arriving unannounced should still fail it.
    */
-  test("is four sections, and they are real headings", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("is four sections, and they are real headings", async ({ signedInPage: page }) => {
     try {
-      await signIn(page, host.email, "/schedule");
+      await page.goto("/schedule");
       await expect(page.getByLabel("Title")).toBeVisible();
       expect(
         await page.getByRole("heading", { level: 2 }).allTextContents(),
       ).toEqual(["What it is", "When it is", "Who gets in", "Check it"]);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -245,10 +246,9 @@ test.describe("the schedule form", () => {
    * because the section headed "Check it" being empty at the moment there is
    * something to check is the state that used to ship.
    */
-  test("the preview is computed, and survives an unfinished form", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("the preview is computed, and survives an unfinished form", async ({ signedInPage: page }) => {
     try {
-      await signIn(page, host.email, "/schedule");
+      await page.goto("/schedule");
       const card = page.getByRole("status");
       await expect(card).toContainText("Untitled meeting");
 
@@ -273,7 +273,6 @@ test.describe("the schedule form", () => {
       await expect(card).toContainText("Design review");
       await expect(card).toContainText(/Pick a date/);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -290,12 +289,22 @@ test.describe("the schedule form", () => {
    * text, whose example was written from Accra, where UTC and "where you are"
    * happen to be the same line.
    */
-  test("the second zone line carries the day when the day differs", async ({ browser }) => {
-    const host = await createFixtureHost();
-    const context = await browser.newContext({ timezoneId: "Europe/Berlin" });
+  test("the second zone line carries the day when the day differs", async ({
+    browser,
+    sharedHostState,
+  }) => {
+    /*
+     * This one builds its own context for the timezone, so it needs the shared
+     * cookies handed to it rather than the `signedInPage` fixture — the page
+     * has to be both signed in *and* in Berlin.
+     */
+    const context = await browser.newContext({
+      timezoneId: "Europe/Berlin",
+      storageState: sharedHostState,
+    });
     const page = await context.newPage();
     try {
-      await signIn(page, host.email, "/schedule");
+      await page.goto("/schedule");
       await page.getByLabel("Title").fill("Late call");
       await page.getByLabel("Timezone").selectOption("America/New_York");
       const card = page.getByRole("status");
@@ -318,7 +327,6 @@ test.describe("the schedule form", () => {
       );
     } finally {
       await context.close();
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -336,10 +344,9 @@ test.describe("the schedule form", () => {
    * quarter hours; it deliberately does not stop somebody typing 10:07, which
    * the select could not have allowed.
    */
-  test("start time is a native time input at quarter-hour steps", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("start time is a native time input at quarter-hour steps", async ({ signedInPage: page }) => {
     try {
-      await signIn(page, host.email, "/schedule");
+      await page.goto("/schedule");
       const start = page.getByLabel("Start time");
       await expect(start).toBeVisible();
       expect(await start.evaluate((el) => el.tagName)).toBe("INPUT");
@@ -351,7 +358,6 @@ test.describe("the schedule form", () => {
       await start.fill("10:07");
       await expect(page.getByRole("status")).toContainText("10:07");
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -363,10 +369,9 @@ test.describe("the schedule form", () => {
    * was fine this morning is not fine now, and a time that is fine in Accra is
    * not in Auckland.
    */
-  test("a time that has passed is refused, and says so", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("a time that has passed is refused, and says so", async ({ signedInPage: page }) => {
     try {
-      await signIn(page, host.email, "/schedule");
+      await page.goto("/schedule");
       await page.getByLabel("Title").fill("Too late");
       const submit = page.getByRole("button", { name: "Schedule meeting" });
       await expect(submit).toBeEnabled();
@@ -386,7 +391,6 @@ test.describe("the schedule form", () => {
       await expect(page.getByText("That time has already passed.")).toHaveCount(0);
       await expect(submit).toBeEnabled();
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 
@@ -397,10 +401,9 @@ test.describe("the schedule form", () => {
    * Paris, no Toronto, no Shanghai, no Auckland. A zone missing from a
    * scheduling form is a meeting scheduled in the wrong one.
    */
-  test("the timezone list is grouped and covers more than one continent", async ({ page }) => {
-    const host = await createFixtureHost();
+  test("the timezone list is grouped and covers more than one continent", async ({ signedInPage: page }) => {
     try {
-      await signIn(page, host.email, "/schedule");
+      await page.goto("/schedule");
       const zones = page.getByLabel("Timezone");
       const groups = await zones.locator("optgroup").evaluateAll((els) =>
         els.map((e) => (e as HTMLOptGroupElement).label),
@@ -437,7 +440,6 @@ test.describe("the schedule form", () => {
         "the chosen zone is pinned at the top and left in its region",
       ).toHaveCount(2);
     } finally {
-      await deleteFixtureHost(host.id);
     }
   });
 });

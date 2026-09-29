@@ -1,7 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { expect, test, sharedHostEmail } from "./fixtures";
-import { signIn } from "./auth";
+import { expect, test } from "./fixtures";
 import { createMeeting } from "./meeting-admin";
 // The real number, not a copy of it — see `lib/meetings/freshness.ts`.
 import { REFRESH_GAP_MS } from "../lib/meetings/freshness";
@@ -70,9 +69,22 @@ const pastTheGap = (page: Page) => page.waitForTimeout(REFRESH_GAP_MS + 1_000);
  * the cookie already set: nothing signs in during the measurement. The silence
  * afterwards catches anything else still settling.
  */
-async function arrive(page: Page, email: string, title: string) {
+/**
+ * Arrive on the dashboard, already signed in.
+ *
+ * **This used to sign in, and pointing it at the shared host was actively
+ * harmful.** `e2e/auth.ts` records that Supabase invalidates the previous link
+ * when a new one is minted for the same address — so a test minting a link for
+ * the run's shared host can invalidate the link another worker is about to
+ * consume. Removing the per-test account without removing the per-test sign-in
+ * turned an independent cost into a shared hazard.
+ *
+ * The page arrives with cookies instead. These tests are about refresh
+ * behaviour, not about signing in.
+ */
+async function arrive(page: Page, title: string) {
   const refreshes = watchRefreshes(page);
-  await signIn(page, email, "/dashboard");
+  await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Meetings" })).toBeVisible();
   await page.goto("/dashboard");
   await expect(page.getByText(title)).toBeVisible();
@@ -168,12 +180,13 @@ const MARK = () =>
 test.describe("dashboard freshness", () => {
   test("coming back to the tab makes it current, without a reload", async ({
     browser,
+    sharedHostState,
   }) => {
     await dashboardWith("Already there");
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: sharedHostState });
     try {
       const page = await context.newPage();
-      await arrive(page, sharedHostEmail(), "Already there");
+      await arrive(page, "Already there");
 
       const mark = await page.evaluate(MARK);
       expect(mark).toBeGreaterThan(0);
@@ -208,12 +221,12 @@ test.describe("dashboard freshness", () => {
    * D5 is "not a timer", and the absence has to be asserted rather than
    * assumed: a polling interval would make the test above pass on its own.
    */
-  test("nothing polls while the tab is simply left open", async ({ browser, }) => {
+  test("nothing polls while the tab is simply left open", async ({ browser, sharedHostState }) => {
     await dashboardWith("Sitting there");
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: sharedHostState });
     try {
       const page = await context.newPage();
-      const refreshes = await arrive(page, sharedHostEmail(), "Sitting there");
+      const refreshes = await arrive(page, "Sitting there");
 
       await createMeeting({
             status: "scheduled",
@@ -253,12 +266,13 @@ test.describe("dashboard freshness", () => {
    */
   test("returning twice in quick succession asks the server once", async ({
     browser,
+    sharedHostState,
   }) => {
     await dashboardWith("Counting");
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: sharedHostState });
     try {
       const page = await context.newPage();
-      const refreshes = await arrive(page, sharedHostEmail(), "Counting");
+      const refreshes = await arrive(page, "Counting");
 
       await pastTheGap(page);
       for (let i = 0; i < 3; i++) {
@@ -284,12 +298,12 @@ test.describe("dashboard freshness", () => {
    * *leaves* spends a request on a page nobody is looking at — and lands its
    * result during whatever they left to do.
    */
-  test("leaving does not refresh; only coming back does", async ({ browser, }) => {
+  test("leaving does not refresh; only coming back does", async ({ browser, sharedHostState }) => {
     await dashboardWith("Guarded");
-    const context = await browser.newContext();
+    const context = await browser.newContext({ storageState: sharedHostState });
     try {
       const page = await context.newPage();
-      const refreshes = await arrive(page, sharedHostEmail(), "Guarded");
+      const refreshes = await arrive(page, "Guarded");
 
       await pastTheGap(page);
       await page.evaluate(() => {
