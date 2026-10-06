@@ -32,6 +32,24 @@ const required = [
   "NEXT_PUBLIC_APP_URL",
 ];
 
+/**
+ * Optional, and all-or-nothing: the suite's own LiveKit project.
+ *
+ * The media project joins real rooms with several participants per test and has
+ * twice exhausted the connection minutes of the project production uses — which
+ * stops real meetings being joined, by anyone. With these set,
+ * `playwright.config.ts` points the server under test at them instead.
+ *
+ * A partial set is refused rather than warned about: tokens signed by one
+ * project and offered to another fail in a way that reads as a broken token
+ * route, not as a misconfiguration.
+ */
+const E2E_LIVEKIT = [
+  "E2E_LIVEKIT_URL",
+  "E2E_LIVEKIT_API_KEY",
+  "E2E_LIVEKIT_API_SECRET",
+];
+
 /** Values shipped in .env.example that mean "not filled in yet". */
 const PLACEHOLDERS = [
   "wss://your-project.livekit.cloud",
@@ -39,6 +57,22 @@ const PLACEHOLDERS = [
 ];
 
 const errors = [];
+
+/*
+ * All three, or none. Reported by *name* only — this script never prints a
+ * value, which is the whole reason it exists rather than `cat .env.local`.
+ */
+{
+  const present = E2E_LIVEKIT.filter((k) => (env[k] ?? process.env[k] ?? "").trim());
+  if (present.length && present.length < E2E_LIVEKIT.length) {
+    const missing = E2E_LIVEKIT.filter((k) => !present.includes(k));
+    errors.push(
+      `${present.join(", ")} set without ${missing.join(", ")} — all three or none. ` +
+        "A partial set signs tokens with one LiveKit project and connects to another.",
+    );
+  }
+}
+
 for (const key of required) {
   if (!env[key]) {
     errors.push(`${key} is missing or empty`);

@@ -199,3 +199,44 @@ The two marked in bold are the ones that matter. `LIVEKIT_API_SECRET` lets anyon
 **LiveKit connection fails with an auth error** — the API key and secret belong to a different project than the WS URL. All three come from one project.
 
 **Supabase CLI link fails** — that prompt wants the database password from step 2, not your account password.
+
+---
+
+## A second LiveKit project, for the suite
+
+Optional, and worth doing once the suite runs often.
+
+**Why.** `e2e`'s media project joins real LiveKit rooms with several
+participants per test. It has twice exhausted the connection minutes of the
+project production uses — and that does not fail quietly: the app stays up,
+sign-in works, the waiting room works, and **nobody can join a meeting**. The
+symptom is ninety-odd tests failing against `joinAs` while the room renders "The
+connection dropped", which reads as a code fault and is not one.
+
+`npm run check:livekit` now reports it in one line instead of twenty-nine
+minutes of timeouts. That is detection. A second project is prevention.
+
+**Setup.** Make another LiveKit Cloud project — same steps as the first, no
+webhook needed. The suite never relies on webhook delivery: `addSessions` writes
+session rows directly and `check:webhook` posts its own signed events.
+
+Then add three variables to `.env.local`:
+
+```
+E2E_LIVEKIT_URL=wss://<the-test-project>.livekit.cloud
+E2E_LIVEKIT_API_KEY=API...
+E2E_LIVEKIT_API_SECRET=...
+```
+
+**All three, or none.** `npm run check:env` refuses a partial set, because tokens
+signed by one project and offered to another fail in a way that reads as a broken
+token route rather than as a misconfiguration.
+
+With them set, `playwright.config.ts` points the server under test at that
+project — including `NEXT_PUBLIC_LIVEKIT_URL`, which has to be overridden at
+build time because Next inlines it, so overriding only the server keys would mint
+tokens for one project and connect to another. `check:livekit` probes whichever
+project the suite will actually use, and says which one it asked.
+
+Leave them unset and nothing changes.
+

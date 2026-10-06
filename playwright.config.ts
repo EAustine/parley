@@ -127,6 +127,38 @@ const ENGINE_DEVICE = {
   webkit: "Desktop Safari",
 } as const;
 
+
+/**
+ * The e2e LiveKit credentials, if all three are present.
+ *
+ * **All or nothing, and loudly.** A partial override is the worst of the three
+ * outcomes: tokens signed by one project and offered to another fail with an
+ * authorisation error that looks nothing like a misconfiguration, and the
+ * obvious reading of it is that the token route is broken. Better to refuse to
+ * start.
+ */
+function testLiveKit(): Record<string, string> {
+  const url = process.env.E2E_LIVEKIT_URL;
+  const key = process.env.E2E_LIVEKIT_API_KEY;
+  const secret = process.env.E2E_LIVEKIT_API_SECRET;
+  const set = [url, key, secret].filter(Boolean).length;
+
+  if (set === 0) return {};
+  if (set < 3) {
+    throw new Error(
+      "E2E_LIVEKIT_URL, E2E_LIVEKIT_API_KEY and E2E_LIVEKIT_API_SECRET are " +
+        "all required together. Set all three, or none — a partial override " +
+        "signs tokens with one project and connects to another.",
+    );
+  }
+
+  return {
+    NEXT_PUBLIC_LIVEKIT_URL: url!,
+    LIVEKIT_API_KEY: key!,
+    LIVEKIT_API_SECRET: secret!,
+  };
+}
+
 export default defineConfig({
   testDir: "e2e",
   /**
@@ -236,7 +268,30 @@ export default defineConfig({
      * build — `NODE_ENV` would hide them from the only caller that wants them,
      * while leaving them visible on preview deployments. Vercel never sets it.
      */
-    env: { PARLEY_DEV_SURFACES: "1" },
+    env: {
+      PARLEY_DEV_SURFACES: "1",
+      /*
+       * **The suite's own LiveKit project, when one is configured.**
+       *
+       * The media project joins real rooms with several participants per test,
+       * and it has twice exhausted the connection minutes of the project
+       * production uses — which does not fail the suite quietly, it stops real
+       * meetings from being joined by anyone. `check:livekit` turned that from a
+       * twenty-nine-minute misdiagnosis into one line, but detecting it is not
+       * the same as not doing it.
+       *
+       * Set `E2E_LIVEKIT_*` in `.env.local` and the server under test mints and
+       * connects against those instead. Leave them unset and nothing changes,
+       * so this is safe to land before the second project exists.
+       *
+       * `NEXT_PUBLIC_LIVEKIT_URL` has to be overridden here rather than at run
+       * time: Next inlines `NEXT_PUBLIC_*` textually at build, and this command
+       * *is* the build, so the browser's URL is decided by what this object
+       * says. Overriding only the server keys would mint tokens for one project
+       * and connect to another.
+       */
+      ...testLiveKit(),
+    },
     port: PORT,
     // Never reuse. The command above *builds*, so reusing a server skips the
     // build and runs the suite against whatever was on disk last time — which

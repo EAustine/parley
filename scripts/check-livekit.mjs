@@ -40,10 +40,26 @@ function required(name) {
   return value;
 }
 
-const url = required("NEXT_PUBLIC_LIVEKIT_URL").replace(/\/$/, "");
+/*
+ * **Probe whichever project the suite will actually use.**
+ *
+ * `playwright.config.ts` points the server under test at `E2E_LIVEKIT_*` when
+ * all three are set, so probing the production project in that case would
+ * answer a question nobody asked — and would report healthy while the suite's
+ * own project was exhausted, which is the exact failure this script exists to
+ * end.
+ */
+const usingTestProject = Boolean(
+  process.env.E2E_LIVEKIT_URL &&
+    process.env.E2E_LIVEKIT_API_KEY &&
+    process.env.E2E_LIVEKIT_API_SECRET,
+);
+const which = usingTestProject ? "E2E_" : "";
+
+const url = required(usingTestProject ? "E2E_LIVEKIT_URL" : "NEXT_PUBLIC_LIVEKIT_URL").replace(/\/$/, "");
 const host = url.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
 
-const token = new AccessToken(required("LIVEKIT_API_KEY"), required("LIVEKIT_API_SECRET"), {
+const token = new AccessToken(required(`${which}LIVEKIT_API_KEY`), required(`${which}LIVEKIT_API_SECRET`), {
   identity: "quota-probe",
   ttl: 60,
 });
@@ -70,7 +86,10 @@ try {
 const body = (await response.text()).trim();
 
 if (response.ok) {
-  console.log("✔ LiveKit accepts a join token — the suite's room tests can run.");
+  console.log(
+    `✔ LiveKit accepts a join token — the suite's room tests can run.` +
+      (usingTestProject ? " (the suite's own project)" : " (production's project)"),
+  );
   process.exit(0);
 }
 
@@ -85,5 +104,12 @@ if (response.status === 429) {
   console.error("  Running the suite is what spends it. The media project joins real");
   console.error("  rooms with several participants per test, so a handful of full runs");
   console.error("  in one night is enough to exhaust it — twice, so far.");
+  if (!usingTestProject) {
+    console.error();
+    console.error("  This is production's LiveKit project, so **real meetings cannot be");
+    console.error("  joined right now either**. Set E2E_LIVEKIT_URL, E2E_LIVEKIT_API_KEY");
+    console.error("  and E2E_LIVEKIT_API_SECRET in .env.local to give the suite its own,");
+    console.error("  so that testing can no longer take the product down.");
+  }
 }
 process.exit(1);
