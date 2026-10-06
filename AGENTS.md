@@ -1,0 +1,615 @@
+# AGENTS.md
+
+Project rules for **Parley**. Read `PRD.md` for the full specification, `BRAND.md` for identity and assets, and `BUILD-PLAN.md` for the phased task list.
+
+---
+
+## What this is
+
+**Parley** — a video conferencing web app: video, audio, screen share, emoji reactions, in-meeting chat, scheduling, and shareable invite links.
+
+*A parley is a conversation between parties who cannot otherwise meet — held at a distance, on neutral ground, under terms both sides agree to.*
+
+Tagline: **A link is all anyone needs.**
+
+## Stack
+
+Next.js 15 (App Router) · TypeScript strict · Tailwind v4 · shadcn/ui · HugeIcons · LiveKit Cloud · Supabase · Vercel
+
+---
+
+## Hard rules
+
+**1. Never use LiveKit's prebuilt UI components.**
+Use the hooks: `useRoomContext`, `useTracks`, `useParticipants`, `useLocalParticipant`, `useConnectionState`, `useDataChannel`, `useRoomInfo`. Also use `<RoomAudioRenderer />` — it renders nothing visible and correctly manages remote audio elements.
+
+Do not use `VideoConference`, `ControlBar`, `GridLayout`, `ParticipantTile`, `PreJoin`, or `@livekit/components-styles`. They carry a competing design system. Every visible surface is built from shadcn primitives and the tokens below.
+
+**2. Secrets never reach the client.**
+`LIVEKIT_API_SECRET`, `LIVEKIT_API_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are server-only. No `NEXT_PUBLIC_` prefix on any of them. Token minting happens in a route handler, never in a component.
+
+`lib/env.ts` implements this and is imported for side effects at the top of the root layout; `scripts/check-env.mjs` does the same standalone for pre-dev and CI. Both are in `scaffold/` and are already verified against the five failure modes. Do not weaken either into a warning — a leaked key produces no runtime symptom, which is exactly why it needs a hard stop. Account setup is in `ACCOUNTS.md`.
+
+**Never read, `cat`, `echo`, `grep`, or print `.env.local`, and never write values into it.** Austine fills it in his own editor. Anything you read enters your context and can end up quoted back into the conversation or a commit message. To confirm it is correct, run `npm run check:env` — it reports variable *names* and pass/fail, never values. If a variable looks wrong, say which name is wrong and let him fix it.
+
+The same applies to `~/.supabase`, any `*.pem`, and anything under `.vercel/`.
+
+**3. Mute state comes from the track, not from React.**
+Derive mic and camera UI state from the LiveKit track's actual published state. Never keep a parallel boolean as the source of truth. If unmuting fails, the UI must show muted. This is a privacy requirement.
+
+**4. No text or icons directly on video — and hue needs more than a scrim.**
+Every label, badge, and control sits on `--scrim`. Contrast against arbitrary video content is otherwise undefined.
+
+The scrim is sufficient for neutral foreground and not for hue. Composited over white video it resolves to roughly `#515355`, where `--foreground` still clears 7.01:1 but `--state-warning` drops to 3.79:1 and `--state-critical` to 2.53:1 — both under their floor, and the critical one badly.
+
+**`--foreground` is not permitted on `--scrim`. Use `--on-scrim`.** The scrim is theme-invariant and always dark; `--foreground` flips with the theme. In light mode that puts `#16181D` on a scrim that resolves to `#515355` — **2.3:1, and effectively invisible.** Any label, icon, or control drawn on the scrim uses `--on-scrim` or `--on-scrim-muted`, both fixed. This is the same permitted-surfaces failure as the tile edge and the form border, in a third place: a token evaluated in one context and used in another.
+
+**Hued state indicators therefore sit on an opaque chip at `--popover`, never on the scrim.** That restores the verified figures (warning 8.11:1, critical 5.42:1) because the background stops depending on what is on camera. Raising the scrim alpha would need roughly 0.90 to carry critical text, which is a near-solid panel over the video — worse than a chip, and it would darken every neutral label with it.
+
+Dropping hue instead is not the answer here: §4.2 spends the entire chroma budget on exactly two things, and connection state is one of them. This is the case where hue *is* the meaning.
+
+**5. No hue except where it is the meaning.**
+Hue is spent on two things only: destructive actions (leave, end) and connection warnings. Everything else — mute, active speaker, selection, focus — is encoded in weight, fill, and value.
+
+**Reactions are not a third exception, and calling them one was the wrong fix.** v1.3's guardrails described them as "the sanctioned exception", which would make the rule a list that grows. They are not an exception because the rule governs **how the interface encodes state**, and a reaction is not state — it is content a participant sent, and its meaning is carried by the glyph. Desaturate a 🎉 and it is still a 🎉; desaturate a red tile border and the tile is just bordered. That is the actual test, and it is the same one §4.2 states as "nothing depends on hue alone". Emoji pass it; a hued speaking ring does not.
+
+This is why the six ship as Fluent 3D assets without contradicting anything, and equally why a reaction must never be given a job — no per-participant tint, no colour standing for urgency or sentiment. The moment a hue in a reaction *means* something, it is state, and rule 5 applies to it in full.
+
+The dashboard's live indicator follows the same rule and the same precedent: a solid `--foreground` dot, no hue and no pulse, with upcoming and past rows carrying no dot at all. "Active right now" is the speaking ring's problem wearing different clothes, and answering it twice — once in value, once in hue — would give the product two answers to one question. A pulse also fails "no ambient animation", and an indicator that `prefers-reduced-motion` has to suppress is one that does not work.
+
+The earlier phrasing "weight, not colour" was wrong and the review caught it. The speaking ring changes both weight and value: idle is 1px `--boundary` at 3.93:1, speaking is 2px `--foreground` at 17.29:1. The principle that actually holds across the system is **no hue**, and nothing depending on hue alone.
+
+**6. Chat is rendered as text.**
+Never `dangerouslySetInnerHTML`. Autolinked URLs get `rel="noopener noreferrer nofollow"`.
+
+**7. Every icon-only button needs `aria-label` and a tooltip.**
+No exceptions.
+
+**7a. `app/icon.svg` is the one documented exception to `currentColor`.**
+A standalone favicon has no inherited colour context, so `currentColor` resolves to black and disappears on a dark tab. `app/icon.svg` is a self-contained badge with literal fills — mark in `#F2F4F7` on a `#0E1013` rounded square — matching the PNG icon set, which already carries the dark ground. It uses the small variant (no ghost cell), because an SVG cannot switch variants by rendered size and a favicon is almost always drawn at 16–32px. `currentColor` remains the rule everywhere it actually pays off: `components/brand/*`.
+
+**7b. Shipped image assets carry no provenance metadata.**
+Files delivered into `brand/` may arrive with a C2PA `<metadata>` block that dwarfs the artwork — 7.7KB of provenance around 410 bytes of geometry, on an asset served with every page load. Strip it when copying into `app/` and `public/`. Leave the originals in `brand/` untouched as the record. If a stripped file looks wrong, retype it from the source in `BRAND.md`, which is authoritative.
+
+**8. `livekit-client` is dynamically imported on the room route only.**
+It must not appear in any other bundle. Pre-join uses `navigator.mediaDevices` directly and needs no LiveKit code.
+
+Bundle budgets are per-route and live in `PRD.md` §10, which is authoritative — no figure is repeated here. The ones that matter are the public cold-load routes, where a stranger meets the product on a phone with an empty cache. Authenticated routes are deliberately loose.
+
+**8c. Never pass `process.env` as an object to a function.**
+Next replaces `process.env.NEXT_PUBLIC_FOO` textually at build time and cannot replace anything when the whole object is handed off, so the client bundle sees every public variable as undefined. Reference each one as a literal. `Buffer` and `Object.entries(process.env)` are server-only — the leak guard must stay behind a `typeof window === "undefined"` check, and `npm run check:env` in CI is what actually catches a leaked key, since by server boot the bundle is already built.
+
+**8a. shadcn base is Radix, not Base UI.** Settled in Phase 0 — Radix is what the registry is built on and what "shadcn primitives" means throughout these docs. Do not revisit.
+
+**8b. `defaultTheme="system"`, not `"dark"`.** My earlier instruction said `"dark"` and contradicted `PRD.md` §4.2. §4.2 wins: the dashboard and scheduling screens follow the OS, because light mode exists precisely for those document-like surfaces and a light mode nobody defaults into is unverified code that still has to be maintained. Force `.dark` on `/j/[code]` and `/room/[code]` via a wrapper element in the route-group layout — the flip happens at the pre-join boundary, which is the right moment to signal "you've entered the call," and it means the video preview is never shown on a light ground.
+
+**8d. Any module holding a server-only secret imports `server-only` at the top.**
+`lib/supabase/admin.ts`, the LiveKit token signing module, `lib/env.ts`'s server section — all of them. The package exists solely to turn "this leaked into the client bundle" from a runtime failure into a build failure, which is the same reasoning as the env guard: the thing being prevented has no visible symptom when it goes wrong.
+
+**9. Ask before adding a dependency — and remove it when it stops being used.**
+The stack above is the stack. If something seems to need a new package, say why first.
+
+`check:deps` walks the import graph from `app/` and **fails** on anything unreachable, in two categories that need separating:
+
+**Unused npm packages fail outright.** Audit surface, supply-chain surface, lockfile weight. No exceptions.
+
+**Unrendered local components fail too, and the fix is deletion, not justification.** These are vendored source with no supply-chain surface of their own — but seven of the ten unrendered shadcn components pin a Radix package in `package.json`, so most of them are the first category wearing a local file as a disguise. And shadcn is a copy-paste registry, not a library: `npx shadcn add dialog` takes seconds on the day Phase 8 needs a modal. "We'll want it later" is an argument for adding it later, not for carrying it now.
+
+It does not warn. An exception list is how dead code accumulates, and a warning printed on every run becomes furniture within a week. Three dependencies have already been specified in these documents and never used — `react-day-picker`, `react-hook-form`, `@hookform/resolvers`. Each was audit surface, supply-chain surface, and a lie to the next reader about how the product is built. Delete the code that makes an unused package reachable too: `components/ui/form.tsx` existed solely to keep `react-hook-form` in the graph.
+
+When a document and the build disagree about a dependency, the build is usually right and the document is describing a plan reality overtook. Fix the document.
+
+**10. Design decisions are discussed before they are coded.**
+If a spec is ambiguous, ask. Do not pick silently and move on.
+
+---
+
+## Design tokens
+
+Dark is the default, and the only mode for the in-call surface. Video is the light source; chrome recedes. Dashboard and scheduling screens follow system theme.
+
+**Follow shadcn's class convention: `:root` holds light, `.dark` holds dark.** Set `next-themes` to `defaultTheme="system"` with `enableSystem`, and force `.dark` on `/j/[code]` and `/room/[code]` regardless of user preference — see rule 8b. Inverting the convention would fight every shadcn component and third-party library that expects `.dark`.
+
+**Declare `color-scheme`.** `:root{color-scheme:light}` and `.dark{color-scheme:dark}`; the room forces dark. Native controls paint their own parts — the date picker glyph, the select dropdown list, scrollbars, spinners — and without this the browser draws them for a light UI. That is a dark calendar icon on a dark field, and an unreadable white dropdown list behind a dark trigger. It matters more now that Radix `Select` is being replaced with native `<select>`: the closed state is ours to style, the open list is the operating system's, and `color-scheme` is the only thing that tells it which way round we are.
+
+**Keep these hex values verbatim.** Do not convert to OKLCH — the conversion shifts computed values and invalidates the verified contrast table below. Map them through `@theme inline` and override whatever `shadcn init` writes.
+
+```css
+/* app/globals.css — light on :root, dark on .dark, per the convention above.
+   An earlier draft of this block wrote the light values into a `.light`
+   class while the paragraph above said `:root`. next-themes does put
+   `.light` on <html> when the theme resolves light, but it needs to carry
+   nothing: `.light` is on the same element as `:root`, so the palette below
+   already applies.
+
+   The build carried *both* until this was checked — `:root` and a `.light`
+   mirroring it, 22 tokens each, agreeing exactly. Not a bug and not inert:
+   `scripts/contrast.mjs` read the copy, so an edit to `:root` alone would
+   have moved the rendered theme while the check went on measuring the stale
+   block and passing. The duplicate is gone; the script parses `:root`, and
+   refuses to run if that block yields fewer than twenty tokens, because a
+   selector repointed at a non-palette rule would otherwise empty half the
+   matrix in silence. `.light` survives only where it is a selector — the
+   `color-scheme` rule and the pre-paint `:not()` guard.
+
+   Neither selector appears in a comment above its own rule anywhere in
+   `globals.css`. `parseBlock` finds a block with `indexOf`, so a mention in
+   prose is a block the parser will read instead. */
+
+@layer base {
+  /* Light first, dark second. `:root` and `.dark` have equal specificity
+     (0,1,0), so source order is what decides — a `.dark` block written above
+     `:root` is overridden by it and the room renders light. */
+  :root {
+    --background:             #FFFFFF;
+    --foreground:             #16181D;
+    --card:                   #F7F8F9;
+    --card-foreground:        #16181D;
+    --popover:                #FFFFFF;
+    --popover-foreground:     #16181D;
+    --primary:                #16181D;
+    --primary-foreground:     #FFFFFF;
+    --secondary:              #F0F2F4;
+    --secondary-foreground:   #16181D;
+    --muted:                  #F0F2F4;
+    --muted-foreground:       #5C636E;
+    --accent:                 #F0F2F4;
+    --accent-foreground:      #16181D;
+    --destructive:            #C62B31;
+    --destructive-foreground: #FFFFFF;
+    --border:                 #E3E6EA;
+    --input:                  #E3E6EA;
+    --ring:                   #16181D;
+
+    --state-critical:         #C62B31;
+    --state-warning:          #8A5300;
+    --boundary:               #687284;   /* room is dark in both themes */
+
+    /* theme-invariant: the scrim always sits over video, and video
+       surfaces are always dark — so anything drawn on it must be too.
+       These are separate variable names, so nothing in `.dark` overrides
+       them and no second selector is needed to protect them. */
+    --scrim:            rgba(14, 16, 19, 0.72);
+    --on-scrim:         #F2F4F7;   /* 7.01:1 over the brightest video */
+    --on-scrim-muted:   #C6CAD1;   /* 4.70:1 */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background:             #0E1013;
+    --foreground:             #F2F4F7;
+    --card:                   #171A1F;
+    --card-foreground:        #F2F4F7;
+    --popover:                #1B1F25;
+    --popover-foreground:     #F2F4F7;
+    --primary:                #F2F4F7;
+    --primary-foreground:     #0E1013;
+    --secondary:              #242830;
+    --secondary-foreground:   #F2F4F7;
+    --muted:                  #1F232A;
+    --muted-foreground:       #9AA1AC;
+    --accent:                 #242830;
+    --accent-foreground:      #F2F4F7;
+    --destructive:            #D32F2F;
+    --destructive-foreground: #FFFFFF;
+    --border:                 #242830;
+    --input:                  #2B303A;
+    --ring:                   #F2F4F7;
+
+    /* state only — never used as decoration */
+    --state-critical:         #F26669;
+    --state-warning:          #F5A524;
+
+    /* room surface only — tiles sit directly on the ground with no fill
+       contrast (--card vs --background is 1.09:1), so they need a
+       boundary --border cannot provide at 1.29:1 */
+    --boundary:               #687284;
+  }
+}
+```
+
+Contrast is verified, not assumed. Do not change these values without recomputing.
+
+**Every foreground token declares its permitted surfaces, and is verified against those.** "Verify against all four dark surfaces" was itself too narrow — there are seven, and `--input` and `--secondary` were missing from it. Chasing every surface would also push `--state-critical` so light it stops reading as red.
+
+| Token | Permitted surfaces | Threshold | Worst |
+|---|---|---|---|
+| `--foreground` | all | 4.5 | 12.01 |
+| `--muted-foreground` | all | 4.5 | 5.08 |
+| `--state-warning` | all | 4.5 | 6.49 |
+| `--state-critical` | background, card, popover, muted, secondary, accent — **not `--input`** (4.34:1) | 4.5 | 4.84 |
+| `--boundary` | tile edges, panel edges, form-field borders — on `--background`, `--card`, `--popover`, `--muted`, `--secondary`. **Not on `--input`** (2.73). | 3.0 | 3.05 |
+| `--on-scrim` / `--on-scrim-muted` | `scrim-over-white` only. **`--foreground` is not permitted here** — it flips with the theme and the scrim does not. | 4.5 | 4.70 |
+
+`--boundary` is the boundary colour for any surface with no usable fill contrast against what it sits on — which in this palette is every surface, since the whole ramp spans 0.2 of a contrast point. Tiles, panels, and form fields all qualify. It is never a text colour.
+
+**Renamed from `--tile-border`.** The name described its first use and then lied about the next three. A token named for a component will keep lying every time it earns a new one; a token named for its purpose tells the next person whether their case qualifies.
+
+**Value raised from `#5D6777` to `#687284`.** The old value cleared 3:1 against `--background` but not against `--popover` (2.89) or `--muted` (2.76), which is fine for a panel edge separating from the room and not fine for a form field sitting *on* those surfaces. `#687284` clears 3:1 on every permitted surface in both themes: worst case **3.05 dark** on `--secondary`, **4.32 light** on `--muted`. The 5.1 figure in an earlier draft belonged to the old value and survived the change — the same edit that raised the value left the sentence describing it.
+
+`--input` is not a boundary token and must not be used as one. At 1.44:1 dark and 1.25:1 light it was failing SC 1.4.11 on every `Input` and every `SelectTrigger`, invisibly, because `check:contrast` only ever evaluated it as a surface for text.
+
+**`check:contrast` must evaluate every token in both roles it is used in.** A value can pass as a text surface and fail as a boundary; the script comparing token against token in one role only is how both this and the tile edge shipped.
+
+**`--scrim` is a composited surface and belongs in the matrix.** `scripts/contrast.mjs` computed foreground against opaque tokens only, which left the one rule the room chrome depends on enforced by a source scan rather than a calculation — weaker, and unable to catch a hued element added to a scrim somewhere the scan does not look.
+
+Model it as `0.72 × #0E1013 + 0.28 × #FFFFFF` — white is the worst case for light text, and video can be anything. That resolves to roughly `#515355`, where `--state-warning` falls to 3.79:1 and `--state-critical` to 2.53:1, and light-mode `--foreground` collapses to 2.3:1.
+
+Add `scrim-over-white` as a surface permitting **only `--on-scrim` (7.01:1) and `--on-scrim-muted` (4.70:1)**, both theme-invariant.
+
+**That is necessary and it is not sufficient, and the difference is the whole lesson of this section.** A permitted-surface rule answers *would this pairing pass*. It is never shown a pairing that exists. `--state-critical` is simply absent from the scrim's list, and an unlisted pairing is not a failure — nothing asks. `RoomControls` drew its device-error message as `text-[var(--state-critical)]` on `var(--scrim)` for the whole of v1.2 — **2.53:1, on the sentence telling you your camera did not start** — while the matrix ran green, and while the paragraph above claimed a hued element "fails the check instead of shipping".
+
+A source scan cannot close it either: the scrim is on a parent and the colour on a child, so the two never appear in one element's attributes. **`npm run check:scrim` measures it** — it walks the rendered room, finds every element whose nearest painted backdrop is the scrim, and compares the colour the browser actually resolved. The ancestor walk stops at the first opaque background, which is what makes rule 4's hued-chip exemption fall out of the geometry rather than out of an exception list.
+
+Same rule as the letterboxed tile and the touch-target floor, for the third time: **writing the check is not the fix; the check asserting the actual thing is the fix.**
+
+Validation error text sits below a field on the ground, never inside the filled input.
+
+`npm run check:contrast` computes the full matrix and fails on any violation. It is the source of truth; the numbers above are a snapshot. Do not hand-edit them — regenerate.
+
+Snapshot of the load-bearing pairs. Regenerate with `npm run check:contrast`; do not hand-edit.
+
+| Pair | Ratio |
+|---|---|
+| `--foreground` / `--background` | 17.29:1 |
+| `--muted-foreground` / worst permitted (`--input`) | 5.08:1 |
+| `--state-critical` / worst permitted (`--secondary`) | 4.84:1 |
+| `--state-warning` / worst permitted (`--input`) | 6.49:1 |
+| `--boundary` / worst permitted dark (`--secondary`) | 3.05:1 |
+| `--boundary` / worst permitted light (`--muted`) | 4.32:1 |
+| `--foreground` (speaking, 2px) / `--background` | 17.29:1 |
+| white / `--destructive` (dark) | 4.98:1 |
+| Light `--muted-foreground` / white | 6.06:1 |
+| Light `--destructive` / white | 5.54:1 |
+
+`#E5484D` on white is 3.91:1 and fails — that is why light mode has a separate destructive value.
+
+---
+
+## Typography
+
+**Instrument Sans** for interface, **JetBrains Mono** for meeting codes, timers, and connection data. Google Fonts, variable, `font-display: swap`.
+
+```
+font-sans:  "Instrument Sans", ui-sans-serif, system-ui, "Noto Sans", sans-serif
+font-mono:  "JetBrains Mono", ui-monospace, "SF Mono", monospace
+```
+
+| Role | Size / line | Weight |
+|---|---|---|
+| Display | 32 / 36 | 600 |
+| H1 | 24 / 30 | 600, −0.01em |
+| H2 | 20 / 26 | 600 |
+| Body | 15 / 22 | 400 |
+| Small | 13 / 18 | 400 |
+| Caption | 12 / 16 | 500 |
+| Code | 20 / 24 | 500 mono, +0.08em |
+| Data | 12 / 16 | 400 mono, tabular |
+
+Mono is for codes and numbers. Not for labels — that is decoration.
+
+Apply `font-variant-numeric: tabular-nums` to all timers and counters so digits don't jitter.
+
+---
+
+## Icons
+
+HugeIcons, stroke rounded, `strokeWidth={1.5}`, `color="currentColor"`.
+
+```tsx
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Mic01Icon } from "@hugeicons/core-free-icons";
+
+<HugeiconsIcon icon={Mic01Icon} size={24} strokeWidth={1.5} color="currentColor" />
+```
+
+Resolve exact export names from the installed package before using them — do not guess names from memory. Sizes: 20px inline, 24px in call controls, 16px in dense lists.
+
+---
+
+## Brand
+
+Full spec in `BRAND.md`. Rules that bind the code:
+
+**Logomark** — 2×2 grid of rounded tiles, three filled, one empty. 24-unit grid: 9-unit cells, 4-unit gutters, 2.4 radius, 1 margin, empty cell bottom-right.
+
+**Responsive rule.** At ≥32px the empty cell has a 1.5 stroke at 40% opacity. Below 32px the stroke is dropped and the cell is fully empty. This is tested behaviour, not preference — at 16px the stroke antialiases into a smudge. The `Mark` component switches on its `size` prop.
+
+**Never fill the fourth cell.** That cell is the entire idea.
+
+**Everything is `currentColor`, everywhere except `app/icon.svg`** — see rule 7a. In the React components one file serves both themes, with no light and dark variants to maintain. No hue in the mark, ever; even the favicon's literal fills are the two neutral tokens.
+
+**Wordmark** — Instrument Sans 600, −0.02em, sentence case. No letter substitution, no chip in a counter, no accent colour on a glyph. The mark carries the idea; the wordmark stays quiet.
+
+**Lockups are React components**, not SVG files — `components/brand/Mark.tsx`, `Wordmark.tsx`, `Lockup.tsx`. Clear space on all sides equals half the mark's height. Minimums: mark 16px, horizontal lockup 96px, stacked lockup 72px, wordmark 64px.
+
+Pre-generated rasters are in `brand/`: `favicon.ico` (16/32/48, correct variant per slice), `apple-icon.png`, `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`.
+
+---
+
+## Product vocabulary
+
+Fixed. Use these everywhere — UI, copy, comments, variable names.
+
+| Term | Never |
+|---|---|
+| **Meeting** | "call", "conference", "session" |
+| **Room** — internal / LiveKit only | never in user-facing copy |
+| **Meeting link** | "invite URL" |
+| **Meeting code** | "meeting ID", "PIN" |
+| **Host** | "owner", "organiser", "admin" |
+| **Participant** | "attendee", "user", "member" |
+| **Guest** | "anonymous", "visitor" |
+
+An action keeps its name through the flow: "Copy link" → "Link copied". "Leave" and "End meeting" are different actions and are never conflated.
+
+Meeting links are `https://<host>/j/kqr-8mzt-vnp`. `/j/` rather than a bare root code — a root catch-all would collide with `/dashboard` and `/schedule`.
+
+---
+
+## Shape and motion
+
+Radius `0.5rem`. Tiles `0.75rem`.
+
+Call controls follow C2's tiers: **primary is a 48px labelled pill** (Mute, Stop video, Present), **secondary is a 44px circle** (reactions, chat, people, more), **Leave is a 48px pill** in its own group at the end of the bar.
+
+**"The leave button is a wide pill — the only non-circular control" was true and is not.** It described a bar of eight identical circles. C2 made the primary tier pills, so shape now separates Leave from the secondary tier and not from Present. What separates it is its visible label naming a destructive action, its `--destructive` fill, and its own group — the label being what keeps it off hue alone. `PRD.md` §3.4 carries the same correction and flags it as a decision worth revisiting rather than a settled one.
+
+| Change | Duration | Easing |
+|---|---|---|
+| State toggle | 120ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Speaking ring | 120ms | linear |
+| Panel open | 180ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Panel close | instant, by design | — |
+| Grid reflow on join/leave | 200ms, FLIP | `cubic-bezier(0.2, 0, 0, 1)` |
+| Share region enter | 240ms | `cubic-bezier(0.2, 0, 0, 1)` |
+| Reaction lifespan | 2400ms | ease-out |
+
+All motion answers a user action. No ambient animation. `prefers-reduced-motion: reduce` removes travel, keeps opacity.
+
+**Grid reflow uses FLIP, and transforms are exempt from the container-only rule.** `grid-template-columns` interpolates only between track lists of equal length, so a declared transition on the grid can never fire on a join — the count changes every time. Measure each tile before and after, apply the inverse transform, animate to identity.
+
+The earlier rule — animate the container, not each tile — was aimed at layout-triggering properties, where sixteen simultaneous transitions would thrash. `transform` and `opacity` never touch layout and run on the compositor, so sixteen of them are cheap. **Per-tile animation is permitted when and only when it is transform or opacity.**
+
+Constraints: one batched layout read per reflow (measure every tile, then write every transform — never interleave); transform the tile wrapper, never the `<video>` element, or the video texture repaints; tiles arriving have no previous position, so they fade and scale in rather than FLIP; departing tiles are not animated. Under `prefers-reduced-motion`, skip the whole cycle and snap.
+
+Measure the frame timing at sixteen tiles rather than assuming it. Cheap is a claim until it is a number.
+
+**Panels animate in and snap out, deliberately.** The closed state is the `hidden` attribute, and our own base layer makes that `display: none !important` — declared there precisely so the guarantee does not rest on a third-party reset. Nothing transitions out of `display: none`, and that is an acceptable trade rather than a limitation to engineer around.
+
+Entrance motion tells you where something came from. Exit motion mostly tells you something is leaving, which the user already knows because they clicked to close it. The swap case is better instant too: 180ms total rather than a 360ms sequential close-then-open, which C3's no-simultaneous-transition rule would otherwise force.
+
+If the snap ever reads as abrupt in use, `@starting-style` with `transition-behavior: allow-discrete` is the upgrade path — it keeps `[hidden]` intact and degrades to instant on browsers that lack it. Judge that in a browser, not on paper.
+
+---
+
+## Layers
+
+**Every stacking order comes from the scale. No bare numbers, anywhere.**
+`npm run check:layers` fails on `z-50`, `z-[50]`, `z-index: 50` and
+`zIndex: 50` alike, in `app/`, `components/` and `lib/`.
+
+Until v1.5 there was no rule here at all — neither this file nor `PRD.md` said
+anything about z-index — so every layer's order was decided locally by whoever
+wrote the component. Twenty values across seventeen files, none of them wrong on
+its own, and the result was a reaction drawing behind the self-view: C1's PiP
+arrived after the reaction layer existed and won by picking a bigger number.
+That is not a bug that gets fixed once, which is why the scanner matters more
+than the fix.
+
+| Layer | Token | Holds |
+|---|---|---|
+| Base | `--layer-base` | Video tiles, the grid, the filmstrip |
+| Self | `--layer-self` | The self-view PiP |
+| Ephemera | `--layer-ephemera` | Reactions |
+| Surfaces | `--layer-surfaces` | Panel, mute prompt, reactions sheet |
+| Chrome | `--layer-chrome` | The control bar |
+| Menus | `--layer-menus` | Overflow, leave, the participant row's `⋮` |
+| Dialogs | `--layer-dialogs` | Confirm, settings, the connection overlay |
+| Notices | `--layer-notices` | Toasts, hints, the waiting notice |
+
+Written as `z-[var(--layer-chrome)]`. `z-auto` is always allowed and is usually
+the better answer — a component with no opinion should not express one.
+
+**Reactions sit above Self and below Surfaces.** Above, because a reaction
+hidden behind your own face is the reported bug. Below, because a reaction
+occluding a control is worse than one occluding a face — the same rule §3.6
+already states as "reactions never occlude the name label or mic indicator", one
+layer up.
+
+**Surfaces is not in `BUILD-PLAN-v1.5.md`'s table, and it has to exist.** That
+table puts the control bar and the panel together under Chrome. They cannot
+share a value: `RoomPanel` renders *after* `RoomControls`, so at equal z the
+panel paints over the bar, and §3.4 requires the bar to stay reachable with a
+panel open — `mobile.spec` asserts it. The gap was already there as 20-against-30;
+the scale names it rather than inventing it.
+
+**A number is only ever compared inside its own stacking context**, and that is
+the failure mode a scale does not prevent. v1.4's participant menu carried
+`z-40` inside a `z-20` panel and still lost to a `z-30` control bar, because the
+two numbers were never in the same competition. `e2e/layers.spec.ts` therefore
+asserts the shared context as well as the order; a scanner cannot see this, and
+neither can a table.
+
+---
+
+## Accessibility floor
+
+Non-negotiable, checked every phase. **This is the authoritative copy** — `PRD.md` §9 owns the announcement policy and the reasoning behind its thresholds, and deliberately does not restate these mechanics. Where the two ever appear to disagree, this file wins and §9 is stale.
+
+- Every control keyboard reachable, `--ring` focus at 2px offset
+- **Modal surfaces are focus-trapped. Non-modal panels are not.** The reconnect overlay and the shortcuts dialog trap: they are the task, and everything behind them is inert. Chat and participants do not: the meeting continues behind them, and `PRD.md` §3.4 requires the control bar to stay reachable while a panel is open. A trap there makes mute reachable only by shortcut, and mute is a privacy control.
+- **One panel, two tabs.** There is no longer a one-at-a-time constraint to enforce, because there is no longer a second panel: C3 merged Chat and People into a single `RoomPanel` whose bodies are `tabpanel`s. Opening People while Chat shows switches the tab; nothing closes. The state that could go wrong is gone rather than guarded, which is the better shape of the same fix — this line previously specified `null | 'chat' | 'participants'` and was describing the guard.
+- **The tabs are real tabs.** Arrow keys, Home and End, roving `tabIndex`. `role="tab"` is a promise about keyboard behaviour and making it without keeping it is the same lie as `aria-modal` without a trap. `check:room`'s disclosure scan pairs `aria-controls` with `aria-expanded` **or** `aria-selected` for exactly this reason — a tab selects, it does not expand; `aria-controls` with neither partner still fails.
+- **Two bar buttons, two disclosures.** Chat and People keep independent `aria-expanded`. One flag shared between them would claim chat was on screen when people was. The panel's own close button is a single "Close panel".
+- **Both bodies stay mounted, one hidden**, so switching tabs does not reset Chat's scroll position or its unread count.
+- Non-modal panel behaviour: focus moves into the panel on open, the room stays tabbable throughout, Escape closes and returns focus to the trigger. Mark them as labelled regions, never `role="dialog"` with `aria-modal` — the ARIA attribute is what promises a trap, so using it without one is the lie. Order the panel in the DOM adjacent to its trigger so tabbing out lands somewhere sensible.
+- **State toggles** (mic, camera) name the action and change with it: "Turn off microphone" → "Turn on microphone". No `aria-pressed` — carrying both an action name and a pressed state announces the same fact twice, in a confusing order
+- **Disclosure controls** (chat, participants) are the other pattern: a noun name plus `aria-expanded` and `aria-controls`. The bar button is "Participants"; the panel's close button is "Close participants". They are different controls doing different things and should not share a name
+
+  The rule above was written for mic and camera and over-generalised. A device toggle changes something in the world; a panel toggle reveals part of the interface. Applying "name the action" to both is what produced two controls called "Close participants", heard twice per tab cycle.
+- Join/leave announcements batched — more than 3 events in 5s collapses to "3 people joined"; suppressed entirely above 8 participants
+- Chat announces "{name} sent a message" when the panel is closed, never the body
+- Reactions throttled to one announcement per participant per 2s
+- Connection changes announced once, not per retry
+- **Touch targets: 44px on the room and pre-join surfaces, 24px minimum elsewhere.** The blanket 44px was above our stated conformance target — WCAG 2.1 AA does not require it, and 2.2 AA sets 24px. Enforcing 44 on desktop dashboard and scheduling screens changes visual density for no accessibility gain. Enforcing it in the room does: those are touch-primary, used one-handed, mid-meeting.
+- Touch targets are gated by **measuring rendered boxes in a browser**, across the same state list Phase 9 uses for axe — not by resolving size classes. A class-resolving check reads `h-11 w-11` and reports 44px while a parent constraint, a conflicting utility, a transform, or a squeezed flex child delivers something smaller. That is how the control bar shrank below the floor for months with a green check.
+
+  This line has now been wrong twice, in opposite directions. It first claimed the floor was "checked every phase" while the work sat unstarted in Phase 10 and thirty controls missed it. It was then replaced with a script that resolves classes rather than measuring geometry — fixing an unenforced claim with a claim the script does not enforce. **Writing the script is not the fix; the script asserting the actual thing is the fix.** It is the same rule as the letterboxed tile that declared `aspect-ratio: 16/9` correctly and rendered 1956px into 1337px.
+- Nothing depends on colour alone
+- `axe` clean on every route
+
+---
+
+## Copy voice
+
+Sentence case. Active voice. A button says what happens: "Copy link", not "Submit". The same action keeps its name through the flow — a "Copy link" button produces a "Link copied" toast.
+
+Errors explain what happened and what to do next. They do not apologise and they are never vague. Empty states are invitations: "No meetings yet. Start one now, or schedule for later."
+
+---
+
+## Testing rules
+
+Earned the hard way; each one comes from a check that passed while exercising the wrong thing.
+
+**Delete the guard. If no test fails, the guard is untested.** A cheap mutation check, and the only way to know a test credits the code it names. The `autolink` scheme allow-list survived deletion because the candidate pattern rejected dangerous schemes first — so the allow-list was a backstop being reported as a defence. Name which gate each case exercises, pin the load-bearing one directly, and document the rest as backstops rather than coverage.
+
+**Assert rendered geometry, never declared CSS.** Reading back `aspect-ratio: 16/9` tests your own input. A tile declaring the right ratio still rendered 1956px inside a 1337px container, because `aspect-ratio` sets a shape and not a bound — fitting one needs whichever dimension is tighter to win, which is `min(100cqw, calc(100cqh * 16/9))`, not any single `max-`. Measure the box.
+
+**A correctness property may not rest on a third-party reset.** The chat panel's `hidden` worked only because Tailwind's preflight marks `[hidden]` important. Declare `[hidden] { display: none !important }` in our own base layer and own the behaviour.
+
+**Scope queries by role or test id, not by visible text.** `getByText("Ama Serwaa")` was precise until Phase 5 added join and leave messages carrying the same name. The product grows; text-based queries silently widen.
+
+**A test owns its fixtures.** Two scheduling tests were wrong before the code was, because they leaned on rows other sections deliberately mutate — one ages the instant meeting past the 30-day window, another renames the scheduled one. Shared mutable fixtures make a test's result depend on what else ran.
+
+**Assert room composition, never assume it.** Two tests passed alone and failed in a full run for exactly this reason.
+
+**Sign-ins are rationed: 30 token verifications per 5 minutes.** Confirmed in the
+Supabase dashboard, not inferred. `admin/generate_link` is a service-role call
+and is not what counts; the callback's `verifyOtp` is — one `POST /auth/v1/verify`
+per sign-in, against a rolling five-minute window.
+
+The suite used to sit just under it, which is why this was so hard to read: a run
+starting into an empty window passed with a single refusal, and the same run
+forty minutes later produced twenty-six. It looked like flakiness, then like a
+daily budget, and was neither.
+
+**So a test signs in only if signing in is what it is about.**
+`e2e/global-setup.ts` signs the shared host in **once for the whole run** and
+writes the cookies to a file; `e2e/fixtures.ts` reads them and hands out
+`signedInPage`, and a test that merely needs to be *somebody* takes that. Its
+meeting is still its own — the isolation rule is about the meeting, not the
+identity. Own an account only to enumerate what a host owns (`dashboard` asserts
+an exact row count), to need one with no meetings (`a11y`'s empty dashboard), or
+to be a genuinely different person (a removed member).
+
+**Never mint a link for the shared host from a test.** Supabase invalidates the
+previous link when a new one is minted for the same address, so one test's
+sign-in can invalidate the link another worker is about to consume. Removing a
+per-test account while leaving its per-test sign-in in place converts an
+independent cost into a shared hazard — `freshness` did exactly that and cost a
+green run.
+
+**And the rule binds the fixtures too, which is where it was broken next.**
+Moving the sign-in into a worker-scoped fixture looked like obeying it — one
+sign-in per worker instead of one per test — but every worker signs in as the
+same host, so four workers starting together minted four links for one address
+and three of them held a dead one. `check:engines` produced three simultaneous
+refusals from four workers; one lost twice, because the fixture's five-second
+retry is a rate-limit remedy and this is a race, so every loser woke together
+and raced again.
+
+Per-worker made it rare rather than safe, which is why it read as flakiness. The
+count that matters is not per-test or per-worker but **per address**, and the
+only safe number is one. Global setup is where that lives — and it is a valid
+place to need a running server, which an earlier note denied: Playwright orders
+its startup tasks `[removeOutputDirs, ...pluginSetup, ...globalTeardowns,
+...globalSetups]` and the `webServer` is a plugin whose `setup()` waits for the
+URL to answer. Cited at `captureHostSession`, with the version it was read
+from, because the next person should re-check it rather than re-doubt it.
+
+**A test runner that can reuse a stale build is worse than no runner.** `reuseExistingServer: false`. It failed a fix that worked, and the same defect would have passed a break just as quietly.
+
+---
+
+## Conventions
+
+- Server Components by default; `"use client"` only where interactivity or browser APIs require it
+- Zod schemas shared between client validation and route handler validation
+- `date-fns` + `date-fns-tz`. Store UTC, render local, always print the zone label.
+- Route handlers return typed JSON with a stable `error` string, never a raw exception
+- Meeting code alphabet: `abcdefghjkmnpqrstuvwxyz23456789` — no `i`, `l`, `o`, `0`, `1`. Format `xxx-xxxx-xxx`.
+- **Test fixtures derive from the same constants as the code under test.** Hand-written codes containing `0` or `1` are rejected as malformed before any lookup, so a miss-tier test using them silently exercises the wrong layer and passes for the wrong reason. Generate them from the exported alphabet; never type them.
+
+  **The sharper form: a fixture is shaped like what the *producer* sends, never like what the *reader* expects.** Two in one pass were built the wrong way round and both passed while proving nothing. `check:webhook` sent `metadata: { name }`, a key the token has never written — the handler's `meta.name` lookup found something that existed only in the fixture, so every real attendance row was written "Guest" while the check ran green. `addWaiting` wrote a bare user id as `subject` where `subjectFor` builds `user_<id>`; it inserted cleanly, matched nothing, and a test about an admitted person would have exercised the not-admitted path.
+
+  Both are invisible in the ordinary way: the row appears, the assertion passes, and the field that was never read simply holds its default. When a fixture stands in for a producer, copy the producer's own construction rather than writing what the consumer wants to find — and assert the *value* that travelled, not just that a row exists. Counting rows cannot tell a session from a session labelled wrongly.
+- Generate-and-insert with retry on unique violation. Never check-then-insert.
+- One component per file. Colocate under `components/room/`, `components/schedule/`, `components/ui/`.
+
+---
+
+## File layout
+
+```
+app/
+  icon.svg  apple-icon.png  opengraph-image.tsx  twitter-image.tsx
+  (marketing)/page.tsx           — two states: signed out and signed in
+  (auth)/sign-in/page.tsx        — public, cold-load; budgeted in §10
+  (auth)/sign-in/actions.ts      — signInWithOtp and signInWithOAuth as
+                                   server actions, so no auth SDK reaches
+                                   the bundle and the form works with JS off
+  auth/callback/route.ts         — Supabase code exchange
+  auth/complete/page.tsx         — reads the fragment on a cross-device open
+  (dev)/dev/tokens/page.tsx      — gated on NODE_ENV !== 'production'
+  (app)/dashboard/page.tsx
+  (app)/schedule/page.tsx
+  (app)/schedule/[code]/page.tsx — meeting detail; edit form behind
+                                   next/dynamic, since most visits copy a
+                                   link and never open it
+  j/[code]/page.tsx              — pre-join (public meeting link)
+  room/[code]/page.tsx          — in-call (client, dynamic import)
+  api/livekit/token/route.ts
+  api/livekit/webhook/route.ts
+  api/meetings/route.ts
+  api/meetings/[code]/route.ts
+  api/meetings/[code]/ics/route.ts
+public/
+  favicon.ico  icon-192.png  icon-512.png  icon-512-maskable.png
+  manifest.webmanifest
+  reactions/                     — six Fluent Emoji 3D at 96px WebP
+components/
+  brand/                         — Mark, Wordmark, Lockup
+  ui/                            — shadcn (sonner for toasts, not the
+                                   deprecated toast component)
+  room/                          — grid, tile, controls, chat, reactions
+  schedule/
+  shared/
+lib/
+  livekit/                       — token, room helpers
+  supabase/                      — client, server, middleware
+  meetings/                      — code generation, ics
+  hooks/
+supabase/migrations/
+```
+
+Four of these were missing while the routes existed and three of them carried budgets in `PRD.md` §10, which is how a file layout stops being a specification and becomes a partial inventory.
+
+**Three paths here were reconstructed from URLs and build output rather than read off the repo, and have now been checked against it.** Two were wrong: `auth/callback` and `auth/complete` sit at the top of `app/`, **not** inside `(auth)` — the route group holds only `sign-in`. They are corrected above rather than moved, per the instruction that produced this note. `public/reactions/` was right.
+
+Worth knowing why the guess was wrong in a way a URL cannot reveal: a route group contributes nothing to the path, so `(auth)/auth/callback` and `auth/callback` both serve `/auth/callback`. The URL is the same either way, which is exactly why reading the layout off it produced a plausible answer and a false one.
+
+---
+
+## Never do
+
+- Reach for `@livekit/components-styles` or any prebuilt LiveKit UI
+- Put a secret behind `NEXT_PUBLIC_`
+- Add a colour that isn't in the token set
+- Give avatars a per-identity hue — the fallback is the initial on `--secondary`, uniform
+- Fill the mark's fourth cell, or give the mark a colour
+- Ship a state with no design — silent failure is the worst outcome in this product
+- Ship a working control that lands on a framework default error page. If a button creates a row, the destination route must exist by the end of that phase, even as a minimal designed state. Phase boundaries are for scope, not for leaving the product broken between them.
+- Persist chat (out of scope — it's ephemeral by design)
+- Add recording, captions, or transcription (out of scope; they change the cost model)
