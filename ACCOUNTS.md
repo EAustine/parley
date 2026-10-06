@@ -6,6 +6,24 @@ Everything Phase 1 needs. Roughly 25 minutes.
 
 Dashboard labels move. Where a label here doesn't match what you see, go by function — the underlying concepts have been stable for years.
 
+**Production is `https://parley-sand.vercel.app`.** It is a generated Vercel
+URL, not a secret, and it is written here because the checks that probe it take
+it as an argument and nothing else in the repository names it:
+
+```
+npm run check:deploy -- https://parley-sand.vercel.app
+npm run check:public -- https://parley-sand.vercel.app
+```
+
+`check:deploy:prod` and `check:public:prod` read `NEXT_PUBLIC_APP_URL` instead,
+which in a development `.env.local` points at localhost — so they check the
+local server, not production. That is the right default and a surprising one.
+
+Being a generated URL rather than a custom domain has two consequences this file
+deals with elsewhere: Deployment Protection has to be turned off by hand rather
+than being exempt, and email cannot be authenticated at all. See "Real email,
+for production".
+
 ---
 
 ## Before you start
