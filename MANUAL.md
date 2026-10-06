@@ -355,8 +355,25 @@ neither item in this section.**
   list because the second fact makes the first one true — nothing in the suite
   has ever caused an email to be sent, and after the v1.2 refactor the send
   happens in a server action rather than the browser.
-  Request a link to a real inbox and confirm it arrives, is not filed as spam,
-  and completes a sign-in. Production needs real SMTP.
+  **The setup is written down and blocked on one thing: a domain.**
+  `ACCOUNTS.md` → "Real email, for production" carries the whole runbook —
+  Resend, the DNS records, Supabase's custom SMTP fields, the rate limit, and
+  the template in `supabase/templates/magic-link.html`. None of it can be done
+  on a `*.vercel.app` origin, because SPF and DKIM are published in DNS for a
+  domain you control and that is not one. Until then the built-in sender is
+  what production uses, at a handful of emails per hour from a shared address.
+
+  When it is configured: request a link to a real inbox **on a domain you do
+  not own** — Gmail is the useful case — and confirm it arrives, is not filed
+  as spam, and completes a sign-in. Then read the raw headers and confirm
+  `spf=pass`, `dkim=pass` and `dmarc=pass`. A link reaching your own inbox
+  proves almost nothing; your own address is the one most likely to be trusted.
+
+  The email body itself is **shape verified, browser unconfirmed**: rendered at
+  375px with the button measured at 96×48 against the 44px floor, the card at
+  343px with no horizontal overflow. That is one browser, and an email client is
+  not a browser — Outlook renders with Word's engine. Look at it in Gmail, Apple
+  Mail and Outlook when the link first arrives.
 
 ---
 

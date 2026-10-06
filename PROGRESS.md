@@ -9504,3 +9504,70 @@ the instrument rather than the code: the verification run was first summarised
 with `grep -c refused`, which returned 1 and meant nothing — it had matched a
 test *named* "a time that has passed is refused, and says so". The count that
 answers the question is `grep -c 'sign-in refused'`, and it is 0.
+
+---
+
+## Real email: a runbook, a designed email, and one thing that blocks both
+
+"Set up real SMTP for magic links" turned out to be mostly not an SMTP problem.
+Supabase can be pointed at any SMTP server in two minutes. What decides whether
+a magic link reaches a stranger is SPF, DKIM and DMARC published in DNS **for
+the domain the mail claims to come from** — and `vercel.app` is not a domain
+this project can publish records for.
+
+So the work splits cleanly into what a domain gates and what it does not, and
+the honest report is that the first half cannot be finished today.
+
+### What is blocked, and why saying so is the deliverable
+
+On a generated deployment URL the best any provider can do is send on our behalf
+from theirs, unauthenticated as far as the receiving server is concerned. Moving
+from Supabase's built-in sender to Resend without a domain would change which
+shared address the mail comes from and nothing that matters. A domain is step
+one, not an extra — and it closes a second hole at the same time, because
+Vercel's Deployment Protection exempts production custom domains, which
+`ACCOUNTS.md` already describes as the structural fix for a toggle.
+
+### What is written
+
+`ACCOUNTS.md` gains "Real email, for production": the domain first and the
+reason, Resend's DNS records and the trap that a half-verified domain still
+sends, the SMTP credential, Supabase's custom SMTP fields, the email rate limit
+that is low enough to look like a bug the first time two people sign in at once,
+and a verification step that is not "did it arrive".
+
+**It adds no dependency and no environment variable**, which is the property
+worth having: Supabase holds the credential and sends the mail itself, so the
+API key never enters the repository, the bundle, or `.env.local`.
+
+### The email was an undesigned surface
+
+Supabase's default magic-link template says "Follow this link to login". That is
+the wrong voice, the wrong vocabulary — "login" is not a verb — and it carries
+no sender identity, on the single message every new person receives before they
+have seen the product at all.
+
+`supabase/templates/magic-link.html` replaces it. The button says **Sign in**,
+because the form said "Email me a sign-in link" and an action keeps its name
+through the flow; the body repeats the two facts the sent state already
+promises, that the link expires in an hour and works once. Literal hex from the
+light palette, since an email cannot read CSS variables, and **no remote images
+at all** — no logo fetch, no tracking pixel — which is a deliverability decision
+as much as a privacy one.
+
+Measured rather than declared, at 375px: the button is **96 × 48** against the
+44px floor, the card 343px inside the viewport, no horizontal overflow. One
+browser, which is not a mail client — Outlook renders with Word's engine, and
+`MANUAL.md` carries that as the open half.
+
+### The check that was deliberately not written
+
+The template lives in the Supabase dashboard. A copy in the repository can drift
+from it exactly as `AGENTS.md` drifted from `CLAUDE.md` — and unlike that case,
+**nothing here can read the other side**. A `check:email` comparing the repo file
+to itself would pass forever while the dashboard said anything at all.
+
+That is the defect this file has recorded more than any other, most recently a
+refusal counter that grepped for a string only a server-side probe emits and
+read `0` through an outage. So `ACCOUNTS.md` carries the warning in place of the
+tick: re-paste after any edit, and nothing will tell you if you forget.

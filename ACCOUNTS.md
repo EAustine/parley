@@ -73,7 +73,7 @@ Add the production URL later, when there is one. Auth will silently fail to redi
 
 **Authentication → Providers → Email.** Magic link is on by default. Leave it.
 
-Supabase's built-in email sender is rate-limited to a handful per hour and is fine for development. Production needs a real SMTP provider — that's a Phase 10 concern, not now.
+Supabase's built-in email sender is rate-limited to a handful per hour and is fine for development. **Production needs a real SMTP provider, and that is now — see "Real email, for production" at the end of this file.** Nothing in the suite has ever caused an email to be sent, so delivery is the one thing in the sign-in path that has never been exercised.
 
 ### Google provider — get the callback URL
 
@@ -240,3 +240,109 @@ project the suite will actually use, and says which one it asked.
 
 Leave them unset and nothing changes.
 
+
+
+---
+
+## Real email, for production
+
+Every screen behind auth is reached by a magic link, so email delivery is not a
+polish item: it is the front door. Supabase's built-in sender is rate-limited to
+a handful per hour and sends from a shared address, which is fine for a
+developer and wrong for a stranger.
+
+**Nothing here adds a dependency or an environment variable.** Supabase holds
+the SMTP credential and sends the mail itself, so the API key never enters the
+repository, the bundle, or `.env.local`.
+
+### 1. A domain comes first, and it is not optional
+
+Deliverability is not a property of the provider. It is SPF, DKIM and DMARC
+published in DNS for the domain the mail claims to come from — and **you cannot
+publish DNS records for `vercel.app`**. On a generated deployment URL the best
+any provider can do is send from *their* domain on your behalf, which is
+unauthenticated as far as the receiving server is concerned and is what the spam
+folder is for.
+
+So: register a domain. It also removes the Deployment Protection problem
+described above, because Vercel's protection scope exempts production custom
+domains — one purchase closes two holes.
+
+Having added it in Vercel, change `NEXT_PUBLIC_APP_URL` to the new origin and
+update Supabase's **Site URL** and **Redirect URLs** to match — see "Configure
+auth URLs" above. The sign-in link is built from `NEXT_PUBLIC_APP_URL` rather
+than from the request's `Host` header, deliberately, so a stale value here does
+not mis-send a link; it sends people to the old origin.
+
+### 2. Resend
+
+Create an account, add the domain, and publish the DNS records it shows you —
+an SPF record, a DKIM record, and a return-path record. Add a DMARC record too
+if Resend does not prompt for one; `p=none` is enough to start and makes
+failures visible rather than silent.
+
+Wait for the domain to read **Verified**. A half-verified domain sends, which is
+the trap: the mail leaves, nothing errors, and it is filed as spam.
+
+Then create an **SMTP credential**. Resend gives:
+
+```
+host      smtp.resend.com
+port      465          (SSL; 587 with STARTTLS also works)
+username  resend
+password  <the API key>
+```
+
+### 3. Point Supabase at it
+
+**Project Settings → Authentication → SMTP Settings → Enable Custom SMTP.**
+
+Sender email is an address at the verified domain — `no-reply@<domain>` is
+conventional and fine. Sender name is **Parley**.
+
+Then **Authentication → Rate Limits → emails sent per hour.** The built-in
+sender's limit no longer applies, and the default is low enough to look like a
+bug the first time two people sign in together. Set it to something that covers
+a demo with room to spare.
+
+### 4. The email itself
+
+`supabase/templates/magic-link.html` is the body, written to this project's copy
+voice and palette. Paste it into **Authentication → Emails → Magic Link**, with
+the subject:
+
+```
+Sign in to Parley
+```
+
+The default template says "Follow this link to login", which is the wrong voice
+("login" is not a verb here), carries no sender identity, and is an undesigned
+surface shipped to every new person. The replacement keeps the action's name
+from the form — the button says **Sign in**, because the form said "Email me a
+sign-in link" — and repeats the two facts the sent-state already promises: it
+expires in an hour and works once.
+
+It uses literal hex from the light palette, because an email cannot read CSS
+variables, and loads no remote images — no logo fetch, no tracking pixel. That
+is a deliverability decision as much as a privacy one.
+
+**Nothing verifies that the dashboard still matches this file.** The template
+lives in Supabase and can be edited there, and no check here can see it. That is
+stated rather than papered over: a check that cannot observe the thing it is
+named for is worse than no check, and this file would rather carry the warning
+than a green tick that means nothing. Re-paste after any edit.
+
+### 5. Verify it, because none of the above proves delivery
+
+Request a link to a real inbox on a domain you do not control — Gmail is the
+useful case — and confirm it arrives, is not in spam, and signs you in.
+
+Then open the raw headers and confirm all three say pass:
+
+```
+Authentication-Results: ... spf=pass ... dkim=pass ... dmarc=pass
+```
+
+A link that arrives in *your* inbox proves almost nothing: your own address and
+domain are the ones most likely to be trusted. Three passes on somebody else's
+mail server is the claim worth making.
