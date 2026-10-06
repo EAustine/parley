@@ -495,13 +495,14 @@ starting into an empty window passed with a single refusal, and the same run
 forty minutes later produced twenty-six. It looked like flakiness, then like a
 daily budget, and was neither.
 
-**So a test signs in only if signing in is what it is about.** `e2e/fixtures.ts`
-signs in once per worker and hands out `signedInPage`; a test that merely needs
-to be *somebody* takes that. Its meeting is still its own — the isolation rule is
-about the meeting, not the identity. Own an account only to enumerate what a host
-owns (`dashboard` asserts an exact row count), to need one with no meetings
-(`a11y`'s empty dashboard), or to be a genuinely different person (a removed
-member).
+**So a test signs in only if signing in is what it is about.**
+`e2e/global-setup.ts` signs the shared host in **once for the whole run** and
+writes the cookies to a file; `e2e/fixtures.ts` reads them and hands out
+`signedInPage`, and a test that merely needs to be *somebody* takes that. Its
+meeting is still its own — the isolation rule is about the meeting, not the
+identity. Own an account only to enumerate what a host owns (`dashboard` asserts
+an exact row count), to need one with no meetings (`a11y`'s empty dashboard), or
+to be a genuinely different person (a removed member).
 
 **Never mint a link for the shared host from a test.** Supabase invalidates the
 previous link when a new one is minted for the same address, so one test's
@@ -509,6 +510,24 @@ sign-in can invalidate the link another worker is about to consume. Removing a
 per-test account while leaving its per-test sign-in in place converts an
 independent cost into a shared hazard — `freshness` did exactly that and cost a
 green run.
+
+**And the rule binds the fixtures too, which is where it was broken next.**
+Moving the sign-in into a worker-scoped fixture looked like obeying it — one
+sign-in per worker instead of one per test — but every worker signs in as the
+same host, so four workers starting together minted four links for one address
+and three of them held a dead one. `check:engines` produced three simultaneous
+refusals from four workers; one lost twice, because the fixture's five-second
+retry is a rate-limit remedy and this is a race, so every loser woke together
+and raced again.
+
+Per-worker made it rare rather than safe, which is why it read as flakiness. The
+count that matters is not per-test or per-worker but **per address**, and the
+only safe number is one. Global setup is where that lives — and it is a valid
+place to need a running server, which an earlier note denied: Playwright orders
+its startup tasks `[removeOutputDirs, ...pluginSetup, ...globalTeardowns,
+...globalSetups]` and the `webServer` is a plugin whose `setup()` waits for the
+URL to answer. Cited at `captureHostSession`, with the version it was read
+from, because the next person should re-check it rather than re-doubt it.
 
 **A test runner that can reuse a stale build is worse than no runner.** `reuseExistingServer: false`. It failed a fix that worked, and the same defect would have passed a break just as quietly.
 

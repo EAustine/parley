@@ -1,15 +1,6 @@
 import { test as base } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
-import { signIn } from "./auth";
-
-/**
- * Long enough for the auth rate limit's window to move, short enough that a
- * genuinely broken sign-in still fails the run promptly. Five seconds is a
- * guess at the shape of a limit Supabase does not publish to us — the callback
- * flattens every rejection into one sentence — and is the number to revisit
- * once the dashboard's auth log has been read.
- */
-const RETRY_PAUSE_MS = 5_000;
 import { emptyRoom } from "./livekit-admin";
 import {
   createFixtureHost,
@@ -43,14 +34,18 @@ export const test = base.extend<
   /**
    * A page already signed in as the run's shared fixture host.
    *
-   * **One sign-in per worker instead of one per test**, and the reason is a
-   * measured limit rather than tidiness. A full suite performs on the order of
-   * a hundred and eighty magic-link sign-ins; the second full run of a calendar
-   * day fails its last eighteen tests with "That link has expired or has
-   * already been used", every one carrying `account: present`,
+   * **One sign-in per run instead of one per test**, and the reason is a
+   * measured limit rather than tidiness. A full suite used to perform on the
+   * order of a hundred and eighty magic-link sign-ins; the second full run of a
+   * calendar day failed its last eighteen tests with "That link has expired or
+   * has already been used", every one carrying `account: present`,
    * `callback requests: 1` and a fresh link that verifies on the spot. The
    * failures are positional — indices 178 to 194 of 195, nothing before — which
    * is a budget being crossed, not a flake.
+   *
+   * The first fix made it one per *worker*, which was four — and four workers
+   * minting links for one address is a race, not a saving. It is now one, in
+   * `global-setup.ts`.
    *
    * **It does not contradict "a test owns its fixtures".** `global-setup.ts`
    * already draws the line this follows: "Read-only fixtures are safe to share
@@ -60,9 +55,13 @@ export const test = base.extend<
    * meetings, blocks somebody, or enumerates what this host owns still takes
    * its own account, because those are writes and the rule is about writes.
    *
-   * Worker-scoped rather than global, deliberately. Playwright's `globalSetup`
-   * is not guaranteed to run after `webServer`, and a sign-in needs a server to
-   * sign in to; a worker fixture cannot race it.
+   * **An earlier note here said global setup could not be trusted to run after
+   * `webServer`, and that is not true of the version we pin.** Playwright
+   * 1.62.1 orders its startup tasks `[removeOutputDirs, ...pluginSetup,
+   * ...globalTeardowns, ...globalSetups]` and runs them in sequence, and the
+   * `webServer` is a plugin whose `setup()` waits for the URL to answer. The
+   * doubt cost a race; the ordering is cited at `captureHostSession` so the
+   * next person can re-check it rather than re-doubt it.
    */
   signedInPage: import("@playwright/test").Page;
   hostedMeeting: { code: string; email: string };
@@ -71,69 +70,45 @@ export const test = base.extend<
   },
   {
     /**
-     * The signed-in cookies, minted once per worker and handed to every
-     * `signedInPage` in it. Worker-scoped is the whole saving: Playwright forks
-     * a handful of workers and reuses each across many tests.
+     * The signed-in cookies, minted once for the run by `global-setup.ts` and
+     * read by each worker. Worker-scoped so the file is read a handful of times
+     * rather than once per test; the saving that mattered — one `verifyOtp`
+     * instead of a hundred and eighty — is the minting, not the reading.
      */
     sharedHostState: Awaited<ReturnType<import("@playwright/test").BrowserContext["storageState"]>>;
   }
 >({
   sharedHostState: [
-    async ({ browser }, use) => {
+    async ({}, use) => {
       /**
-       * **Retried, and `e2e/auth.ts` deliberately is not — the arithmetic is
-       * opposite here.**
+       * **Read, not minted — and that is the whole fix.**
        *
-       * A blanket retry inside `signIn` was tried and removed: it fired on
-       * every test, so a refusal rate doubled the requests against the very
-       * endpoint refusing them, and of 26 retries **50 attempts failed twice**.
-       * It made its own trigger more likely and recovered almost nothing.
+       * This fixture used to sign in itself, once per worker. Every worker
+       * signs in as the *same* host, and Supabase invalidates the previous
+       * link when a new one is minted for the same address, so four workers
+       * starting together minted four links and three of them held a dead one.
+       * `global-setup.ts` now does it once for the run; the measurement and the
+       * reasoning live there, at `captureHostSession`.
        *
-       * This one runs **once per worker** — four times in a full run, against
-       * roughly a hundred and eighty before the migration — so a second attempt
-       * is a rounding error in the request rate rather than a doubling of it.
-       *
-       * And its failure is now catastrophic where a test's is local. Ten of the
-       * eleven failures in the run after the migration were *this fixture*: one
-       * refusal no longer fails one test, it fails every test in the worker,
-       * which is how `select` lost five and `waiting-queue` three with nothing
-       * wrong in either. Concentrating the sign-ins is what made the suite
-       * survivable; it is also what makes this the one place worth defending.
-       *
-       * **Spaced, not immediate.** The refusals arrive in bursts as a rolling
-       * window fills, so retrying instantly retries into the same full window.
-       * A few seconds is the difference between a second attempt and the same
-       * attempt twice.
-       *
-       * Bounded at two tries. If a fresh link fails after a wait, that is not
-       * the transient refusal and the run should say so rather than grinding.
+       * No retry, because there is nothing left to retry. The old one paused
+       * five seconds for "the window to slide", which is a rate-limit remedy
+       * applied to a race — every loser woke at the same moment and raced
+       * again. Reading a file either works or means the run is broken, and a
+       * broken run should say so immediately.
        */
-      const attempt = async () => {
-        const context = await browser.newContext();
-        const page = await context.newPage();
-        try {
-          // The run's own fixture host, created by global setup and published
-          // for exactly this kind of reuse.
-          await signIn(page, required("PARLEY_E2E_HOST_EMAIL"), "/dashboard");
-          return await context.storageState();
-        } finally {
-          await context.close();
-        }
-      };
-
-      let state;
-      try {
-        state = await attempt();
-      } catch (first) {
-        console.warn(
-          `sharedHostState: sign-in refused, waiting ${RETRY_PAUSE_MS / 1000}s ` +
-            `for the window to slide — ${(first as Error).message.split("\n")[0]}`,
+      const path = process.env.PARLEY_E2E_HOST_STATE;
+      if (!path) {
+        throw new Error(
+          "PARLEY_E2E_HOST_STATE is unset, so global setup never captured the " +
+            "fixture host's session. Run the suite through one of the `check:` " +
+            "scripts, which load .env.local and run `e2e/global-setup.ts`.",
         );
-        await new Promise((resolve) => setTimeout(resolve, RETRY_PAUSE_MS));
-        state = await attempt();
       }
-
-      await use(state);
+      await use(
+        JSON.parse(await readFile(path, "utf8")) as Awaited<
+          ReturnType<import("@playwright/test").BrowserContext["storageState"]>
+        >,
+      );
     },
     { scope: "worker" },
   ],

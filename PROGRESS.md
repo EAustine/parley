@@ -9406,3 +9406,101 @@ And the trap that cost a green run, recorded beside it: **never mint a link for
 the shared host from a test.** Supabase invalidates the previous link when a new
 one is minted for the same address, so removing a per-test account while leaving
 its per-test sign-in turns an independent cost into a shared hazard.
+
+---
+
+## The fixture that broke the rule it was written to keep
+
+`check:engines` went red on a change that could not have caused it — a run whose
+only purpose was to prove `playwright.config.ts` still booted a server. One
+failure, in `select-chromium`, and the message was the familiar one: "That link
+has expired or has already been used."
+
+The log named the cause in three lines nobody had to interpret:
+
+```
+Running 6 tests using 4 workers
+sharedHostState: sign-in refused, waiting 5s …   ×3, identical, one address
+```
+
+**Three of four workers refused at the same instant.** `sharedHostEmail()` is a
+single environment variable, so every worker signs in as the *same* host, and
+Supabase invalidates the previous link when a new one is minted for that
+address. Four workers starting together mint four links; the last one standing
+wins and the other three hold a dead link.
+
+Which is `CLAUDE.md`'s own rule — *never mint a link for the shared host from a
+test* — broken by the fixture written to obey it.
+
+### Two measurements that were being read as one
+
+The retry made it worse in a specific and instructive way. It is documented as a
+**rate** remedy — "waiting 5s for the window to slide" — and the five seconds is
+tuned for a rolling window filling up. But this is not a rate refusal, and the
+diagnostics said so plainly at the time: `callback requests: 1`, `account:
+present`, `fresh link: verified`. A fixed pause applied to a mutual-invalidation
+race wakes every loser at the same moment to race again. One of the three lost
+twice.
+
+Both faults produce the identical sentence, because `app/auth/callback/route.ts`
+flattens every `verifyOtp` rejection into one. That is the third time this file
+records a cause being inferred from a message that cannot distinguish causes.
+
+### Per-worker was never the fix, only a smaller version of the bug
+
+The migration that introduced it cut sign-ins from about a hundred and eighty to
+four and was a genuine improvement — the suite stopped colliding with the
+thirty-per-five-minutes ceiling. But it changed the *count*, not the *shape*.
+The number that matters is not per-test or per-worker; it is **per address**,
+and the only safe value is one. Four concurrent mints is a race whatever the
+denominator, and rarity is what let it read as flakiness.
+
+### Where one sign-in can live
+
+In `global-setup.ts`, which already creates this host. The fixture's own
+docblock had ruled that out: "Playwright's `globalSetup` is not guaranteed to
+run after `webServer`, and a sign-in needs a server to sign in to."
+
+That is false for the version pinned here, and checking took one grep.
+Playwright 1.62.1 builds its startup tasks as
+
+```js
+[createRemoveOutputDirsTask(), ...createPluginSetupTasks(config),
+ ...globalTeardowns, ...globalSetups]            // runner/index.js:6003
+```
+
+runs them strictly in order, and the `webServer` is a plugin whose `setup()`
+awaits `_waitForProcess()` — which polls the URL until it answers. The server is
+up before global setup starts.
+
+**A doubt recorded as a constraint cost a race.** The note was honest about
+being unsure and was then treated as settled by everything built on top of it.
+It is replaced with the ordering, the file and line it was read from, and an
+instruction to re-check it on upgrade — so the next person can verify it in a
+minute instead of working around it.
+
+### What it is now
+
+`global-setup.ts` signs in once, writes `storageState` to
+`e2e/.auth/host-<id>.json`, and publishes the path. The worker fixture reads the
+file. Teardown deletes it — it holds live cookies — and setup clears the
+directory first, for the same reason `deleteStaleFixtureHosts` exists: teardown
+is the step that does not happen.
+
+One `verifyOtp` per run, against a ceiling of thirty per five minutes.
+
+| | sign-in refusals | expired-link errors | result |
+|---|---|---|---|
+| before | 3 | 3 | 1 failed, 5 passed |
+| after | 0 | 0 | **22 passed** |
+
+**Proven by deletion, per the rule.** With the `signIn` call removed from
+`captureHostSession` and everything else untouched, `meeting-detail` goes **12
+failed**. The twenty-two passes are the session doing the work, not a file being
+read successfully.
+
+One footnote worth keeping, because it is this file's oldest defect appearing in
+the instrument rather than the code: the verification run was first summarised
+with `grep -c refused`, which returned 1 and meant nothing — it had matched a
+test *named* "a time that has passed is refused, and says so". The count that
+answers the question is `grep -c 'sign-in refused'`, and it is 0.
